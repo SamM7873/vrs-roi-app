@@ -80,6 +80,9 @@ def to_float(v):
     except (TypeError, ValueError):
         return None
 
+VRS_RATE_PER_MINUTE = 8.33
+CONVO_NOW_RATE_PER_MINUTE = 2.60
+
 def classify_roi(vrs_minutes, convo_minutes):
     vrs = to_float(vrs_minutes) or 0
     convo = to_float(convo_minutes) or 0
@@ -93,6 +96,21 @@ def classify_roi(vrs_minutes, convo_minutes):
         return "LOSS", diff, roi_pct
     else:
         return "-", diff, roi_pct
+
+def classify_cost_roi(vrs_minutes, convo_minutes):
+    vrs = to_float(vrs_minutes) or 0
+    convo = to_float(convo_minutes) or 0
+    vrs_cost = vrs * VRS_RATE_PER_MINUTE
+    convo_cost = convo * CONVO_NOW_RATE_PER_MINUTE
+    diff = vrs_cost - convo_cost
+
+    if diff > 0:
+        roi = "PROFIT"
+    elif diff < 0:
+        roi = "LOSS"
+    else:
+        roi = "-"
+    return vrs_cost, convo_cost, diff, roi
 
 def highlight_roi(val):
     if val == "LOSS":
@@ -179,7 +197,8 @@ def build_report(matched_numbers):
         if not months:
             rows.append({"Name": name_display, "Email": email_display, "Numbers": numbers_display, "Credit Type": credit_display,
                          "Month": "-", "VRS Minutes": "-", "CFZ Minutes": "-",
-                         "Convo Now Minutes": "-", "VRS - Convo Now": "-", "ROI %": "-", "ROI": "-"})
+                         "Convo Now Minutes": "-", "VRS - Convo Now": "-", "ROI %": "-", "ROI": "-",
+                         "VRS Cost ($)": "-", "Convo Now Cost ($)": "-", "Cost Diff ($)": "-", "Cost ROI": "-"})
             continue
 
         for mkey in sorted(months.keys(), key=month_sort_key):
@@ -190,11 +209,14 @@ def build_report(matched_numbers):
             cfz_merged = sum(cfz_list) if cfz_list else None
             convo_merged = sum(convo_list) if convo_list else None
             roi, diff, roi_pct = classify_roi(vrs_merged, convo_merged)
+            vrs_cost, convo_cost, cost_diff, cost_roi = classify_cost_roi(vrs_merged, convo_merged)
 
             rows.append({"Name": name_display, "Email": email_display, "Numbers": numbers_display, "Credit Type": credit_display,
                          "Month": mkey, "VRS Minutes": vrs_merged, "CFZ Minutes": cfz_merged,
                          "Convo Now Minutes": convo_merged, "VRS - Convo Now": round(diff, 1),
-                         "ROI %": round(roi_pct, 1), "ROI": roi})
+                         "ROI %": round(roi_pct, 1), "ROI": roi,
+                         "VRS Cost ($)": round(vrs_cost, 2), "Convo Now Cost ($)": round(convo_cost, 2),
+                         "Cost Diff ($)": round(cost_diff, 2), "Cost ROI": cost_roi})
 
     df = pd.DataFrame(rows)
     return df, person_numbers, person_month_values, person_email_display
@@ -265,9 +287,9 @@ COLOR_MAP = {
 def render_table_and_summary(df):
     styler = df.style
     if hasattr(styler, "map"):
-        styler = styler.map(highlight_roi, subset=["ROI"])
+        styler = styler.map(highlight_roi, subset=["ROI", "Cost ROI"])
     else:
-        styler = styler.applymap(highlight_roi, subset=["ROI"])
+        styler = styler.applymap(highlight_roi, subset=["ROI", "Cost ROI"])
 
     st.dataframe(styler, use_container_width=True)
 
@@ -279,8 +301,23 @@ def render_table_and_summary(df):
     loss_pct = (loss_count / total_months * 100) if total_months > 0 else 0.0
 
     st.write(
-        f"**Summary:** {profit_count} PROFIT month(s) ({profit_pct:.1f}%), "
+        f"**Minutes-based Summary:** {profit_count} PROFIT month(s) ({profit_pct:.1f}%), "
         f"{loss_count} LOSS month(s) ({loss_pct:.1f}%), out of {total_months} total month(s)"
+    )
+
+    cost_loss_count = (df["Cost ROI"] == "LOSS").sum()
+    cost_profit_count = (df["Cost ROI"] == "PROFIT").sum()
+    cost_profit_pct = (cost_profit_count / total_months * 100) if total_months > 0 else 0.0
+    cost_loss_pct = (cost_loss_count / total_months * 100) if total_months > 0 else 0.0
+
+    total_vrs_cost = pd.to_numeric(df["VRS Cost ($)"], errors="coerce").sum()
+    total_convo_cost = pd.to_numeric(df["Convo Now Cost ($)"], errors="coerce").sum()
+
+    st.write(
+        f"**Cost-based Summary (VRS @ ${VRS_RATE_PER_MINUTE}/min, Convo Now @ ${CONVO_NOW_RATE_PER_MINUTE}/min):** "
+        f"{cost_profit_count} PROFIT month(s) ({cost_profit_pct:.1f}%), "
+        f"{cost_loss_count} LOSS month(s) ({cost_loss_pct:.1f}%) — "
+        f"Total VRS Cost: ${total_vrs_cost:,.2f}, Total Convo Now Cost: ${total_convo_cost:,.2f}"
     )
 
 def render_charts(person_numbers, person_month_values, person_email_display):
