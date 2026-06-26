@@ -125,16 +125,20 @@ def build_report(matched_numbers):
 
     distinct_numbers = sorted(num_to_person.keys())
 
-    monthly_records = fetch_all(
-        "2-46246179",
-        ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
-        filter_groups=[
-            {"filters": [
-                {"propertyName": "number", "operator": "IN", "values": distinct_numbers},
-                {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]}
-            ]}
-        ]
-    ) if distinct_numbers else []
+    # HubSpot's IN filter allows at most 100 values, so batch large number lists
+    monthly_records = []
+    for i in range(0, len(distinct_numbers), 100):
+        chunk = distinct_numbers[i:i + 100]
+        monthly_records.extend(fetch_all(
+            "2-46246179",
+            ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
+            filter_groups=[
+                {"filters": [
+                    {"propertyName": "number", "operator": "IN", "values": chunk},
+                    {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]}
+                ]}
+            ]
+        ))
 
     person_month_values = defaultdict(lambda: defaultdict(lambda: {"vrs": [], "cfz": [], "convo": []}))
 
