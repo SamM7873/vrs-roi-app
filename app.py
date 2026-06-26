@@ -37,13 +37,11 @@ if APP_PASSWORD:
 BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
-def fetch_all(object_type_id, properties, filter_groups=None, progress_callback=None):
+def fetch_all(object_type_id, properties, filter_groups=None):
     url = f"{BASE_URL}/crm/v3/objects/{object_type_id}/search"
     all_results = []
     after = None
-    page = 0
     while True:
-        page += 1
         payload = {"limit": 100, "properties": properties, "filterGroups": filter_groups or []}
         if after:
             payload["after"] = after
@@ -56,8 +54,6 @@ def fetch_all(object_type_id, properties, filter_groups=None, progress_callback=
         if not results:
             break
         all_results.extend(results)
-        if progress_callback:
-            progress_callback(page, len(all_results))
         after = data.get("paging", {}).get("next", {}).get("after")
         if not after:
             break
@@ -105,7 +101,7 @@ def highlight_roi(val):
         return "background-color: #ccffcc"
     return ""
 
-def build_report(matched_numbers, batch_progress_callback=None):
+def build_report(matched_numbers):
     """Given number-object records, merge by email and join monthly VRS/CFZ/Convo Now data.
     Returns (df, person_numbers, person_month_values, person_email_display)."""
     num_to_person = {}
@@ -131,8 +127,7 @@ def build_report(matched_numbers, batch_progress_callback=None):
 
     # HubSpot's IN filter allows at most 100 values, so batch large number lists
     monthly_records = []
-    total_batches = max(1, (len(distinct_numbers) + 99) // 100)
-    for batch_num, i in enumerate(range(0, len(distinct_numbers), 100), start=1):
+    for i in range(0, len(distinct_numbers), 100):
         chunk = distinct_numbers[i:i + 100]
         monthly_records.extend(fetch_all(
             "2-46246179",
@@ -144,8 +139,6 @@ def build_report(matched_numbers, batch_progress_callback=None):
                 ]}
             ]
         ))
-        if batch_progress_callback:
-            batch_progress_callback(batch_num, total_batches, len(monthly_records))
 
     person_month_values = defaultdict(lambda: defaultdict(lambda: {"vrs": [], "cfz": [], "convo": []}))
 
@@ -314,79 +307,33 @@ def render_charts(person_numbers, person_month_values, person_email_display):
         st.markdown(f"**{label}** (numbers: {', '.join(sorted(person_numbers[person_key]))})")
         st.altair_chart(chart, use_container_width=True)
 
-tab_search, tab_all = st.tabs(["Search", "All Numbers (Export CSV)"])
+search_input = st.text_input("Enter a number or email:")
 
-with tab_search:
-    search_input = st.text_input("Enter a number or email:")
+if st.button("Search") and search_input.strip():
+    search_input = search_input.strip()
 
-    if st.button("Search") and search_input.strip():
-        search_input = search_input.strip()
-
-        with st.spinner("Searching number object..."):
-            matched_numbers = fetch_all(
-                "2-40974683",
-                ["number", "email", "credit_type"],
-                filter_groups=[
-                    {"filters": [
-                        {"propertyName": "number", "operator": "EQ", "value": search_input},
-                        {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                    ]},
-                    {"filters": [
-                        {"propertyName": "email", "operator": "EQ", "value": search_input},
-                        {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                    ]}
-                ]
-            )
-
-        if not matched_numbers:
-            st.warning(f"No number object record found for '{search_input}'.")
-        else:
-            with st.spinner("Fetching monthly value data..."):
-                df, person_numbers, person_month_values, person_email_display = build_report(matched_numbers)
-
-            st.write(f"Merged into {len(person_numbers)} person(s) by email")
-            render_table_and_summary(df)
-            render_charts(person_numbers, person_month_values, person_email_display)
-
-with tab_all:
-    st.write("Loads every number object record (excluding Guest credit type) and lets you export the full report as CSV.")
-
-    if st.button("Load All Numbers"):
-        status = st.empty()
-
-        def number_progress(page, total_so_far):
-            status.write(f"Fetching number object records... page {page}, {total_so_far} record(s) so far")
-
-        all_numbers = fetch_all(
+    with st.spinner("Searching number object..."):
+        matched_numbers = fetch_all(
             "2-40974683",
             ["number", "email", "credit_type"],
             filter_groups=[
-                {"filters": [{"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}]}
-            ],
-            progress_callback=number_progress
+                {"filters": [
+                    {"propertyName": "number", "operator": "EQ", "value": search_input},
+                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+                ]},
+                {"filters": [
+                    {"propertyName": "email", "operator": "EQ", "value": search_input},
+                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+                ]}
+            ]
         )
 
-        if not all_numbers:
-            status.empty()
-            st.warning("No number object records found.")
-        else:
-            status.write(f"Fetched {len(all_numbers)} number record(s) total. Now fetching monthly data...")
+    if not matched_numbers:
+        st.warning(f"No number object record found for '{search_input}'.")
+    else:
+        with st.spinner("Fetching monthly value data..."):
+            df, person_numbers, person_month_values, person_email_display = build_report(matched_numbers)
 
-            def batch_progress(batch_num, total_batches, records_so_far):
-                status.write(f"Fetching monthly value data... batch {batch_num}/{total_batches}, {records_so_far} record(s) so far")
-
-            df, person_numbers, person_month_values, person_email_display = build_report(
-                all_numbers, batch_progress_callback=batch_progress
-            )
-            status.empty()
-
-            st.write(f"Loaded {len(all_numbers)} number record(s), merged into {len(person_numbers)} person(s) by email")
-            render_table_and_summary(df)
-
-            csv_data = df.to_csv(index=False)
-            st.download_button(
-                label="Download as CSV",
-                data=csv_data,
-                file_name="vrs_convo_now_report.csv",
-                mime="text/csv"
-            )
+        st.write(f"Merged into {len(person_numbers)} person(s) by email")
+        render_table_and_summary(df)
+        render_charts(person_numbers, person_month_values, person_email_display)
