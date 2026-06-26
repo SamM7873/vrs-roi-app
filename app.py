@@ -17,7 +17,14 @@ if APP_PASSWORD:
         st.session_state.authenticated = False
 
     if not st.session_state.authenticated:
-        st.title("VRS / Convo Now Minutes Lookup & ROI Report")
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #0072CE 0%, #00A1E4 100%);
+                    padding: 2.5rem 2rem; border-radius: 16px; margin-bottom: 2rem;
+                    text-align: center; color: white;">
+            <h1 style="color: white; font-weight: 700; margin-bottom: 0.5rem;">VRS / Convo Now Lookup</h1>
+            <p style="color: #E6F2FF; margin: 0;">Please enter the password to continue</p>
+        </div>
+        """, unsafe_allow_html=True)
         entered_password = st.text_input("Enter password:", type="password")
         if st.button("Login"):
             if entered_password == APP_PASSWORD:
@@ -95,7 +102,61 @@ def highlight_roi(val):
     return ""
 
 st.set_page_config(page_title="VRS / Convo Now Lookup", layout="wide")
-st.title("VRS / Convo Now Minutes Lookup & ROI Report")
+
+st.markdown("""
+<style>
+    .stApp {
+        background-color: #FFFFFF;
+    }
+    .hero-banner {
+        background: linear-gradient(135deg, #0072CE 0%, #00A1E4 100%);
+        padding: 2.5rem 2rem;
+        border-radius: 16px;
+        margin-bottom: 2rem;
+        text-align: center;
+        color: white;
+    }
+    .hero-banner h1 {
+        color: white;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    .hero-banner p {
+        color: #E6F2FF;
+        font-size: 1.05rem;
+        margin: 0;
+    }
+    div.stButton > button {
+        background-color: #0072CE;
+        color: white;
+        border-radius: 999px;
+        border: none;
+        padding: 0.5rem 1.5rem;
+        font-weight: 600;
+    }
+    div.stButton > button:hover {
+        background-color: #005BA1;
+        color: white;
+    }
+    .stTextInput > div > div > input {
+        border-radius: 999px;
+        border: 1px solid #CFE3F7;
+        padding: 0.6rem 1rem;
+    }
+    div[data-testid="stDataFrame"] {
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 10px rgba(0, 114, 206, 0.08);
+    }
+    h2, h3 {
+        color: #0A2540;
+    }
+</style>
+<div class="hero-banner">
+    <h1>VRS / Convo Now Minutes Lookup</h1>
+    <p>Search a number or email to see usage minutes and ROI by month</p>
+</div>
+""", unsafe_allow_html=True)
 
 search_input = st.text_input("Enter a number or email:")
 
