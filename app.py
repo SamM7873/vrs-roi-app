@@ -109,11 +109,15 @@ def build_report(matched_numbers):
     person_email_display = {}
     person_credit_types = defaultdict(set)
 
+    person_names = {}
+
     for r in matched_numbers:
         props = r.get("properties", {})
         num = str(props.get("number") or "").strip()
         email_raw = str(props.get("email") or "")
         credit_type = str(props.get("credit_type") or "")
+        first_name = str(props.get("first_name") or "").strip()
+        last_name = str(props.get("last_name") or "").strip()
         person_key = norm(email_raw) or f"num:{num}"
 
         num_to_person[num] = person_key
@@ -122,6 +126,8 @@ def build_report(matched_numbers):
             person_email_display[person_key] = email_raw
         if credit_type:
             person_credit_types[person_key].add(credit_type)
+        if (first_name or last_name) and person_key not in person_names:
+            person_names[person_key] = f"{first_name} {last_name}".strip()
 
     distinct_numbers = sorted(num_to_person.keys())
 
@@ -164,13 +170,14 @@ def build_report(matched_numbers):
 
     rows = []
     for person_key in sorted(person_numbers.keys()):
+        name_display = person_names.get(person_key, "")
         email_display = person_email_display.get(person_key, "")
         credit_display = ", ".join(sorted(person_credit_types.get(person_key, [])))
         numbers_display = ", ".join(sorted(person_numbers[person_key]))
 
         months = person_month_values.get(person_key)
         if not months:
-            rows.append({"Email": email_display, "Numbers": numbers_display, "Credit Type": credit_display,
+            rows.append({"Name": name_display, "Email": email_display, "Numbers": numbers_display, "Credit Type": credit_display,
                          "Month": "-", "VRS Minutes": "-", "CFZ Minutes": "-",
                          "Convo Now Minutes": "-", "VRS - Convo Now": "-", "ROI %": "-", "ROI": "-"})
             continue
@@ -184,7 +191,7 @@ def build_report(matched_numbers):
             convo_merged = sum(convo_list) if convo_list else None
             roi, diff, roi_pct = classify_roi(vrs_merged, convo_merged)
 
-            rows.append({"Email": email_display, "Numbers": numbers_display, "Credit Type": credit_display,
+            rows.append({"Name": name_display, "Email": email_display, "Numbers": numbers_display, "Credit Type": credit_display,
                          "Month": mkey, "VRS Minutes": vrs_merged, "CFZ Minutes": cfz_merged,
                          "Convo Now Minutes": convo_merged, "VRS - Convo Now": round(diff, 1),
                          "ROI %": round(roi_pct, 1), "ROI": roi})
@@ -307,29 +314,49 @@ def render_charts(person_numbers, person_month_values, person_email_display):
         st.markdown(f"**{label}** (numbers: {', '.join(sorted(person_numbers[person_key]))})")
         st.altair_chart(chart, use_container_width=True)
 
-search_input = st.text_input("Enter a number or email:")
+col1, col2, col3 = st.columns(3)
+with col1:
+    search_input = st.text_input("Number or email:")
+with col2:
+    first_name_input = st.text_input("First name:")
+with col3:
+    last_name_input = st.text_input("Last name:")
 
-if st.button("Search") and search_input.strip():
+if st.button("Search") and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
     search_input = search_input.strip()
+    first_name_input = first_name_input.strip()
+    last_name_input = last_name_input.strip()
+
+    filter_groups = []
+    if search_input:
+        filter_groups.append({"filters": [
+            {"propertyName": "number", "operator": "EQ", "value": search_input},
+            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+        ]})
+        filter_groups.append({"filters": [
+            {"propertyName": "email", "operator": "EQ", "value": search_input},
+            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+        ]})
+    if first_name_input:
+        filter_groups.append({"filters": [
+            {"propertyName": "first_name", "operator": "CONTAINS_TOKEN", "value": first_name_input},
+            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+        ]})
+    if last_name_input:
+        filter_groups.append({"filters": [
+            {"propertyName": "last_name", "operator": "CONTAINS_TOKEN", "value": last_name_input},
+            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+        ]})
 
     with st.spinner("Searching number object..."):
         matched_numbers = fetch_all(
             "2-40974683",
-            ["number", "email", "credit_type"],
-            filter_groups=[
-                {"filters": [
-                    {"propertyName": "number", "operator": "EQ", "value": search_input},
-                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                ]},
-                {"filters": [
-                    {"propertyName": "email", "operator": "EQ", "value": search_input},
-                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                ]}
-            ]
+            ["number", "email", "credit_type", "first_name", "last_name"],
+            filter_groups=filter_groups
         )
 
     if not matched_numbers:
-        st.warning(f"No number object record found for '{search_input}'.")
+        st.warning("No number object record found for that search.")
     else:
         with st.spinner("Fetching monthly value data..."):
             df, person_numbers, person_month_values, person_email_display = build_report(matched_numbers)
