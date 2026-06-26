@@ -11,6 +11,22 @@ if not HUBSPOT_TOKEN:
     st.error("HUBSPOT_TOKEN is not set. Add it to .streamlit/secrets.toml or set it as an environment variable.")
     st.stop()
 
+APP_PASSWORD = st.secrets.get("APP_PASSWORD", os.environ.get("APP_PASSWORD", ""))
+if APP_PASSWORD:
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        st.title("VRS / Convo Now Minutes Lookup & ROI Report")
+        entered_password = st.text_input("Enter password:", type="password")
+        if st.button("Login"):
+            if entered_password == APP_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+        st.stop()
+
 BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
