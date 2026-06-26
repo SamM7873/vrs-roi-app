@@ -126,6 +126,8 @@ def build_report(matched_numbers):
     person_numbers = defaultdict(set)
     person_email_display = {}
     person_credit_types = defaultdict(set)
+    num_to_status = {}
+    person_usage_types = defaultdict(set)
 
     person_names = {}
 
@@ -134,6 +136,8 @@ def build_report(matched_numbers):
         num = str(props.get("number") or "").strip()
         email_raw = str(props.get("email") or "")
         credit_type = str(props.get("credit_type") or "")
+        number_status = str(props.get("number_status") or "")
+        usage_type = str(props.get("usage_type") or "")
         first_name = str(props.get("first_name") or "").strip()
         last_name = str(props.get("last_name") or "").strip()
         person_key = norm(email_raw) or f"num:{num}"
@@ -144,6 +148,10 @@ def build_report(matched_numbers):
             person_email_display[person_key] = email_raw
         if credit_type:
             person_credit_types[person_key].add(credit_type)
+        if number_status:
+            num_to_status[num] = number_status
+        if usage_type:
+            person_usage_types[person_key].add(usage_type)
         if (first_name or last_name) and person_key not in person_names:
             person_names[person_key] = f"{first_name} {last_name}".strip()
 
@@ -191,11 +199,15 @@ def build_report(matched_numbers):
         name_display = person_names.get(person_key, "")
         email_display = person_email_display.get(person_key, "")
         credit_display = ", ".join(sorted(person_credit_types.get(person_key, [])))
-        numbers_display = ", ".join(sorted(person_numbers[person_key]))
+        sorted_nums = sorted(person_numbers[person_key])
+        status_display = ", ".join(f"{n}: {num_to_status.get(n, '-')}" for n in sorted_nums)
+        usage_type_display = ", ".join(sorted(person_usage_types.get(person_key, [])))
+        numbers_display = ", ".join(sorted_nums)
 
         months = person_month_values.get(person_key)
         if not months:
             rows.append({"Name": name_display, "Email": email_display, "Numbers": numbers_display, "Credit Type": credit_display,
+                         "Number Status": status_display, "Usage Type": usage_type_display,
                          "Month": "-", "VRS Minutes": "-", "CFZ Minutes": "-",
                          "Convo Now Minutes": "-", "VRS - Convo Now": "-", "ROI %": "-", "ROI": "-",
                          "VRS Cost ($)": "-", "Convo Now Cost ($)": "-", "Cost Diff ($)": "-", "Cost ROI": "-"})
@@ -212,6 +224,7 @@ def build_report(matched_numbers):
             vrs_cost, convo_cost, cost_diff, cost_roi = classify_cost_roi(vrs_merged, convo_merged)
 
             rows.append({"Name": name_display, "Email": email_display, "Numbers": numbers_display, "Credit Type": credit_display,
+                         "Number Status": status_display, "Usage Type": usage_type_display,
                          "Month": mkey, "VRS Minutes": vrs_merged, "CFZ Minutes": cfz_merged,
                          "Convo Now Minutes": convo_merged, "VRS - Convo Now": round(diff, 1),
                          "ROI %": round(roi_pct, 1), "ROI": roi,
@@ -320,6 +333,39 @@ def render_table_and_summary(df):
         f"Total VRS Cost: ${total_vrs_cost:,.2f}, Total Convo Now Cost: ${total_convo_cost:,.2f}"
     )
 
+def render_profit_loss_summary(df):
+    month_rows = df[df["Month"] != "-"]
+
+    if month_rows.empty:
+        st.info("No monthly data available for this search.")
+        return
+
+    minutes_diff = pd.to_numeric(month_rows["VRS - Convo Now"], errors="coerce")
+    cost_diff = pd.to_numeric(month_rows["Cost Diff ($)"], errors="coerce")
+
+    profit_months = month_rows[month_rows["ROI"] == "PROFIT"]
+    loss_months = month_rows[month_rows["ROI"] == "LOSS"]
+    cost_profit_months = month_rows[month_rows["Cost ROI"] == "PROFIT"]
+    cost_loss_months = month_rows[month_rows["Cost ROI"] == "LOSS"]
+
+    st.markdown("#### Minutes-based")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("PROFIT months", len(profit_months), f"+{minutes_diff[minutes_diff > 0].sum():.1f} min")
+    c2.metric("LOSS months", len(loss_months), f"{minutes_diff[minutes_diff < 0].sum():.1f} min")
+    c3.metric("Net minutes (VRS - Convo Now)", f"{minutes_diff.sum():.1f}")
+
+    st.markdown("#### Cost-based")
+    d1, d2, d3 = st.columns(3)
+    d1.metric("PROFIT months", len(cost_profit_months), f"+${cost_diff[cost_diff > 0].sum():,.2f}")
+    d2.metric("LOSS months", len(cost_loss_months), f"-${abs(cost_diff[cost_diff < 0].sum()):,.2f}")
+    d3.metric("Net cost (VRS - Convo Now)", f"${cost_diff.sum():,.2f}")
+
+    st.markdown("#### All LOSS months")
+    if loss_months.empty:
+        st.write("No LOSS months found.")
+    else:
+        st.dataframe(loss_months, use_container_width=True)
+
 def render_charts(person_numbers, person_month_values, person_email_display):
     st.subheader("VRS vs Convo Now — Month-over-Month Comparison")
 
@@ -353,25 +399,26 @@ def render_charts(person_numbers, person_month_values, person_email_display):
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    search_input = st.text_input("Number or email:")
+    search_input = st.text_input("Number(s) or email(s) — comma-separated:")
 with col2:
     first_name_input = st.text_input("First name:")
 with col3:
     last_name_input = st.text_input("Last name:")
 
 if st.button("Search") and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
-    search_input = search_input.strip()
+    search_terms = [t.strip() for t in search_input.split(",") if t.strip()]
     first_name_input = first_name_input.strip()
     last_name_input = last_name_input.strip()
 
     filter_groups = []
-    if search_input:
+    for i in range(0, len(search_terms), 100):
+        chunk = search_terms[i:i + 100]
         filter_groups.append({"filters": [
-            {"propertyName": "number", "operator": "EQ", "value": search_input},
+            {"propertyName": "number", "operator": "IN", "values": chunk},
             {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
         ]})
         filter_groups.append({"filters": [
-            {"propertyName": "email", "operator": "EQ", "value": search_input},
+            {"propertyName": "email", "operator": "IN", "values": chunk},
             {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
         ]})
     if first_name_input:
@@ -388,7 +435,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
     with st.spinner("Searching number object..."):
         matched_numbers = fetch_all(
             "2-40974683",
-            ["number", "email", "credit_type", "first_name", "last_name"],
+            ["number", "email", "credit_type", "first_name", "last_name", "number_status", "usage_type"],
             filter_groups=filter_groups
         )
 
@@ -399,5 +446,10 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             df, person_numbers, person_month_values, person_email_display = build_report(matched_numbers)
 
         st.write(f"Merged into {len(person_numbers)} person(s) by email")
-        render_table_and_summary(df)
-        render_charts(person_numbers, person_month_values, person_email_display)
+
+        report_tab, summary_tab = st.tabs(["Detailed Report", "Profit/Loss Summary"])
+        with report_tab:
+            render_table_and_summary(df)
+            render_charts(person_numbers, person_month_values, person_email_display)
+        with summary_tab:
+            render_profit_loss_summary(df)
