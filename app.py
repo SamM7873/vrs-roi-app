@@ -426,7 +426,7 @@ def load_all_vrs_zero_convo_active():
             "2-46246179",
             ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
             filter_groups=[{"filters": [
-                {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}
+                {"propertyName": "service_type", "operator": "IN", "values": ["VRS"]}
             ]}]
         )
 
@@ -435,7 +435,7 @@ def load_all_vrs_zero_convo_active():
             "2-46246179",
             ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
             filter_groups=[{"filters": [
-                {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}
+                {"propertyName": "service_type", "operator": "IN", "values": ["Convo Now"]}
             ]}]
         )
 
