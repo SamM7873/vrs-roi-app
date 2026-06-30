@@ -419,28 +419,6 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
     render_charts(filtered_person_numbers, person_month_values, person_email_display)
 
 
-def load_all_vrs_zero_convo_active():
-    """Pull ALL non-Guest number objects, build full report, then filter client-side."""
-    with st.spinner("Fetching all number records..."):
-        number_objects = fetch_all(
-            "2-40974683",
-            ["number", "email", "credit_type", "first_name", "last_name", "number_status", "usage_type"],
-            filter_groups=[{"filters": [
-                {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-            ]}]
-        )
-
-    if not number_objects:
-        st.info("No number records found.")
-        return
-
-    with st.spinner(f"Fetching monthly data for {len(number_objects)} number(s)..."):
-        df_all, pn, pmv, ped = build_report(number_objects)
-
-    st.write(f"Merged into **{len(pn)} person(s)** by email")
-    render_vrs_zero_convo_active(df_all, pn, pmv, ped)
-
-
 col1, col2, col3 = st.columns(3)
 with col1:
     search_input = st.text_input("Number(s) or email(s) — comma-separated:")
@@ -499,9 +477,3 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             render_profit_loss_summary(df)
         with vrs_zero_tab:
             render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
-
-st.markdown("---")
-st.markdown("### All Accounts: VRS ≤ 0 min & Convo Now > 1 min")
-st.caption("Pulls all HubSpot data matching this criteria — independent of the search above.")
-if st.button("Load All Data", key="load_all_vrs_convo"):
-    load_all_vrs_zero_convo_active()
