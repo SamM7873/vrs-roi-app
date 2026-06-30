@@ -397,7 +397,7 @@ def render_charts(person_numbers, person_month_values, person_email_display):
         st.markdown(f"**{label}** (numbers: {', '.join(sorted(person_numbers[person_key]))})")
         st.altair_chart(chart, use_container_width=True)
 
-def render_vrs_zero_convo_active(df):
+def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display):
     st.subheader("Months where VRS ≤ 0 min and Convo Now > 1 min")
 
     month_rows = df[df["Month"] != "-"].copy()
@@ -412,13 +412,15 @@ def render_vrs_zero_convo_active(df):
 
     st.write(f"**{len(filtered)} month row(s)** across **{filtered['Email'].nunique()} person(s)**")
 
-    styler = filtered.style
-    if hasattr(styler, "map"):
-        styler = styler.map(highlight_roi, subset=["ROI", "Cost ROI"])
-    else:
-        styler = styler.applymap(highlight_roi, subset=["ROI", "Cost ROI"])
+    render_table_and_summary(filtered)
 
-    st.dataframe(styler, use_container_width=True)
+    # Charts only for persons present in the filtered results
+    matched_emails = set(filtered["Email"].str.lower().str.strip())
+    filtered_person_numbers = {
+        k: v for k, v in person_numbers.items()
+        if norm(person_email_display.get(k, k)) in matched_emails or k in matched_emails
+    }
+    render_charts(filtered_person_numbers, person_month_values, person_email_display)
 
 
 col1, col2, col3 = st.columns(3)
@@ -478,4 +480,4 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
         with summary_tab:
             render_profit_loss_summary(df)
         with vrs_zero_tab:
-            render_vrs_zero_convo_active(df)
+            render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
