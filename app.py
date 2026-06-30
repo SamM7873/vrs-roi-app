@@ -421,28 +421,34 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
 
 def load_all_vrs_zero_convo_active():
     """Pull ALL HubSpot records where a number has VRS ≤0 min AND Convo Now >1 min."""
-    with st.spinner("Fetching all VRS ≤ 0 monthly records..."):
-        vrs_zero_records = fetch_all(
+    with st.spinner("Fetching all VRS monthly records..."):
+        vrs_records = fetch_all(
             "2-46246179",
             ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
             filter_groups=[{"filters": [
-                {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
-                {"propertyName": "usage_minutes", "operator": "LTE", "value": "0"}
+                {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}
             ]}]
         )
 
-    with st.spinner("Fetching all Convo Now > 1 monthly records..."):
-        convo_active_records = fetch_all(
+    with st.spinner("Fetching all Convo Now monthly records..."):
+        convo_records = fetch_all(
             "2-46246179",
             ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
             filter_groups=[{"filters": [
-                {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
-                {"propertyName": "usage_minutes", "operator": "GT", "value": "1"}
+                {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}
             ]}]
         )
 
-    vrs_zero_nums = {str(r["properties"].get("number") or "").strip() for r in vrs_zero_records}
-    convo_active_nums = {str(r["properties"].get("number") or "").strip() for r in convo_active_records}
+    vrs_zero_nums = {
+        str(r["properties"].get("number") or "").strip()
+        for r in vrs_records
+        if (to_float(r["properties"].get("usage_minutes")) or 0) <= 0
+    }
+    convo_active_nums = {
+        str(r["properties"].get("number") or "").strip()
+        for r in convo_records
+        if (to_float(r["properties"].get("usage_minutes")) or 0) > 1
+    }
     matched_nums = sorted((vrs_zero_nums & convo_active_nums) - {""})
 
     if not matched_nums:
