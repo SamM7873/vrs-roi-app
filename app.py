@@ -114,9 +114,9 @@ def classify_cost_roi(vrs_minutes, convo_minutes):
 
 def highlight_roi(val):
     if val == "LOSS":
-        return "background-color: #ffcccc"
+        return "background-color: #3B1219; color: #F87171"
     if val == "PROFIT":
-        return "background-color: #ccffcc"
+        return "background-color: #0F2D1F; color: #4ADE80"
     return ""
 
 def build_report(matched_numbers):
@@ -234,67 +234,247 @@ def build_report(matched_numbers):
     df = pd.DataFrame(rows)
     return df, person_numbers, person_month_values, person_email_display
 
-st.set_page_config(page_title="VRS / Convo Now Lookup", layout="wide")
+st.set_page_config(page_title="VRS / Convo Now Lookup", layout="wide", page_icon="📊")
 
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #FFFFFF;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
     }
+
+    .stApp {
+        background-color: #0D0F1A;
+        color: #E8EAF0;
+    }
+
+    /* Sidebar & main container */
+    section[data-testid="stSidebar"] {
+        background-color: #13152A;
+    }
+
+    /* Hero */
     .hero-banner {
-        background: linear-gradient(135deg, #0072CE 0%, #00A1E4 100%);
-        padding: 2.5rem 2rem;
-        border-radius: 16px;
+        background: linear-gradient(135deg, #5B2EFF 0%, #A855F7 60%, #E040FB 100%);
+        padding: 3rem 2.5rem;
+        border-radius: 20px;
         margin-bottom: 2rem;
         text-align: center;
-        color: white;
+        position: relative;
+        overflow: hidden;
+    }
+    .hero-banner::before {
+        content: "";
+        position: absolute;
+        top: -60px; right: -60px;
+        width: 220px; height: 220px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 50%;
+    }
+    .hero-banner::after {
+        content: "";
+        position: absolute;
+        bottom: -80px; left: -40px;
+        width: 280px; height: 280px;
+        background: rgba(255,255,255,0.04);
+        border-radius: 50%;
     }
     .hero-banner h1 {
-        color: white;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
+        color: #FFFFFF;
+        font-size: 2.2rem;
+        font-weight: 800;
+        margin-bottom: 0.6rem;
+        letter-spacing: -0.5px;
     }
     .hero-banner p {
-        color: #E6F2FF;
+        color: rgba(255,255,255,0.80);
         font-size: 1.05rem;
         margin: 0;
+        font-weight: 400;
     }
-    div.stButton > button {
-        background-color: #0072CE;
-        color: white;
-        border-radius: 999px;
-        border: none;
-        padding: 0.5rem 1.5rem;
+    .hero-badge {
+        display: inline-block;
+        background: rgba(255,255,255,0.15);
+        color: #fff;
+        font-size: 0.72rem;
         font-weight: 600;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        padding: 0.25rem 0.85rem;
+        border-radius: 999px;
+        margin-bottom: 1rem;
+        backdrop-filter: blur(4px);
     }
-    div.stButton > button:hover {
-        background-color: #005BA1;
-        color: white;
+
+    /* Search card */
+    .search-card {
+        background: #13152A;
+        border: 1px solid #2A2D4A;
+        border-radius: 16px;
+        padding: 1.5rem 1.75rem 1.25rem;
+        margin-bottom: 1.75rem;
+    }
+    .search-card-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        color: #8B8FA8;
+        margin-bottom: 1rem;
+    }
+
+    /* Inputs */
+    .stTextInput label {
+        color: #A0A4BC !important;
+        font-size: 0.82rem !important;
+        font-weight: 500 !important;
     }
     .stTextInput > div > div > input {
-        border-radius: 999px;
-        border: 1px solid #CFE3F7;
-        padding: 0.6rem 1rem;
+        background-color: #1C1F35 !important;
+        border: 1.5px solid #2A2D4A !important;
+        border-radius: 10px !important;
+        color: #E8EAF0 !important;
+        padding: 0.65rem 1rem !important;
+        font-size: 0.95rem !important;
+        transition: border-color 0.2s;
     }
-    div[data-testid="stDataFrame"] {
+    .stTextInput > div > div > input:focus {
+        border-color: #7C3AED !important;
+        box-shadow: 0 0 0 3px rgba(124,58,237,0.2) !important;
+    }
+    .stTextInput > div > div > input::placeholder {
+        color: #4A4E6A !important;
+    }
+
+    /* Buttons */
+    div.stButton > button {
+        background: linear-gradient(135deg, #5B2EFF 0%, #A855F7 100%);
+        color: #FFFFFF;
+        border-radius: 10px;
+        border: none;
+        padding: 0.6rem 2rem;
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.3px;
+        transition: opacity 0.2s, transform 0.1s;
+        box-shadow: 0 4px 15px rgba(91,46,255,0.35);
+    }
+    div.stButton > button:hover {
+        opacity: 0.88;
+        transform: translateY(-1px);
+        color: #FFFFFF;
+    }
+    div.stButton > button:active {
+        transform: translateY(0);
+    }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #13152A;
         border-radius: 12px;
-        overflow: hidden;
-        box-shadow: 0 2px 10px rgba(0, 114, 206, 0.08);
+        padding: 4px;
+        gap: 4px;
+        border: 1px solid #2A2D4A;
     }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px;
+        color: #8B8FA8;
+        font-weight: 500;
+        font-size: 0.88rem;
+        padding: 0.45rem 1.1rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #5B2EFF, #A855F7) !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+    }
+    .stTabs [data-baseweb="tab-border"] {
+        display: none;
+    }
+
+    /* Dataframe */
+    div[data-testid="stDataFrame"] {
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid #2A2D4A;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    }
+
+    /* Metrics */
+    div[data-testid="stMetric"] {
+        background: #13152A;
+        border: 1px solid #2A2D4A;
+        border-radius: 14px;
+        padding: 1rem 1.25rem;
+    }
+    div[data-testid="stMetric"] label {
+        color: #8B8FA8 !important;
+        font-size: 0.78rem !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        color: #E8EAF0 !important;
+        font-size: 1.8rem !important;
+        font-weight: 700 !important;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+    }
+
+    /* Subheaders & text */
     h2, h3 {
-        color: #0A2540;
+        color: #E8EAF0 !important;
+        font-weight: 700 !important;
+    }
+    .stMarkdown p, .stWrite {
+        color: #A0A4BC;
+    }
+
+    /* Divider */
+    hr {
+        border-color: #2A2D4A;
+    }
+
+    /* Spinner */
+    .stSpinner > div {
+        border-top-color: #7C3AED !important;
+    }
+
+    /* Alerts */
+    .stAlert {
+        border-radius: 10px;
+        border: none;
+    }
+
+    /* Info/warning/error override */
+    div[data-testid="stNotification"] {
+        background: #13152A;
+        border: 1px solid #2A2D4A;
+        border-radius: 10px;
+        color: #E8EAF0;
+    }
+
+    /* Caption */
+    .stCaption {
+        color: #5A5E7A !important;
     }
 </style>
+
 <div class="hero-banner">
+    <div class="hero-badge">ROI Analytics</div>
     <h1>VRS / Convo Now Minutes Lookup</h1>
-    <p>Search a number or email to see usage minutes and ROI by month</p>
+    <p>Search by number or email to compare usage minutes and ROI month over month</p>
 </div>
 """, unsafe_allow_html=True)
 
 COLOR_MAP = {
-    "VRS Minutes": "green",
-    "CFZ Minutes": "blue",
-    "Convo Now Minutes": "grey",
+    "VRS Minutes": "#A855F7",
+    "CFZ Minutes": "#38BDF8",
+    "Convo Now Minutes": "#F472B6",
 }
 
 def render_table_and_summary(df):
@@ -419,13 +599,15 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
     render_charts(filtered_person_numbers, person_month_values, person_email_display)
 
 
+st.markdown('<div class="search-card"><div class="search-card-title">Search</div>', unsafe_allow_html=True)
 col1, col2, col3 = st.columns(3)
 with col1:
-    search_input = st.text_input("Number(s) or email(s) — comma-separated:")
+    search_input = st.text_input("Number(s) or email(s)", placeholder="e.g. 5551234567, user@email.com")
 with col2:
-    first_name_input = st.text_input("First name:")
+    first_name_input = st.text_input("First name", placeholder="e.g. Jane")
 with col3:
-    last_name_input = st.text_input("Last name:")
+    last_name_input = st.text_input("Last name", placeholder="e.g. Smith")
+st.markdown('</div>', unsafe_allow_html=True)
 
 if st.button("Search") and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
     search_terms = [t.strip() for t in search_input.split(",") if t.strip()]
