@@ -398,8 +398,6 @@ def render_charts(person_numbers, person_month_values, person_email_display):
         st.altair_chart(chart, use_container_width=True)
 
 def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display):
-    st.subheader("Months where VRS ≤ 0 min and Convo Now > 1 min")
-
     month_rows = df[df["Month"] != "-"].copy()
     vrs_num = pd.to_numeric(month_rows["VRS Minutes"], errors="coerce").fillna(0)
     convo_num = pd.to_numeric(month_rows["Convo Now Minutes"], errors="coerce").fillna(0)
@@ -411,16 +409,68 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
         return
 
     st.write(f"**{len(filtered)} month row(s)** across **{filtered['Email'].nunique()} person(s)**")
-
     render_table_and_summary(filtered)
 
-    # Charts only for persons present in the filtered results
     matched_emails = set(filtered["Email"].str.lower().str.strip())
     filtered_person_numbers = {
         k: v for k, v in person_numbers.items()
         if norm(person_email_display.get(k, k)) in matched_emails or k in matched_emails
     }
     render_charts(filtered_person_numbers, person_month_values, person_email_display)
+
+
+def load_all_vrs_zero_convo_active():
+    """Pull ALL HubSpot records where a number has VRS ≤0 min AND Convo Now >1 min."""
+    with st.spinner("Fetching all VRS ≤ 0 monthly records..."):
+        vrs_zero_records = fetch_all(
+            "2-46246179",
+            ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
+            filter_groups=[{"filters": [
+                {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
+                {"propertyName": "usage_minutes", "operator": "LTE", "value": "0"}
+            ]}]
+        )
+
+    with st.spinner("Fetching all Convo Now > 1 monthly records..."):
+        convo_active_records = fetch_all(
+            "2-46246179",
+            ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
+            filter_groups=[{"filters": [
+                {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
+                {"propertyName": "usage_minutes", "operator": "GT", "value": "1"}
+            ]}]
+        )
+
+    vrs_zero_nums = {str(r["properties"].get("number") or "").strip() for r in vrs_zero_records}
+    convo_active_nums = {str(r["properties"].get("number") or "").strip() for r in convo_active_records}
+    matched_nums = sorted((vrs_zero_nums & convo_active_nums) - {""})
+
+    if not matched_nums:
+        st.info("No numbers found with both VRS ≤ 0 and Convo Now > 1.")
+        return
+
+    with st.spinner(f"Fetching person records for {len(matched_nums)} number(s)..."):
+        number_objects = []
+        for i in range(0, len(matched_nums), 100):
+            chunk = matched_nums[i:i + 100]
+            number_objects.extend(fetch_all(
+                "2-40974683",
+                ["number", "email", "credit_type", "first_name", "last_name", "number_status", "usage_type"],
+                filter_groups=[{"filters": [
+                    {"propertyName": "number", "operator": "IN", "values": chunk},
+                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+                ]}]
+            ))
+
+    if not number_objects:
+        st.info("No person records found for matching numbers.")
+        return
+
+    with st.spinner("Building report..."):
+        df_all, pn, pmv, ped = build_report(number_objects)
+
+    st.write(f"Merged into **{len(pn)} person(s)** by email")
+    render_vrs_zero_convo_active(df_all, pn, pmv, ped)
 
 
 col1, col2, col3 = st.columns(3)
@@ -481,3 +531,9 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             render_profit_loss_summary(df)
         with vrs_zero_tab:
             render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
+
+st.markdown("---")
+st.markdown("### All Accounts: VRS ≤ 0 min & Convo Now > 1 min")
+st.caption("Pulls all HubSpot data matching this criteria — independent of the search above.")
+if st.button("Load All Data", key="load_all_vrs_convo"):
+    load_all_vrs_zero_convo_active()
