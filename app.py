@@ -397,6 +397,30 @@ def render_charts(person_numbers, person_month_values, person_email_display):
         st.markdown(f"**{label}** (numbers: {', '.join(sorted(person_numbers[person_key]))})")
         st.altair_chart(chart, use_container_width=True)
 
+def render_vrs_zero_convo_active(df):
+    st.subheader("Months where VRS ≤ 0 min and Convo Now > 1 min")
+
+    month_rows = df[df["Month"] != "-"].copy()
+    vrs_num = pd.to_numeric(month_rows["VRS Minutes"], errors="coerce").fillna(0)
+    convo_num = pd.to_numeric(month_rows["Convo Now Minutes"], errors="coerce").fillna(0)
+    mask = (vrs_num <= 0) & (convo_num > 1)
+    filtered = month_rows[mask]
+
+    if filtered.empty:
+        st.info("No months found where VRS ≤ 0 and Convo Now > 1.")
+        return
+
+    st.write(f"**{len(filtered)} month row(s)** across **{filtered['Email'].nunique()} person(s)**")
+
+    styler = filtered.style
+    if hasattr(styler, "map"):
+        styler = styler.map(highlight_roi, subset=["ROI", "Cost ROI"])
+    else:
+        styler = styler.applymap(highlight_roi, subset=["ROI", "Cost ROI"])
+
+    st.dataframe(styler, use_container_width=True)
+
+
 col1, col2, col3 = st.columns(3)
 with col1:
     search_input = st.text_input("Number(s) or email(s) — comma-separated:")
@@ -447,9 +471,11 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
         st.write(f"Merged into {len(person_numbers)} person(s) by email")
 
-        report_tab, summary_tab = st.tabs(["Detailed Report", "Profit/Loss Summary"])
+        report_tab, summary_tab, vrs_zero_tab = st.tabs(["Detailed Report", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1"])
         with report_tab:
             render_table_and_summary(df)
             render_charts(person_numbers, person_month_values, person_email_display)
         with summary_tab:
             render_profit_loss_summary(df)
+        with vrs_zero_tab:
+            render_vrs_zero_convo_active(df)
