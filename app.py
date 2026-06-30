@@ -420,59 +420,21 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
 
 
 def load_all_vrs_zero_convo_active():
-    """Pull ALL HubSpot records where a number has VRS ≤0 min AND Convo Now >1 min."""
-    with st.spinner("Fetching all VRS monthly records..."):
-        vrs_records = fetch_all(
-            "2-46246179",
-            ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
+    """Pull ALL non-Guest number objects, build full report, then filter client-side."""
+    with st.spinner("Fetching all number records..."):
+        number_objects = fetch_all(
+            "2-40974683",
+            ["number", "email", "credit_type", "first_name", "last_name", "number_status", "usage_type"],
             filter_groups=[{"filters": [
-                {"propertyName": "service_type", "operator": "IN", "values": ["VRS"]}
+                {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
             ]}]
         )
-
-    with st.spinner("Fetching all Convo Now monthly records..."):
-        convo_records = fetch_all(
-            "2-46246179",
-            ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
-            filter_groups=[{"filters": [
-                {"propertyName": "service_type", "operator": "IN", "values": ["Convo Now"]}
-            ]}]
-        )
-
-    vrs_zero_nums = {
-        str(r["properties"].get("number") or "").strip()
-        for r in vrs_records
-        if (to_float(r["properties"].get("usage_minutes")) or 0) <= 0
-    }
-    convo_active_nums = {
-        str(r["properties"].get("number") or "").strip()
-        for r in convo_records
-        if (to_float(r["properties"].get("usage_minutes")) or 0) > 1
-    }
-    matched_nums = sorted((vrs_zero_nums & convo_active_nums) - {""})
-
-    if not matched_nums:
-        st.info("No numbers found with both VRS ≤ 0 and Convo Now > 1.")
-        return
-
-    with st.spinner(f"Fetching person records for {len(matched_nums)} number(s)..."):
-        number_objects = []
-        for i in range(0, len(matched_nums), 100):
-            chunk = matched_nums[i:i + 100]
-            number_objects.extend(fetch_all(
-                "2-40974683",
-                ["number", "email", "credit_type", "first_name", "last_name", "number_status", "usage_type"],
-                filter_groups=[{"filters": [
-                    {"propertyName": "number", "operator": "IN", "values": chunk},
-                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                ]}]
-            ))
 
     if not number_objects:
-        st.info("No person records found for matching numbers.")
+        st.info("No number records found.")
         return
 
-    with st.spinner("Building report..."):
+    with st.spinner(f"Fetching monthly data for {len(number_objects)} number(s)..."):
         df_all, pn, pmv, ped = build_report(number_objects)
 
     st.write(f"Merged into **{len(pn)} person(s)** by email")
