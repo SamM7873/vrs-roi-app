@@ -894,9 +894,23 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     ticket_errors = []
                     seen_ids = set()
 
+                    # Fetch owner name map
+                    owner_names = {}
+                    try:
+                        or_ = requests.get(f"{BASE_URL}/crm/v3/owners",
+                                           headers=headers, timeout=15)
+                        if or_.status_code == 200:
+                            for o in or_.json().get("results", []):
+                                fn = o.get("firstName") or ""
+                                ln = o.get("lastName") or ""
+                                owner_names[str(o["id"])] = f"{fn} {ln}".strip() or o.get("email", str(o["id"]))
+                    except Exception:
+                        pass
+
                     TICKET_PROPS = ["subject", "hs_pipeline_stage", "hs_ticket_priority",
                                     "createdate", "hs_lastmodifieddate", "content",
-                                    "hs_ticket_category", "email", "phone"]
+                                    "hs_ticket_category", "hs_ticket_subcategory",
+                                    "hubspot_owner_id", "email", "phone"]
 
                     def _collect_tickets(filter_groups):
                         after = None
@@ -919,6 +933,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                                             "Status": stage_labels.get(raw_stage, raw_stage) or "—",
                                             "Priority": tp.get("hs_ticket_priority") or "—",
                                             "Category": tp.get("hs_ticket_category") or "—",
+                                            "Subcategory": tp.get("hs_ticket_subcategory") or "—",
+                                            "Owner": owner_names.get(tp.get("hubspot_owner_id") or "", "—"),
                                             "Created": (tp.get("createdate") or "")[:10],
                                             "Last Modified": (tp.get("hs_lastmodifieddate") or "")[:10],
                                             "Description": tp.get("content") or "—",
@@ -1026,7 +1042,9 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
     </div>
   </div>
   <div style="display:flex;gap:1.5rem;margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid #F3F4F6;flex-wrap:wrap;">
+    <span style="font-size:0.78rem;color:#6B7280;">👤 <b>{row['Owner']}</b></span>
     <span style="font-size:0.78rem;color:#6B7280;">📂 <b>{row['Category']}</b></span>
+    <span style="font-size:0.78rem;color:#6B7280;">🔖 <b>{row['Subcategory']}</b></span>
     <span style="font-size:0.78rem;color:#6B7280;">📅 Created: <b>{row['Created']}</b></span>
     <span style="font-size:0.78rem;color:#6B7280;">✏️ Updated: <b>{row['Last Modified']}</b></span>
   </div>
