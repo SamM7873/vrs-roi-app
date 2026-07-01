@@ -677,4 +677,118 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
         with vrs_zero_tab:
             render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
 
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)  # close content-card
+
+# ── Numbers Report ─────────────────────────────────────────────────────────────
+st.markdown("""
+<div style="margin-top: 2.5rem;">
+<div style="background:#2DB84B; border-radius:20px 20px 0 0; padding:1.6rem 2rem 2.5rem;">
+    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;
+                color:rgba(255,255,255,0.7);margin-bottom:0.4rem;">Analytics</div>
+    <div style="font-size:1.6rem;font-weight:900;color:#fff;letter-spacing:-0.5px;">Numbers Report</div>
+    <div style="color:rgba(255,255,255,0.8);font-size:0.93rem;margin-top:0.3rem;">
+        Live VRS numbers by usage type and created date
+    </div>
+</div>
+<div style="background:#fff;border-radius:0 0 20px 20px;padding:1.75rem 2rem 2rem;
+            box-shadow:0 2px 16px rgba(0,0,0,0.06);margin-bottom:2rem;">
+""", unsafe_allow_html=True)
+
+if st.button("Load Numbers Report", key="load_numbers_report"):
+    with st.spinner("Fetching live number records..."):
+        live_numbers = fetch_all(
+            "2-40974683",
+            ["number", "email", "first_name", "last_name", "number_status", "usage_type", "createdate", "credit_type"],
+            filter_groups=[
+                {"filters": [
+                    {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
+                    {"propertyName": "usage_type", "operator": "EQ", "value": "Personal"},
+                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+                ]},
+                {"filters": [
+                    {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
+                    {"propertyName": "usage_type", "operator": "EQ", "value": "Organization"},
+                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+                ]}
+            ]
+        )
+
+    if not live_numbers:
+        st.info("No live numbers found.")
+    else:
+        all_nums = [str(r["properties"].get("number") or "").strip() for r in live_numbers]
+        all_nums = [n for n in all_nums if n]
+
+        with st.spinner("Checking VRS activity..."):
+            vrs_num_set = set()
+            for i in range(0, len(all_nums), 100):
+                chunk = all_nums[i:i + 100]
+                vrs_recs = fetch_all(
+                    "2-46246179",
+                    ["number", "service_type"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "number", "operator": "IN", "values": chunk},
+                        {"propertyName": "service_type", "operator": "IN", "values": ["VRS"]}
+                    ]}]
+                )
+                for r in vrs_recs:
+                    n = str(r["properties"].get("number") or "").strip()
+                    if n:
+                        vrs_num_set.add(n)
+
+        rows = []
+        for r in live_numbers:
+            p = r.get("properties", {})
+            num = str(p.get("number") or "").strip()
+            created_raw = p.get("createdate") or ""
+            try:
+                created_fmt = datetime.fromisoformat(created_raw.replace("Z", "+00:00")).strftime("%m/%Y")
+            except Exception:
+                created_fmt = "-"
+            rows.append({
+                "Number": num,
+                "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
+                "Email": p.get("email") or "",
+                "Usage Type": p.get("usage_type") or "-",
+                "Number Status": p.get("number_status") or "-",
+                "VRS": "Yes" if num in vrs_num_set else "No",
+                "Created": created_fmt,
+            })
+
+        report_df = pd.DataFrame(rows)
+        vrs_df = report_df[report_df["VRS"] == "Yes"]
+
+        total = len(vrs_df)
+        personal_count = (vrs_df["Usage Type"].str.lower() == "personal").sum()
+        org_count = (vrs_df["Usage Type"].str.lower() == "organization").sum()
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Total Live VRS Numbers", total)
+        m2.metric("Personal", personal_count)
+        m3.metric("Organization", org_count)
+
+        st.markdown("#### Created by Month")
+        created_counts = (
+            vrs_df[vrs_df["Created"] != "-"]
+            .groupby(["Created", "Usage Type"])
+            .size()
+            .reset_index(name="Count")
+        )
+        if not created_counts.empty:
+            created_counts["sort_key"] = pd.to_datetime(created_counts["Created"], format="%m/%Y", errors="coerce")
+            created_counts = created_counts.sort_values("sort_key")
+            bar = alt.Chart(created_counts).mark_bar().encode(
+                x=alt.X("Created:N", sort=created_counts["Created"].tolist(), title="Month Created"),
+                y=alt.Y("Count:Q"),
+                color=alt.Color("Usage Type:N", scale=alt.Scale(
+                    domain=["Personal", "Organization"],
+                    range=["#2DB84B", "#1A4D2E"]
+                )),
+                tooltip=["Created", "Usage Type", "Count"]
+            ).properties(height=280)
+            st.altair_chart(bar, use_container_width=True)
+
+        st.markdown("#### Detail Table")
+        st.dataframe(vrs_df.drop(columns=["VRS"]), use_container_width=True)
+
+st.markdown("</div></div>", unsafe_allow_html=True)
