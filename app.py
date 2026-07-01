@@ -781,22 +781,51 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             m2.metric("Personal", personal)
             m3.metric("Organization", org)
 
-            # Weekly bar chart
-            st.markdown("#### Numbers Created — Weekly")
-            weekly = (
-                report_df[report_df["_week"] != "-"]
-                .groupby("_week")
-                .size()
-                .reset_index(name="Count")
-                .sort_values("_week")
-            )
-            if not weekly.empty:
-                bar = alt.Chart(weekly).mark_bar(color="#2DB84B").encode(
-                    x=alt.X("_week:N", sort=weekly["_week"].tolist(), title="Week Starting", axis=alt.Axis(labelAngle=-45)),
+            # Parse dates for grouping
+            df_dated = report_df[report_df["Number Created At"] != "-"].copy()
+            df_dated["_dt"] = pd.to_datetime(df_dated["Number Created At"], format="%m/%d/%Y", errors="coerce")
+            df_dated = df_dated.dropna(subset=["_dt"])
+
+            now = datetime.now()
+            this_month_df = df_dated[
+                (df_dated["_dt"].dt.year == now.year) &
+                (df_dated["_dt"].dt.month == now.month)
+            ]
+
+            def bar_chart(data, x_col, x_title, sort_order):
+                if data.empty:
+                    st.info("No data for this period.")
+                    return
+                chart = alt.Chart(data).mark_bar(color="#2DB84B", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                    x=alt.X(f"{x_col}:N", sort=sort_order, title=x_title, axis=alt.Axis(labelAngle=-45)),
                     y=alt.Y("Count:Q", title="Numbers Created"),
-                    tooltip=[alt.Tooltip("_week:N", title="Week of"), "Count"]
-                ).properties(height=300)
-                st.altair_chart(bar, use_container_width=True)
+                    tooltip=[alt.Tooltip(f"{x_col}:N", title=x_title), "Count"]
+                ).properties(height=320)
+                st.altair_chart(chart, use_container_width=True)
+
+            st.markdown("#### Numbers Created At")
+            tab_daily, tab_weekly, tab_monthly = st.tabs(["Daily (This Month)", "Weekly (This Month)", "Monthly (All Time)"])
+
+            with tab_daily:
+                daily = (
+                    this_month_df.assign(_day=this_month_df["_dt"].dt.strftime("%m/%d"))
+                    .groupby("_day").size().reset_index(name="Count").sort_values("_day")
+                )
+                bar_chart(daily, "_day", "Day", daily["_day"].tolist())
+
+            with tab_weekly:
+                weekly = (
+                    this_month_df.assign(_week=this_month_df["_week"])
+                    .groupby("_week").size().reset_index(name="Count").sort_values("_week")
+                )
+                bar_chart(weekly, "_week", "Week Starting", weekly["_week"].tolist())
+
+            with tab_monthly:
+                monthly = (
+                    df_dated.assign(_month=df_dated["_dt"].dt.strftime("%Y-%m"))
+                    .groupby("_month").size().reset_index(name="Count").sort_values("_month")
+                )
+                bar_chart(monthly, "_month", "Month", monthly["_month"].tolist())
 
             # Detail table
             st.markdown("#### Detail Table")
