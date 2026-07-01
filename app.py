@@ -918,26 +918,46 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
   <div style="font-size:0.72rem;color:#9CA3AF;margin-top:0.75rem;">Analysis Date: {analysis_date}</div>
 </div>""", unsafe_allow_html=True)
 
-                    # Monthly usage history chart
+                    # Monthly usage history chart with per-month segment coloring
                     vrs_months = rc["vrs_months"]
+                    baseline_val = rc["baseline"]
                     all_months_sorted = sorted(vrs_months.keys(), key=month_sort_key)
-                    chart_data = pd.DataFrame({
-                        "Month": all_months_sorted,
-                        "VRS Minutes": [vrs_months[m] for m in all_months_sorted],
-                        "Type": ["Current Month" if m == rc["current_month"] else "Last Month" if m == rc["last_month_key"] else "History" for m in all_months_sorted],
-                    })
+
+                    def month_seg(m, usage):
+                        if m == rc["current_month"]:
+                            return "Current Month"
+                        p = (usage / baseline_val * 100) if baseline_val > 0 else 0
+                        if p >= 100: return "📈 Growth"
+                        elif p >= 75: return "✅ Stable"
+                        elif p >= 40: return "⚠️ Declining"
+                        else: return "🚨 At Risk"
+
+                    chart_rows = []
+                    for m in all_months_sorted:
+                        usage = vrs_months[m]
+                        seg_label = month_seg(m, usage)
+                        perf_val = (usage / baseline_val * 100) if baseline_val > 0 and m != rc["current_month"] else None
+                        chart_rows.append({
+                            "Month": m,
+                            "VRS Minutes": usage,
+                            "Segment": seg_label,
+                            "Performance": f"{perf_val:.1f}%" if perf_val is not None else "—",
+                        })
+
+                    chart_data = pd.DataFrame(chart_rows)
+                    seg_domain = ["📈 Growth", "✅ Stable", "⚠️ Declining", "🚨 At Risk", "Current Month"]
+                    seg_colors = ["#2DB84B", "#3B82F6", "#F59E0B", "#EF4444", "#D1D5DB"]
+
                     baseline_line = pd.DataFrame({
                         "Month": all_months_sorted,
-                        "Baseline": [rc["baseline"]] * len(all_months_sorted),
+                        "Baseline": [baseline_val] * len(all_months_sorted),
                     })
                     bars = alt.Chart(chart_data).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
                         x=alt.X("Month:N", sort=all_months_sorted, axis=alt.Axis(labelAngle=-35, title=None)),
                         y=alt.Y("VRS Minutes:Q", title="VRS Minutes"),
-                        color=alt.Color("Type:N", scale=alt.Scale(
-                            domain=["History", "Last Month", "Current Month"],
-                            range=[color, "#111827", "#D1D5DB"]
-                        ), legend=alt.Legend(title=None, orient="top")),
-                        tooltip=["Month", "VRS Minutes", "Type"],
+                        color=alt.Color("Segment:N", scale=alt.Scale(domain=seg_domain, range=seg_colors),
+                                        legend=alt.Legend(title=None, orient="top")),
+                        tooltip=["Month", "VRS Minutes", "Segment", "Performance"],
                     )
                     baseline_rule = alt.Chart(baseline_line).mark_rule(
                         color="#6B7280", strokeDash=[6, 3], strokeWidth=1.5
@@ -945,7 +965,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                         y="Baseline:Q",
                         tooltip=[alt.Tooltip("Baseline:Q", title="Baseline avg", format=".1f")],
                     )
-                    st.altair_chart((bars + baseline_rule).properties(height=200), use_container_width=True)
+                    st.altair_chart((bars + baseline_rule).properties(height=220), use_container_width=True)
 
         with contact_tab:
             def fmt(v):
