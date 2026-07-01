@@ -246,8 +246,13 @@ def build_report(matched_numbers):
              "ursa_ios_minutes", "ursa_android_minutes", "ursa_web_minutes"],
             filter_groups=[
                 {"filters": [
-                    {"propertyName": "number", "operator": "IN", "values": chunk}
-                ]}
+                    {"propertyName": "number", "operator": "IN", "values": chunk},
+                    {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}
+                ]},
+                {"filters": [
+                    {"propertyName": "number", "operator": "IN", "values": chunk},
+                    {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}
+                ]},
             ]
         ))
 
