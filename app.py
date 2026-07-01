@@ -744,14 +744,29 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
         with vrs_zero_tab:
             render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
         with retention_tab:
-            def get_segment(perf):
-                if perf >= 90:   return ("A", "Healthy",    "#2DB84B")
-                if perf >= 60:   return ("B", "Monitoring", "#3B82F6")
-                if perf >= 30:   return ("C", "Declining",  "#F59E0B")
-                return               ("D", "At Risk",    "#EF4444")
+            SEG_META = {
+                "A": {"label": "HOT",  "emoji": "🔥", "color": "#2DB84B", "desc": "Consistent & healthy"},
+                "B": {"label": "WARM", "emoji": "🌡️", "color": "#3B82F6", "desc": "Slight decline but ok"},
+                "C": {"label": "COOL", "emoji": "❄️", "color": "#F59E0B", "desc": "Meaningful drop"},
+                "D": {"label": "COLD", "emoji": "🧊", "color": "#EF4444", "desc": "Severe drop, at risk"},
+            }
+
+            NEXT_STEPS = {
+                "A": ["No action required at this time.", "Continue monitoring monthly usage."],
+                "B": ["Monitor usage trend over next 1–2 months.", "No immediate outreach needed."],
+                "C": ["Reach out with personalized support.", "Identify pain points.", "Offer training or resources."],
+                "D": ["URGENT: Schedule customer success call.", "Investigate reason for drop.", "Prepare retention strategy."],
+            }
+
+            INTERPRETATION = {
+                "A": lambda rc: f"Consumer is using {rc['perf']:.1f}% of their historical baseline. Usage is consistent and healthy.",
+                "B": lambda rc: f"Consumer is using {rc['perf']:.1f}% of their historical baseline. Slight decline — continue monitoring.",
+                "C": lambda rc: f"Consumer is using {rc['perf']:.1f}% of their historical baseline. Meaningful drop in usage. Requires monitoring and possible outreach.",
+                "D": lambda rc: f"Consumer is using {rc['perf']:.1f}% of their historical baseline. Severe drop. Immediate attention needed to prevent churn.",
+            }
 
             st.markdown("#### VRS Consumer Retention Analysis")
-            analysis_date = datetime.now().strftime("%Y-%m-%d")
+            analysis_date = datetime.now().strftime("%b %d, %Y at %I:%M %p")
 
             seg_counts = {"A": 0, "B": 0, "C": 0, "D": 0}
             retention_cards = []
@@ -770,17 +785,21 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 history = [vrs_months[m] for m in sorted_months[:-1]]
 
                 if not history:
-                    continue  # insufficient history
-
+                    continue
                 if current_usage == 0:
-                    continue  # out of scope
+                    continue
 
                 baseline = sum(history) / len(history)
                 perf = (current_usage / baseline * 100) if baseline > 0 else 0
-                seg, seg_label, seg_color = get_segment(perf)
-                seg_counts[seg] += 1
 
-                # Get person info from first matched number for this person
+                if perf >= 90:   seg = "A"
+                elif perf >= 60: seg = "B"
+                elif perf >= 30: seg = "C"
+                else:            seg = "D"
+
+                seg_counts[seg] += 1
+                meta = SEG_META[seg]
+
                 person_props = next(
                     (r.get("properties", {}) for r in matched_numbers
                      if (norm(r.get("properties", {}).get("email") or "") or f"num:{r.get('properties', {}).get('number') or ''}") == person_key),
@@ -792,58 +811,46 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 last_inbound = person_props.get("ursa_last_inbound_call") or "—"
                 last_outbound = person_props.get("ursa_last_outbound_call") or "—"
 
-                if seg in ("C", "D"):
-                    recs = (
-                        "Immediate outreach recommended. Review engagement history and schedule a call."
-                        if seg == "D" else
-                        "Follow-up recommended. Review usage trend and offer support."
-                    )
-                else:
-                    recs = "No action required at this time."
-
                 retention_cards.append({
                     "person_key": person_key, "name": name, "email": email,
-                    "number": number, "seg": seg, "seg_label": seg_label,
-                    "seg_color": seg_color, "baseline": baseline,
-                    "current_usage": current_usage, "current_month": current_month,
-                    "perf": perf, "history_months": len(history),
+                    "number": number, "seg": seg, "meta": meta,
+                    "baseline": baseline, "current_usage": current_usage,
+                    "current_month": current_month, "perf": perf,
+                    "history_months": len(history),
                     "last_inbound": last_inbound, "last_outbound": last_outbound,
-                    "recs": recs,
                 })
 
             # Summary metrics
             total_analyzed = sum(seg_counts.values())
-            at_risk = seg_counts["C"] + seg_counts["D"]
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Analyzed", total_analyzed)
-            c2.metric("Segment A — Healthy",    seg_counts["A"])
-            c3.metric("Segment B — Monitoring", seg_counts["B"])
-            c4.metric("Segment C — Declining",  seg_counts["C"])
-            c5.metric("Segment D — At Risk",    seg_counts["D"])
+            c2.metric(f"🔥 A — HOT",  seg_counts["A"])
+            c3.metric(f"🌡️ B — WARM", seg_counts["B"])
+            c4.metric(f"❄️ C — COOL", seg_counts["C"])
+            c5.metric(f"🧊 D — COLD", seg_counts["D"])
 
             if not retention_cards:
                 st.info("No retention data available — insufficient historical usage.")
             else:
-                # Sort: D first, then C, B, A
                 seg_order = {"D": 0, "C": 1, "B": 2, "A": 3}
                 retention_cards.sort(key=lambda x: seg_order[x["seg"]])
 
                 for rc in retention_cards:
-                    border = f'border-left:4px solid {rc["seg_color"]};'
+                    meta = rc["meta"]
+                    color = meta["color"]
+                    interp = INTERPRETATION[rc["seg"]](rc)
+                    steps_html = "".join(f"<li style='margin-bottom:3px;'>{s}</li>" for s in NEXT_STEPS[rc["seg"]])
                     st.markdown(f"""
 <div style="background:#fff;border-radius:14px;box-shadow:0 1px 6px rgba(0,0,0,0.07);
-            padding:1.25rem 1.5rem;margin-bottom:1rem;{border}">
+            padding:1.25rem 1.5rem;margin-bottom:1rem;border-left:4px solid {color};">
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
     <div>
       <span style="font-size:1rem;font-weight:800;color:#111827;">{rc['name']}</span>
       <span style="font-size:0.82rem;color:#6B7280;margin-left:0.5rem;">{rc['email']} · #{rc['number']}</span>
     </div>
-    <div style="display:flex;gap:0.5rem;align-items:center;">
-      <span style="background:{rc['seg_color']}22;color:{rc['seg_color']};border:1px solid {rc['seg_color']}55;
-                   font-size:0.78rem;font-weight:800;padding:3px 12px;border-radius:99px;">
-        Segment {rc['seg']} — {rc['seg_label']}
-      </span>
-    </div>
+    <span style="background:{color};color:#fff;font-size:0.82rem;font-weight:800;padding:4px 14px;border-radius:99px;">
+      {meta['emoji']} Segment {rc['seg']} — {meta['label']}
+    </span>
   </div>
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1rem;">
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
@@ -856,9 +863,9 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['current_usage']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
       <div style="font-size:0.72rem;color:#9CA3AF;">{rc['current_month']}</div>
     </div>
-    <div style="background:{rc['seg_color']}11;border-radius:10px;padding:0.75rem 1rem;">
+    <div style="background:{color}11;border-radius:10px;padding:0.75rem 1rem;">
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Performance</div>
-      <div style="font-size:1.3rem;font-weight:800;color:{rc['seg_color']};">{rc['perf']:.1f}%</div>
+      <div style="font-size:1.3rem;font-weight:800;color:{color};">{rc['perf']:.1f}%</div>
       <div style="font-size:0.72rem;color:#9CA3AF;">vs baseline</div>
     </div>
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
@@ -867,9 +874,17 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       <div style="font-size:0.78rem;color:#374151;margin-top:0.2rem;">📤 {rc['last_outbound']}</div>
     </div>
   </div>
-  <div style="background:#F9FAFB;border-radius:8px;padding:0.6rem 0.9rem;font-size:0.82rem;color:#374151;">
-    💡 <b>Recommendation:</b> {rc['recs']}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+    <div style="background:#F9FAFB;border-radius:8px;padding:0.75rem 1rem;">
+      <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;">📝 Interpretation</div>
+      <div style="font-size:0.83rem;color:#374151;">{interp}</div>
+    </div>
+    <div style="background:#F9FAFB;border-radius:8px;padding:0.75rem 1rem;">
+      <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;">⚡ Next Steps</div>
+      <ul style="margin:0;padding-left:1.1rem;font-size:0.83rem;color:#374151;">{steps_html}</ul>
+    </div>
   </div>
+  <div style="font-size:0.72rem;color:#9CA3AF;margin-top:0.75rem;">Analysis Date: {analysis_date}</div>
 </div>""", unsafe_allow_html=True)
 
         with contact_tab:
