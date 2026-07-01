@@ -841,7 +841,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                             "".join(
                                 row(f"📆 {mk}", f"{sum(vals['convo']):.1f} min")
                                 for mk, vals in sorted(convo_monthly.items(), reverse=True)
-                                if vals.get("convo")
+                                if vals.get("convo") and sum(vals["convo"]) > 0
                             ) or row("No data", "—")
                         )
                         + '</div>'
