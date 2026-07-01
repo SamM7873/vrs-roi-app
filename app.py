@@ -726,6 +726,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 "emerg_street1", "emerg_street2", "emerg_city", "emerg_state", "emerg_zip_code",
                 "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call",
                 "ursa_last_outbound_call", "ursa_last_inbound_call",
+                "ursa_ios_minutes", "ursa_android_minutes", "ursa_web_minutes", "cfz_minutes",
             ],
             filter_groups=filter_groups
         )
@@ -831,8 +832,11 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
                 name = f"{props.get('first_name') or ''} {props.get('last_name') or ''}".strip() or "—"
                 email = props.get("email") or "—"
-                last_inbound = props.get("ursa_last_inbound_call") or "—"
-                last_outbound = props.get("ursa_last_outbound_call") or "—"
+                ursa_ios = to_float(props.get("ursa_ios_minutes"))
+                ursa_android = to_float(props.get("ursa_android_minutes"))
+                ursa_web = to_float(props.get("ursa_web_minutes"))
+                ursa_total = sum(x for x in [ursa_ios, ursa_android, ursa_web] if x is not None) or 0.0
+                cfz_min = to_float(props.get("cfz_minutes")) or 0.0
 
                 retention_cards.append({
                     "name": name, "email": email, "number": num,
@@ -842,7 +846,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     "current_month": current_month, "perf": perf,
                     "history_months": len(history),
                     "last_month_key": last_month_key, "last_month_usage": last_month_usage, "last_month_perf": last_month_perf,
-                    "last_inbound": last_inbound, "last_outbound": last_outbound,
+                    "ursa_ios": ursa_ios, "ursa_android": ursa_android, "ursa_web": ursa_web,
+                    "ursa_total": ursa_total, "cfz_min": cfz_min,
                 })
 
             # Summary metrics
@@ -877,7 +882,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       {meta['emoji']} Segment {rc['seg']} — {meta['label']}
     </span>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:1rem;margin-bottom:1rem;">
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1rem;margin-bottom:1rem;">
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Historical Baseline</div>
       <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['baseline']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
@@ -904,9 +909,13 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       <div style="font-size:0.72rem;color:#9CA3AF;">vs baseline</div>
     </div>
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">URSA Activity</div>
-      <div style="font-size:0.78rem;color:#374151;">📥 {rc['last_inbound']}</div>
-      <div style="font-size:0.78rem;color:#374151;margin-top:0.2rem;">📤 {rc['last_outbound']}</div>
+      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">URSA Minutes</div>
+      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['ursa_total']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
+      <div style="font-size:0.72rem;color:#9CA3AF;">iOS: {f"{rc['ursa_ios']:.1f}" if rc['ursa_ios'] is not None else "—"} · Android: {f"{rc['ursa_android']:.1f}" if rc['ursa_android'] is not None else "—"} · Web: {f"{rc['ursa_web']:.1f}" if rc['ursa_web'] is not None else "—"}</div>
+    </div>
+    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
+      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">CFZ Minutes</div>
+      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['cfz_min']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
     </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
