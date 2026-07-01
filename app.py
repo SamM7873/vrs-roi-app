@@ -737,40 +737,26 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
     if not all_number_records:
         st.info("No number records found.")
     else:
-        # Filter client-side: Live status only
-        live_records = [
-            r for r in all_number_records
-            if norm(r["properties"].get("number_status") or "") == "live"
-        ]
-        live_nums = [str(r["properties"].get("number") or "").strip() for r in live_records]
-        live_nums = [n for n in live_nums if n]
+        # Step 1: get all unique VRS numbers from monthly records
+        with st.spinner("Fetching all VRS monthly records..."):
+            vrs_monthly = list_all(
+                "2-46246179",
+                ["number", "service_type"]
+            )
+        vrs_num_set = {
+            str(r["properties"].get("number") or "").strip()
+            for r in vrs_monthly
+            if norm(r["properties"].get("service_type") or "") == "vrs"
+        } - {""}
 
-        # Cross-reference VRS service type from monthly records
-        with st.spinner(f"Checking VRS service type for {len(live_nums)} live numbers..."):
-            vrs_num_set = set()
-            for i in range(0, len(live_nums), 100):
-                chunk = live_nums[i:i + 100]
-                if i > 0:
-                    time.sleep(0.3)
-                vrs_recs = fetch_all(
-                    "2-46246179",
-                    ["number", "service_type"],
-                    filter_groups=[{"filters": [
-                        {"propertyName": "number", "operator": "IN", "values": chunk},
-                        {"propertyName": "service_type", "operator": "IN", "values": ["VRS"]}
-                    ]}]
-                )
-                for r in vrs_recs:
-                    n = str(r["properties"].get("number") or "").strip()
-                    if n:
-                        vrs_num_set.add(n)
-
-        # Build rows for Live + VRS numbers only
+        # Step 2: from number records, keep only those that are VRS AND Live
         rows = []
-        for r in live_records:
+        for r in all_number_records:
             p = r.get("properties", {})
             num = str(p.get("number") or "").strip()
             if num not in vrs_num_set:
+                continue
+            if norm(p.get("number_status") or "") != "live":
                 continue
             created_raw = p.get("number_created_at") or ""
             try:
