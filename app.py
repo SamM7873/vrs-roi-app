@@ -766,10 +766,13 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             for r in matched_numbers:
                 p = r.get("properties", {})
                 name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
-                addr_parts = [p.get("address"), p.get("city"), p.get("state"), p.get("zip"), p.get("country")]
-                address = ", ".join(a for a in addr_parts if a) or "—"
-                emerg_parts = [p.get("emergency_address"), p.get("emergency_city"), p.get("emergency_state"), p.get("emergency_zip")]
-                emergency = ", ".join(a for a in emerg_parts if a) or "—"
+                addr_street = p.get("address") or ""
+                addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip") or p.get("postal_code")] if a)
+                address = "<br>".join(a for a in [addr_street, addr_csz] if a) or "—"
+
+                emerg_street = p.get("emergency_address") or ""
+                emerg_csz = ", ".join(a for a in [p.get("emergency_city"), p.get("emergency_state"), p.get("emergency_zip")] if a)
+                emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
                 initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
 
                 html_card = (
