@@ -869,11 +869,13 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     # Step 2: get ticket IDs associated with each contact
                     ticket_ids = []
                     assoc_errors = []
+                    assoc_debug = []
                     for cid in contact_ids:
                         resp = requests.get(
                             f"{BASE_URL}/crm/v4/objects/contacts/{cid}/associations/tickets",
                             headers=headers, timeout=30,
                         )
+                        assoc_debug.append(f"Contact {cid} → status {resp.status_code}: {resp.text[:400]}")
                         if resp.status_code == 200:
                             for t in resp.json().get("results", []):
                                 ticket_ids.append(t.get("toObjectId") or t.get("id"))
@@ -918,6 +920,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
                 # Show diagnostic info
                 st.caption(f"Emails searched: {emails} | Contacts found: {contact_ids} | Ticket IDs: {ticket_ids}")
+                for d in assoc_debug:
+                    st.caption(f"🔍 {d}")
                 for e in contact_errors + assoc_errors + ticket_errors:
                     st.error(e)
 
