@@ -908,7 +908,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                         pass
 
                     TICKET_PROPS = ["subject", "hs_pipeline_stage", "hs_ticket_priority",
-                                    "createdate", "hs_lastmodifieddate", "content",
+                                    "createdate", "hs_lastmodifieddate", "hs_closed_date", "content",
                                     "hs_ticket_category", "hs_ticket_subcategory",
                                     "hubspot_owner_id", "email", "phone"]
 
@@ -936,7 +936,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                                             "Subcategory": tp.get("hs_ticket_subcategory") or "—",
                                             "Owner": owner_names.get(tp.get("hubspot_owner_id") or "", "—"),
                                             "Created": (tp.get("createdate") or "")[:10],
-                                            "Last Modified": (tp.get("hs_lastmodifieddate") or "")[:10],
+                                            "Closed": (tp.get("hs_closed_date") or "")[:10],
                                             "Description": tp.get("content") or "—",
                                         })
                                 after = data.get("paging", {}).get("next", {}).get("after")
@@ -1046,7 +1046,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
     <span style="font-size:0.78rem;color:#6B7280;">📂 <b>{row['Category']}</b></span>
     <span style="font-size:0.78rem;color:#6B7280;">🔖 <b>{row['Subcategory']}</b></span>
     <span style="font-size:0.78rem;color:#6B7280;">📅 Created: <b>{row['Created']}</b></span>
-    <span style="font-size:0.78rem;color:#6B7280;">✏️ Updated: <b>{row['Last Modified']}</b></span>
+    <span style="font-size:0.78rem;color:#6B7280;">🔒 Closed: <b>{row['Closed'] or '—'}</b></span>
   </div>
 </div>"""
                     cards_html += "</div>"
