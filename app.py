@@ -245,8 +245,7 @@ def build_report(matched_numbers):
             ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
             filter_groups=[
                 {"filters": [
-                    {"propertyName": "number", "operator": "IN", "values": chunk},
-                    {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]}
+                    {"propertyName": "number", "operator": "IN", "values": chunk}
                 ]}
             ]
         ))
