@@ -776,10 +776,13 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 section_label = "VRS" if svc == "vrs" else "Convo Now"
                 if section_label != last_label:
                     color = "#2DB84B" if svc == "vrs" else "#3B82F6"
+                    mt = "0" if last_label is None else "1.5rem"
                     st.markdown(
-                        f'<div style="font-size:0.8rem;font-weight:800;letter-spacing:1.5px;'
-                        f'text-transform:uppercase;color:{color};'
-                        f'padding:0.4rem 0 0.5rem;margin-top:{"0" if last_label is None else "1rem"};">'
+                        f'<div style="display:inline-flex;align-items:center;gap:0.5rem;'
+                        f'background:{color};color:#fff;'
+                        f'font-size:0.8rem;font-weight:800;letter-spacing:1.5px;'
+                        f'text-transform:uppercase;padding:0.35rem 1rem;'
+                        f'border-radius:999px;margin-top:{mt};margin-bottom:0.75rem;">'
                         f'{section_label}</div>',
                         unsafe_allow_html=True
                     )
