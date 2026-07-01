@@ -748,7 +748,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 return v if v else "—"
 
             def status_badge(status):
-                color = "#2DB84B" if norm(status) == "live" else "#6B7280"
+                s = norm(status)
+                color = "#2DB84B" if s == "live" else "#EF4444" if s == "suspended" else "#F59E0B" if s in ("inactive", "cancelled") else "#6B7280"
                 return f'<span style="background:{color};color:#fff;padding:2px 10px;border-radius:999px;font-size:0.75rem;font-weight:700;">{status or "—"}</span>'
 
             def ursa_badge(v):
