@@ -18,20 +18,64 @@ if APP_PASSWORD:
 
     if not st.session_state.authenticated:
         st.markdown("""
-        <div style="background: linear-gradient(135deg, #0072CE 0%, #00A1E4 100%);
-                    padding: 2.5rem 2rem; border-radius: 16px; margin-bottom: 2rem;
-                    text-align: center; color: white;">
-            <h1 style="color: white; font-weight: 700; margin-bottom: 0.5rem;">VRS / Convo Now Lookup</h1>
-            <p style="color: #E6F2FF; margin: 0;">Please enter the password to continue</p>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
+            html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+            .stApp { background-color: #F2F2EE; }
+            .login-hero {
+                background-color: #2DB84B;
+                border-radius: 0 0 32px 32px;
+                padding: 3rem 2rem 3.5rem;
+                text-align: center;
+                margin-bottom: 0;
+            }
+            .login-logo {
+                font-size: 1.6rem; font-weight: 900; color: #fff;
+                letter-spacing: -1px; margin-bottom: 1.5rem;
+            }
+            .login-hero h2 {
+                color: #fff; font-size: 2rem; font-weight: 900;
+                letter-spacing: -0.5px; margin-bottom: 0.5rem;
+            }
+            .login-hero p { color: rgba(255,255,255,0.85); font-size: 0.97rem; margin: 0; }
+            .login-card {
+                background: #fff; border-radius: 24px; padding: 2rem 1.75rem;
+                margin-top: -1.5rem; box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+            }
+            .stTextInput > div > div > input {
+                border-radius: 999px !important;
+                border: 1.5px solid #D8D8D2 !important;
+                padding: 0.6rem 1.1rem !important;
+                font-size: 0.93rem !important;
+            }
+            .stTextInput > div > div > input:focus {
+                border-color: #2DB84B !important;
+                box-shadow: 0 0 0 3px rgba(45,184,75,0.15) !important;
+            }
+            div.stButton > button {
+                background-color: #2DB84B; color: #fff;
+                border-radius: 999px; border: none;
+                padding: 0.6rem 2.2rem; font-weight: 700;
+                font-size: 0.95rem; width: 100%;
+                box-shadow: 0 2px 8px rgba(45,184,75,0.25);
+            }
+            div.stButton > button:hover { background-color: #25A340; color: #fff; }
+        </style>
+        <div class="login-hero">
+            <div class="login-logo">convo</div>
+            <h2>VRS / Convo Now Lookup</h2>
+            <p>Please enter the password to continue</p>
         </div>
+        <div class="login-card">
         """, unsafe_allow_html=True)
-        entered_password = st.text_input("Enter password:", type="password")
+        entered_password = st.text_input("Password", type="password", placeholder="Enter password")
         if st.button("Login"):
             if entered_password == APP_PASSWORD:
                 st.session_state.authenticated = True
                 st.rerun()
             else:
                 st.error("Incorrect password.")
+        st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
 BASE_URL = "https://api.hubapi.com"
