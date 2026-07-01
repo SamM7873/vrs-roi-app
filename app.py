@@ -765,8 +765,25 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                   <span style="color:#111827;font-size:0.85rem;font-weight:500;text-align:right;">{value}</span>
                 </div>"""
 
-            for r in matched_numbers:
+            sorted_numbers = sorted(
+                matched_numbers,
+                key=lambda r: 0 if norm(r.get("properties", {}).get("service_type") or "") == "vrs" else 1
+            )
+            last_label = None
+            for r in sorted_numbers:
                 p = r.get("properties", {})
+                svc = norm(p.get("service_type") or "")
+                section_label = "VRS" if svc == "vrs" else "Convo Now"
+                if section_label != last_label:
+                    color = "#2DB84B" if svc == "vrs" else "#3B82F6"
+                    st.markdown(
+                        f'<div style="font-size:0.8rem;font-weight:800;letter-spacing:1.5px;'
+                        f'text-transform:uppercase;color:{color};'
+                        f'padding:0.4rem 0 0.5rem;margin-top:{"0" if last_label is None else "1rem"};">'
+                        f'{section_label}</div>',
+                        unsafe_allow_html=True
+                    )
+                    last_label = section_label
                 name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
                 addr_street = " ".join(a for a in [p.get("street1"), p.get("street2")] if a)
                 addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip_code")] if a)
