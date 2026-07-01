@@ -74,6 +74,37 @@ if APP_PASSWORD:
         if st.button("Login"):
             if entered_password == APP_PASSWORD:
                 st.session_state.authenticated = True
+                # Capture IP, location, device at login time
+                try:
+                    hdrs = st.context.headers
+                    ip = hdrs.get("X-Forwarded-For", hdrs.get("X-Real-Ip", "Unknown"))
+                    if ip and "," in ip:
+                        ip = ip.split(",")[0].strip()
+                    ua = hdrs.get("User-Agent", "Unknown")
+                except Exception:
+                    ip, ua = "Unknown", "Unknown"
+                # Geo lookup
+                try:
+                    geo = requests.get(f"https://ipapi.co/{ip}/json/", timeout=5).json()
+                    city = geo.get("city", "")
+                    region = geo.get("region", "")
+                    country = geo.get("country_name", "")
+                    location = ", ".join(filter(None, [city, region, country])) or "Unknown"
+                except Exception:
+                    location = "Unknown"
+                # Parse device from user agent
+                ua_lower = ua.lower()
+                if "mobile" in ua_lower or "android" in ua_lower:
+                    device = "Mobile"
+                elif "tablet" in ua_lower or "ipad" in ua_lower:
+                    device = "Tablet"
+                else:
+                    device = "Desktop"
+                # Store in session
+                st.session_state.login_info = {
+                    "ip": ip, "location": location, "device": device,
+                    "ua": ua, "time": datetime.now().strftime("%b %d, %Y at %I:%M %p")
+                }
                 st.rerun()
             else:
                 st.error("Incorrect password.")
@@ -324,6 +355,19 @@ def build_report(matched_numbers):
     return df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail
 
 st.set_page_config(page_title="VRS / Convo Now Lookup", layout="wide", page_icon="📊")
+
+# Show login session info in sidebar
+if "login_info" in st.session_state:
+    li = st.session_state.login_info
+    st.sidebar.markdown(f"""
+<div style="background:#F9FAFB;border-radius:12px;padding:1rem;margin-bottom:1rem;border:1px solid #E5E7EB;">
+  <div style="font-size:0.7rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.6rem;">🔐 Session Info</div>
+  <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">🕐 {li['time']}</div>
+  <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">🌐 {li['ip']}</div>
+  <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">📍 {li['location']}</div>
+  <div style="font-size:0.8rem;color:#374151;">💻 {li['device']}</div>
+</div>
+""", unsafe_allow_html=True)
 
 st.markdown("""
 <style>
