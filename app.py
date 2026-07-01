@@ -797,8 +797,11 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 current_usage = vrs_months.get(current_month, 0.0)
 
                 # Baseline = all historical months excluding the current month
-                history = [v for k, v in sorted(vrs_months.items(), key=lambda x: month_sort_key(x[0]))
-                           if k != current_month]
+                history_pairs = sorted(
+                    [(k, v) for k, v in vrs_months.items() if k != current_month],
+                    key=lambda x: month_sort_key(x[0])
+                )
+                history = [v for _, v in history_pairs]
 
                 if not history:
                     continue
@@ -806,6 +809,9 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 baseline = sum(history) / len(history)
                 if baseline <= 0:
                     continue
+
+                # Last month = most recent historical month
+                last_month_key, last_month_usage = history_pairs[-1] if history_pairs else (None, None)
 
                 perf = (current_usage / baseline * 100) if current_usage > 0 else 0.0
 
@@ -828,6 +834,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     "baseline": baseline, "current_usage": current_usage,
                     "current_month": current_month, "perf": perf,
                     "history_months": len(history),
+                    "last_month_key": last_month_key, "last_month_usage": last_month_usage,
                     "last_inbound": last_inbound, "last_outbound": last_outbound,
                 })
 
@@ -863,11 +870,16 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       {meta['emoji']} Segment {rc['seg']} — {meta['label']}
     </span>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1rem;">
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:1rem;">
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Historical Baseline</div>
       <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['baseline']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
       <div style="font-size:0.72rem;color:#9CA3AF;">avg of {rc['history_months']} month(s)</div>
+    </div>
+    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
+      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Month</div>
+      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{f"{rc['last_month_usage']:.1f}" if rc['last_month_usage'] is not None else "—"} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
+      <div style="font-size:0.72rem;color:#9CA3AF;">{rc['last_month_key'] or "—"}</div>
     </div>
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Current Month</div>
