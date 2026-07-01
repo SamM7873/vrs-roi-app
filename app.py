@@ -832,3 +832,64 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             st.dataframe(report_df.drop(columns=["_week"]), use_container_width=True)
 
 st.markdown("</div></div>", unsafe_allow_html=True)
+
+# ── URSA Login Report ──────────────────────────────────────────────────────────
+st.markdown("""
+<div style="margin-top: 2.5rem;">
+<div style="background:#2DB84B;border-radius:20px 20px 0 0;padding:1.5rem 1.75rem 1rem;">
+    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;
+                color:rgba(255,255,255,0.7);margin-bottom:0.4rem;">Analytics</div>
+    <div style="font-size:1.6rem;font-weight:900;color:#fff;letter-spacing:-0.5px;">URSA Login Report</div>
+    <div style="color:rgba(255,255,255,0.8);font-size:0.93rem;margin-top:0.3rem;">
+        First login, first outbound, and second outbound timestamps
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+if st.button("Load URSA Report", key="load_ursa_report"):
+    with st.spinner("Fetching all number records for URSA report..."):
+        ursa_records = list_all(
+            "2-40974683",
+            ["number", "email", "first_name", "last_name", "number_status", "service_type",
+             "ursa_first_login", "ursa_first_outbound", "ursa_second_outbound"]
+        )
+
+    rows = []
+    for r in ursa_records:
+        p = r.get("properties", {})
+        if norm(p.get("service_type") or "") != "vrs":
+            continue
+        if norm(p.get("number_status") or "") != "live":
+            continue
+        rows.append({
+            "Number": p.get("number") or "",
+            "Email": p.get("email") or "",
+            "First Name": p.get("first_name") or "",
+            "Last Name": p.get("last_name") or "",
+            "URSA First Login": p.get("ursa_first_login") or "",
+            "URSA First Outbound": p.get("ursa_first_outbound") or "",
+            "URSA Second Outbound": p.get("ursa_second_outbound") or "",
+        })
+
+    if not rows:
+        st.warning("No live VRS numbers found.")
+    else:
+        ursa_df = pd.DataFrame(rows)
+
+        has_login = ursa_df["URSA First Login"] != ""
+        count_logged_in = has_login.sum()
+        count_not_logged_in = (~has_login).sum()
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Live VRS", len(ursa_df))
+        col2.metric("Has First Login", int(count_logged_in))
+        col3.metric("No First Login Yet", int(count_not_logged_in))
+
+        st.markdown("#### Who Has NOT Logged In Yet")
+        not_logged_in_df = ursa_df[~has_login][["Number", "Email", "First Name", "Last Name"]].reset_index(drop=True)
+        st.dataframe(not_logged_in_df, use_container_width=True)
+
+        st.markdown("#### Full URSA Detail")
+        st.dataframe(ursa_df, use_container_width=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
