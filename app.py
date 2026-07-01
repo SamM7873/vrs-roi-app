@@ -885,6 +885,25 @@ if st.button("Load URSA Report", key="load_ursa_report"):
         col2.metric("Has First Login", int(count_logged_in))
         col3.metric("No First Login Yet", int(count_not_logged_in))
 
+        def ursa_bar(col_name, label):
+            has = (ursa_df[col_name] != "").sum()
+            missing = (ursa_df[col_name] == "").sum()
+            chart_data = pd.DataFrame({
+                "Status": ["Has Value", "No Value"],
+                "Count": [int(has), int(missing)],
+                "Color": ["#2DB84B", "#EF4444"],
+            })
+            chart = alt.Chart(chart_data).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                x=alt.X("Status:N", title=None, axis=alt.Axis(labelAngle=0)),
+                y=alt.Y("Count:Q", title="Count"),
+                color=alt.Color("Color:N", scale=None, legend=None),
+                tooltip=["Status", "Count"],
+            ).properties(height=260)
+            st.markdown(f"##### {label}")
+            st.altair_chart(chart, use_container_width=True)
+
+        ursa_bar("URSA First Login", "First Login")
+
         st.markdown("#### Who Has NOT Logged In Yet")
         not_logged_in_df = ursa_df[~has_login][["Number", "Email", "First Name", "Last Name"]].reset_index(drop=True)
         st.dataframe(not_logged_in_df, use_container_width=True)
