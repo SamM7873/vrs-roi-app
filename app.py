@@ -703,7 +703,7 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
     with st.spinner("Fetching number records..."):
         all_number_records = fetch_all(
             "2-40974683",
-            ["number", "email", "first_name", "last_name", "number_status", "usage_type", "createdate", "credit_type"],
+            ["number", "email", "first_name", "last_name", "number_status", "usage_type", "number_created_at", "credit_type"],
             filter_groups=[{"filters": [
                 {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
             ]}]
@@ -745,7 +745,7 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
         for r in live_numbers:
             p = r.get("properties", {})
             num = str(p.get("number") or "").strip()
-            created_raw = p.get("createdate") or ""
+            created_raw = p.get("number_created_at") or ""
             try:
                 dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
                 created_full = dt.strftime("%m/%d/%Y")
