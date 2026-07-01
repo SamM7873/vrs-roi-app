@@ -728,7 +728,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if st.button("Load Numbers Report", key="load_numbers_report"):
-    with st.spinner("Fetching number records (45k+, may take a moment)..."):
+    with st.spinner("Fetching all number records (45k+, may take a moment)..."):
         all_number_records = list_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name", "number_status", "usage_type", "number_created_at", "credit_type"]
@@ -737,15 +737,50 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
     if not all_number_records:
         st.info("No number records found.")
     else:
+        # Filter client-side: Live status only
+        live_records = [
+            r for r in all_number_records
+            if norm(r["properties"].get("number_status") or "") == "live"
+        ]
+        live_nums = [str(r["properties"].get("number") or "").strip() for r in live_records]
+        live_nums = [n for n in live_nums if n]
+
+        # Cross-reference VRS service type from monthly records
+        with st.spinner(f"Checking VRS service type for {len(live_nums)} live numbers..."):
+            vrs_num_set = set()
+            for i in range(0, len(live_nums), 100):
+                chunk = live_nums[i:i + 100]
+                if i > 0:
+                    time.sleep(0.3)
+                vrs_recs = fetch_all(
+                    "2-46246179",
+                    ["number", "service_type"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "number", "operator": "IN", "values": chunk},
+                        {"propertyName": "service_type", "operator": "IN", "values": ["VRS"]}
+                    ]}]
+                )
+                for r in vrs_recs:
+                    n = str(r["properties"].get("number") or "").strip()
+                    if n:
+                        vrs_num_set.add(n)
+
+        # Build rows for Live + VRS numbers only
         rows = []
-        for r in all_number_records:
+        for r in live_records:
             p = r.get("properties", {})
             num = str(p.get("number") or "").strip()
+            if num not in vrs_num_set:
+                continue
             created_raw = p.get("number_created_at") or ""
             try:
-                created_full = datetime.fromisoformat(created_raw.replace("Z", "+00:00")).strftime("%m/%d/%Y")
+                dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+                created_full = dt.strftime("%m/%d/%Y")
+                # ISO week start (Monday)
+                week_start = (dt - pd.Timedelta(days=dt.weekday())).strftime("%Y-%m-%d")
             except Exception:
                 created_full = "-"
+                week_start = "-"
             rows.append({
                 "Number": num,
                 "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
@@ -754,10 +789,42 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                 "Usage Type": p.get("usage_type") or "-",
                 "Credit Type": p.get("credit_type") or "-",
                 "Number Created At": created_full,
+                "_week": week_start,
             })
 
-        report_df = pd.DataFrame(rows)
-        st.write(f"**{len(report_df)} number(s) found**")
-        st.dataframe(report_df, use_container_width=True)
+        if not rows:
+            st.info("No Live VRS numbers found.")
+        else:
+            report_df = pd.DataFrame(rows)
+
+            # Metric cards
+            total = len(report_df)
+            personal = (report_df["Usage Type"].str.lower() == "personal").sum()
+            org = (report_df["Usage Type"].str.lower() == "organization").sum()
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Live VRS Numbers", total)
+            m2.metric("Personal", personal)
+            m3.metric("Organization", org)
+
+            # Weekly bar chart
+            st.markdown("#### Numbers Created — Weekly")
+            weekly = (
+                report_df[report_df["_week"] != "-"]
+                .groupby("_week")
+                .size()
+                .reset_index(name="Count")
+                .sort_values("_week")
+            )
+            if not weekly.empty:
+                bar = alt.Chart(weekly).mark_bar(color="#2DB84B").encode(
+                    x=alt.X("_week:N", sort=weekly["_week"].tolist(), title="Week Starting", axis=alt.Axis(labelAngle=-45)),
+                    y=alt.Y("Count:Q", title="Numbers Created"),
+                    tooltip=[alt.Tooltip("_week:N", title="Week of"), "Count"]
+                ).properties(height=300)
+                st.altair_chart(bar, use_container_width=True)
+
+            # Detail table
+            st.markdown("#### Detail Table")
+            st.dataframe(report_df.drop(columns=["_week"]), use_container_width=True)
 
 st.markdown("</div></div>", unsafe_allow_html=True)
