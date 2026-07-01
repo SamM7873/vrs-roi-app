@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 import altair as alt
 import os
+import time
 from datetime import datetime
 from collections import defaultdict
 
@@ -90,6 +91,9 @@ def fetch_all(object_type_id, properties, filter_groups=None):
         if after:
             payload["after"] = after
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        if resp.status_code == 429:
+            time.sleep(1.0)
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
         if resp.status_code != 200:
             st.error(f"Error {resp.status_code}: {resp.text}")
             break
@@ -101,6 +105,7 @@ def fetch_all(object_type_id, properties, filter_groups=None):
         after = data.get("paging", {}).get("next", {}).get("after")
         if not after:
             break
+        time.sleep(0.26)
     return all_results
 
 def month_key(month_str):
@@ -721,6 +726,8 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             vrs_num_set = set()
             for i in range(0, len(all_nums), 100):
                 chunk = all_nums[i:i + 100]
+                if i > 0:
+                    time.sleep(0.3)
                 vrs_recs = fetch_all(
                     "2-46246179",
                     ["number", "service_type"],
