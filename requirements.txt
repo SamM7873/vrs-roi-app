@@ -3,3 +3,6 @@ requests
 pandas
 altair
 plotly
+folium
+streamlit-folium
+geopy
