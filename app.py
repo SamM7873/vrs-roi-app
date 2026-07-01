@@ -82,6 +82,34 @@ if APP_PASSWORD:
 BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
+def list_all(object_type_id, properties):
+    """Use GET /crm/v3/objects list endpoint — no filter required, no 10k cap."""
+    url = f"{BASE_URL}/crm/v3/objects/{object_type_id}"
+    all_results = []
+    after = None
+    while True:
+        params = {"limit": 100, "properties": ",".join(properties)}
+        if after:
+            params["after"] = after
+        resp = requests.get(url, headers=headers, params=params, timeout=30)
+        if resp.status_code == 429:
+            time.sleep(1.0)
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+        if resp.status_code != 200:
+            st.error(f"Error {resp.status_code}: {resp.text}")
+            break
+        data = resp.json()
+        results = data.get("results", [])
+        if not results:
+            break
+        all_results.extend(results)
+        after = data.get("paging", {}).get("next", {}).get("after")
+        if not after:
+            break
+        time.sleep(0.26)
+    return all_results
+
+
 def fetch_all(object_type_id, properties, filter_groups=None):
     url = f"{BASE_URL}/crm/v3/objects/{object_type_id}/search"
     all_results = []
@@ -700,13 +728,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if st.button("Load Numbers Report", key="load_numbers_report"):
-    with st.spinner("Fetching number records..."):
-        all_number_records = fetch_all(
+    with st.spinner("Fetching number records (45k+, may take a moment)..."):
+        all_number_records = list_all(
             "2-40974683",
-            ["number", "email", "first_name", "last_name", "number_status", "usage_type", "number_created_at", "credit_type"],
-            filter_groups=[{"filters": [
-                {"propertyName": "number", "operator": "HAS_PROPERTY"}
-            ]}]
+            ["number", "email", "first_name", "last_name", "number_status", "usage_type", "number_created_at", "credit_type"]
         )
 
     if not all_number_records:
