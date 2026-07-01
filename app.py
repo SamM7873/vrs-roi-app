@@ -866,63 +866,51 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                             contact_errors.append(f"Contact search error {resp.status_code}: {resp.text[:200]}")
                         time.sleep(0.26)
 
-                    # Step 2: get ticket IDs associated with each contact
-                    ticket_ids = []
-                    assoc_errors = []
-                    assoc_debug = []
-                    for cid in contact_ids:
-                        resp = requests.get(
-                            f"{BASE_URL}/crm/v4/objects/contacts/{cid}/associations/tickets",
-                            headers=headers, timeout=30,
-                        )
-                        assoc_debug.append(f"Contact {cid} → status {resp.status_code}: {resp.text[:400]}")
-                        if resp.status_code == 200:
-                            for t in resp.json().get("results", []):
-                                ticket_ids.append(t.get("toObjectId") or t.get("id"))
-                        else:
-                            assoc_errors.append(f"Association error {resp.status_code}: {resp.text[:200]}")
-                        time.sleep(0.26)
-
-                    ticket_ids = [str(t) for t in set(ticket_ids) if t]
-
-                    # Step 3: fetch ticket details in batches
+                    # Step 2: search tickets directly by associations.contact
                     ticket_rows = []
                     ticket_errors = []
-                    for i in range(0, len(ticket_ids), 100):
-                        chunk = ticket_ids[i:i+100]
-                        resp = requests.post(
-                            f"{BASE_URL}/crm/v3/objects/tickets/search",
-                            headers=headers,
-                            json={
-                                "filterGroups": [{"filters": [{"propertyName": "hs_object_id", "operator": "IN", "values": chunk}]}],
+                    seen_ids = set()
+                    for cid in contact_ids:
+                        after = None
+                        while True:
+                            body = {
+                                "filterGroups": [{"filters": [{"propertyName": "associations.contact", "operator": "EQ", "value": cid}]}],
                                 "properties": ["subject", "hs_pipeline_stage", "hs_ticket_priority",
                                                "createdate", "hs_lastmodifieddate", "content", "hs_ticket_category"],
                                 "limit": 100,
-                            },
-                            timeout=30,
-                        )
-                        if resp.status_code == 200:
-                            for t in resp.json().get("results", []):
-                                tp = t.get("properties", {})
-                                ticket_rows.append({
-                                    "ID": t["id"],
-                                    "Subject": tp.get("subject") or "—",
-                                    "Status": tp.get("hs_pipeline_stage") or "—",
-                                    "Priority": tp.get("hs_ticket_priority") or "—",
-                                    "Category": tp.get("hs_ticket_category") or "—",
-                                    "Created": (tp.get("createdate") or "")[:10],
-                                    "Last Modified": (tp.get("hs_lastmodifieddate") or "")[:10],
-                                    "Description": tp.get("content") or "—",
-                                })
-                        else:
-                            ticket_errors.append(f"Ticket fetch error {resp.status_code}: {resp.text[:200]}")
-                        time.sleep(0.26)
+                            }
+                            if after:
+                                body["after"] = after
+                            resp = requests.post(
+                                f"{BASE_URL}/crm/v3/objects/tickets/search",
+                                headers=headers, json=body, timeout=30,
+                            )
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                for t in data.get("results", []):
+                                    if t["id"] not in seen_ids:
+                                        seen_ids.add(t["id"])
+                                        tp = t.get("properties", {})
+                                        ticket_rows.append({
+                                            "ID": t["id"],
+                                            "Subject": tp.get("subject") or "—",
+                                            "Status": tp.get("hs_pipeline_stage") or "—",
+                                            "Priority": tp.get("hs_ticket_priority") or "—",
+                                            "Category": tp.get("hs_ticket_category") or "—",
+                                            "Created": (tp.get("createdate") or "")[:10],
+                                            "Last Modified": (tp.get("hs_lastmodifieddate") or "")[:10],
+                                            "Description": tp.get("content") or "—",
+                                        })
+                                paging = data.get("paging", {}).get("next", {})
+                                after = paging.get("after")
+                                if not after:
+                                    break
+                            else:
+                                ticket_errors.append(f"Ticket search error {resp.status_code}: {resp.text[:200]}")
+                                break
+                            time.sleep(0.26)
 
-                # Show diagnostic info
-                st.caption(f"Emails searched: {emails} | Contacts found: {contact_ids} | Ticket IDs: {ticket_ids}")
-                for d in assoc_debug:
-                    st.caption(f"🔍 {d}")
-                for e in contact_errors + assoc_errors + ticket_errors:
+                for e in contact_errors + ticket_errors:
                     st.error(e)
 
                 if not ticket_rows:
