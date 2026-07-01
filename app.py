@@ -377,18 +377,6 @@ def build_report(matched_numbers):
 
 st.set_page_config(page_title="VRS / Convo Now Lookup", layout="wide", page_icon="📊")
 
-# Show login session info in sidebar
-if "login_info" in st.session_state:
-    li = st.session_state.login_info
-    st.sidebar.markdown(f"""
-<div style="background:#F9FAFB;border-radius:12px;padding:1rem;margin-bottom:1rem;border:1px solid #E5E7EB;">
-  <div style="font-size:0.7rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.6rem;">🔐 Session Info</div>
-  <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">🕐 {li['time']}</div>
-  <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">🌐 {li['ip']}</div>
-  <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">📍 {li['location']}</div>
-  <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">💻 {li['device']}</div>
-</div>
-""", unsafe_allow_html=True)
 
 st.markdown("""
 <style>
