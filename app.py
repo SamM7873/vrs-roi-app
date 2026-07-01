@@ -269,7 +269,11 @@ def build_report(matched_numbers):
         if service == "vrs":
             if usage is not None:
                 person_month_values[person_key][mkey]["vrs"].append(usage)
-                num_month_values[num][mkey] += usage
+                num_month_values[num][mkey] = num_month_values[num].get(mkey, 0.0) + usage
+            else:
+                # Record the month even with 0 usage so retention sees it
+                if mkey not in num_month_values[num]:
+                    num_month_values[num][mkey] = 0.0
             if cfz is not None:
                 person_month_values[person_key][mkey]["cfz"].append(cfz)
         elif service == "convo now" and usage is not None:
@@ -788,20 +792,20 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     continue
 
                 sorted_months = sorted(vrs_months.keys())
+
+                # Determine current month key (most recent in data)
                 current_month = sorted_months[-1]
-                current_usage = vrs_months[current_month]
+                current_usage = vrs_months.get(current_month, 0.0)
                 history = [vrs_months[m] for m in sorted_months[:-1]]
 
                 if not history:
-                    continue
-                if current_usage == 0:
                     continue
 
                 baseline = sum(history) / len(history)
                 if baseline <= 0:
                     continue
 
-                perf = current_usage / baseline * 100
+                perf = (current_usage / baseline * 100) if current_usage > 0 else 0.0
 
                 if perf >= 90:   seg = "A"
                 elif perf >= 60: seg = "B"
