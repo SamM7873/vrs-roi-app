@@ -791,12 +791,14 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 if not vrs_months:
                     continue
 
-                sorted_months = sorted(vrs_months.keys())
-
-                # Determine current month key (most recent in data)
-                current_month = sorted_months[-1]
+                # Use actual current month (today), not most recent in data
+                today_month_key = datetime.now().strftime("%m/01/%Y")
+                current_month = today_month_key
                 current_usage = vrs_months.get(current_month, 0.0)
-                history = [vrs_months[m] for m in sorted_months[:-1]]
+
+                # Baseline = all historical months excluding the current month
+                history = [v for k, v in sorted(vrs_months.items(), key=lambda x: month_sort_key(x[0]))
+                           if k != current_month]
 
                 if not history:
                     continue
