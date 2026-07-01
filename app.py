@@ -786,10 +786,10 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             df_dated["_dt"] = pd.to_datetime(df_dated["Number Created At"], format="%m/%d/%Y", errors="coerce")
             df_dated = df_dated.dropna(subset=["_dt"])
 
-            now = datetime.now()
+            latest_dt = df_dated["_dt"].max()
             this_month_df = df_dated[
-                (df_dated["_dt"].dt.year == now.year) &
-                (df_dated["_dt"].dt.month == now.month)
+                (df_dated["_dt"].dt.year == latest_dt.year) &
+                (df_dated["_dt"].dt.month == latest_dt.month)
             ]
 
             def bar_chart(data, x_col, x_title, sort_order):
@@ -804,7 +804,7 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                 st.altair_chart(chart, use_container_width=True)
 
             st.markdown("#### Numbers Created At")
-            tab_daily, tab_weekly, tab_monthly = st.tabs(["Daily (This Month)", "Weekly (This Month)", "Monthly (All Time)"])
+            tab_daily, tab_weekly, tab_monthly = st.tabs(["Daily", "Weekly", "Monthly"])
 
             with tab_daily:
                 daily = (
