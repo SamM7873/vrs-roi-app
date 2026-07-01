@@ -777,22 +777,27 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             seg_counts = {"A": 0, "B": 0, "C": 0, "D": 0}
             retention_cards = []
 
-            # Analyze per VRS number (matching workflow logic)
+            # Build a lookup of num -> props from matched_numbers for VRS numbers only
+            num_props_lookup = {}
             for r in matched_numbers:
                 props = r.get("properties", {})
                 if norm(props.get("service_type") or "") != "vrs":
                     continue
-
                 num = str(props.get("number") or "").strip()
-                if not num:
+                if num:
+                    num_props_lookup[num] = props
+
+            # Analyze per VRS number — iterate num_month_values so no number is missed
+            today_month_key = datetime.now().strftime("%m/01/%Y")
+            for num, vrs_months in num_month_values.items():
+                # Only analyze numbers that belong to this search result
+                if num not in num_props_lookup:
                     continue
 
-                vrs_months = num_month_values.get(num, {})
+                props = num_props_lookup[num]
                 if not vrs_months:
                     continue
 
-                # Use actual current month (today), not most recent in data
-                today_month_key = datetime.now().strftime("%m/01/%Y")
                 current_month = today_month_key
                 current_usage = vrs_months.get(current_month, 0.0)
 
