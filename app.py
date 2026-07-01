@@ -6,8 +6,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import time
-import smtplib
-from email.mime.text import MIMEText
 from datetime import datetime
 from collections import defaultdict
 
@@ -17,9 +15,6 @@ if not HUBSPOT_TOKEN:
     st.stop()
 
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", os.environ.get("APP_PASSWORD", ""))
-EMAIL_SENDER   = st.secrets.get("EMAIL_SENDER", os.environ.get("EMAIL_SENDER", ""))
-EMAIL_PASSWORD = st.secrets.get("EMAIL_PASSWORD", os.environ.get("EMAIL_PASSWORD", ""))
-EMAIL_RECEIVER = st.secrets.get("EMAIL_RECEIVER", os.environ.get("EMAIL_RECEIVER", ""))
 if APP_PASSWORD:
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -111,31 +106,6 @@ if APP_PASSWORD:
                     "ip": ip, "location": location, "device": device,
                     "ua": ua, "time": login_time
                 }
-                # Send email notification
-                email_status = ""
-                if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
-                    email_status = "⚠️ Email secrets not configured"
-                else:
-                    try:
-                        body = f"""New login detected on VRS ROI App.
-
-Time:       {login_time}
-IP Address: {ip}
-Location:   {location}
-Device:     {device}
-User Agent: {ua}
-"""
-                        msg = MIMEText(body)
-                        msg["Subject"] = f"New Login - VRS ROI App ({device}, {location})"
-                        msg["From"] = EMAIL_SENDER
-                        msg["To"] = EMAIL_RECEIVER
-                        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-                            server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
-                        email_status = "✅ Email sent"
-                    except Exception as e:
-                        email_status = f"❌ Email failed: {e}"
-                st.session_state.login_info["email_status"] = email_status
                 st.rerun()
             else:
                 st.error("Incorrect password.")
@@ -397,7 +367,6 @@ if "login_info" in st.session_state:
   <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">🌐 {li['ip']}</div>
   <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">📍 {li['location']}</div>
   <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">💻 {li['device']}</div>
-  <div style="font-size:0.75rem;color:#6B7280;">{li.get('email_status','')}</div>
 </div>
 """, unsafe_allow_html=True)
 
