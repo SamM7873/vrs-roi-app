@@ -271,7 +271,8 @@ def build_report(matched_numbers):
             if cfz is not None:
                 person_month_values[person_key][mkey]["cfz"].append(cfz)
         elif service == "convo now" and usage is not None:
-            person_month_values[person_key][mkey]["convo"].append(usage)
+            if norm(num_to_status.get(num) or "") != "suspended":
+                person_month_values[person_key][mkey]["convo"].append(usage)
 
     rows = []
     for person_key in sorted(person_numbers.keys()):
