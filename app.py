@@ -775,6 +775,10 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
                 initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
 
+                # Build convo now monthly usage for this record's person key
+                email_key = norm(p.get("email") or "") or f"num:{p.get('number') or ''}"
+                convo_monthly = person_month_values.get(email_key, {})
+
                 html_card = (
                     '<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.07);'
                     'padding:1.5rem;margin-bottom:1.25rem;border:1px solid #F0F0EA;">'
@@ -789,7 +793,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     '</div>'
                 )
                 is_vrs = norm(p.get("service_type") or "") == "vrs"
-                grid_cols = "1fr 1fr 1fr" if is_vrs else "1fr 1fr"
+                grid_cols = "1fr 1fr 1fr" if is_vrs else "1fr 1fr 1fr"
                 html_card += (
                     f'<div style="display:grid;grid-template-columns:{grid_cols};gap:1.25rem;">'
                     '<div>'
@@ -829,7 +833,18 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                         + ursa_badge(p.get("ursa_last_inbound_call")) +
                         '</div>'
                         '</div>'
-                        if is_vrs else ""
+                        if is_vrs else
+                        # Convo Now: show monthly usage minutes
+                        '<div>'
+                        '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Monthly Usage (Convo Now)</div>'
+                        + (
+                            "".join(
+                                row(f"📆 {mk}", f"{sum(vals['convo']):.1f} min")
+                                for mk, vals in sorted(convo_monthly.items(), reverse=True)
+                                if vals.get("convo")
+                            ) or row("No data", "—")
+                        )
+                        + '</div>'
                     )
                     + '</div>'
                     '</div>'
