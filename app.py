@@ -830,11 +830,6 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
                 for rc in retention_cards:
                     border = f'border-left:4px solid {rc["seg_color"]};'
-                    ticket_badge = (
-                        f'<span style="background:{rc["seg_color"]};color:#fff;font-size:0.7rem;font-weight:700;'
-                        f'padding:2px 9px;border-radius:99px;margin-left:0.5rem;">🎫 Ticket Required</span>'
-                        if rc["seg"] in ("C", "D") else ""
-                    )
                     st.markdown(f"""
 <div style="background:#fff;border-radius:14px;box-shadow:0 1px 6px rgba(0,0,0,0.07);
             padding:1.25rem 1.5rem;margin-bottom:1rem;{border}">
@@ -842,7 +837,6 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
     <div>
       <span style="font-size:1rem;font-weight:800;color:#111827;">{rc['name']}</span>
       <span style="font-size:0.82rem;color:#6B7280;margin-left:0.5rem;">{rc['email']} · #{rc['number']}</span>
-      {ticket_badge}
     </div>
     <div style="display:flex;gap:0.5rem;align-items:center;">
       <span style="background:{rc['seg_color']}22;color:{rc['seg_color']};border:1px solid {rc['seg_color']}55;
