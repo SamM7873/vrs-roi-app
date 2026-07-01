@@ -878,6 +878,18 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                         if (r.get("properties", {}).get("number") or "").strip()
                     })
 
+                    # Fetch pipeline stage labels
+                    stage_labels = {}
+                    try:
+                        pr = requests.get(f"{BASE_URL}/crm/v3/pipelines/tickets",
+                                          headers=headers, timeout=15)
+                        if pr.status_code == 200:
+                            for pipeline in pr.json().get("results", []):
+                                for stage in pipeline.get("stages", []):
+                                    stage_labels[stage["id"]] = stage.get("label", stage["id"])
+                    except Exception:
+                        pass
+
                     ticket_rows = []
                     ticket_errors = []
                     seen_ids = set()
@@ -903,10 +915,12 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                                         seen_ids.add(t["id"])
                                         found += 1
                                         tp = t.get("properties", {})
+                                        raw_stage = tp.get("hs_pipeline_stage") or ""
                                         ticket_rows.append({
                                             "ID": t["id"],
                                             "Subject": tp.get("subject") or "—",
-                                            "Status": tp.get("hs_pipeline_stage") or "—",
+                                            "Status": stage_labels.get(raw_stage, raw_stage) or "—",
+                                            "_stage_id": raw_stage,
                                             "Priority": tp.get("hs_ticket_priority") or "—",
                                             "Category": tp.get("hs_ticket_category") or "—",
                                             "Created": (tp.get("createdate") or "")[:10],
@@ -964,7 +978,17 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     tickets_df = pd.DataFrame(ticket_rows)
 
                     PRIORITY_COLOR = {"high": "#EF4444", "medium": "#F59E0B", "low": "#3B82F6", "—": "#9CA3AF"}
-                    STATUS_COLOR  = {"1": "#3B82F6", "2": "#F59E0B", "3": "#2DB84B", "4": "#9CA3AF"}
+                    CLOSED_KEYWORDS = {"closed", "resolved", "done", "completed"}
+
+                    def _status_color(label):
+                        l = (label or "").lower()
+                        if any(k in l for k in CLOSED_KEYWORDS):
+                            return "#9CA3AF"
+                        if "wait" in l or "hold" in l or "pending" in l:
+                            return "#F59E0B"
+                        if "new" in l or "open" in l:
+                            return "#3B82F6"
+                        return "#6B7280"
 
                     def pri_badge(p):
                         c = PRIORITY_COLOR.get((p or "").lower(), "#9CA3AF")
@@ -972,14 +996,13 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                         return f'<span style="background:{c};color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:99px;letter-spacing:0.5px;">{label}</span>'
 
                     def status_badge(s):
-                        labels = {"1": "NEW", "2": "WAITING", "3": "CLOSED", "4": "ON HOLD"}
-                        c = STATUS_COLOR.get(str(s), "#6B7280")
-                        label = labels.get(str(s), str(s) or "—")
+                        c = _status_color(s)
+                        label = (s or "—").upper()
                         return f'<span style="background:{c}22;color:{c};border:1px solid {c}55;font-size:0.7rem;font-weight:700;padding:2px 9px;border-radius:99px;">{label}</span>'
 
                     total = len(tickets_df)
                     high  = (tickets_df["Priority"].str.lower() == "high").sum()
-                    open_ = (~tickets_df["Status"].isin(["3","4","CLOSED"])).sum()
+                    open_ = (~tickets_df["Status"].str.lower().apply(lambda x: any(k in x for k in CLOSED_KEYWORDS))).sum()
 
                     st.markdown(f"""
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
