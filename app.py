@@ -249,19 +249,6 @@ st.markdown("""
         background-color: #F2F2EE;
     }
 
-    /* ── Top announcement bar ── */
-    .announce-bar {
-        background-color: #1A4D2E;
-        color: #FFFFFF;
-        text-align: center;
-        font-size: 0.82rem;
-        font-weight: 500;
-        padding: 0.55rem 1rem;
-        border-radius: 10px;
-        margin-bottom: 0;
-        letter-spacing: 0.2px;
-    }
-
     /* ── Hero ── */
     .hero-wrap {
         background-color: #2DB84B;
@@ -447,8 +434,6 @@ st.markdown("""
         border-radius: 12px;
     }
 </style>
-
-<div class="announce-bar">Convo Call is your new VRS app — Switch today</div>
 
 <div class="hero-wrap">
     <div class="hero-logo">convo</div>
