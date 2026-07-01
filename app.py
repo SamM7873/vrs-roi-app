@@ -731,33 +731,21 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
     with st.spinner("Fetching all number records (45k+, may take a moment)..."):
         all_number_records = list_all(
             "2-40974683",
-            ["number", "email", "first_name", "last_name", "number_status", "usage_type", "number_created_at", "credit_type"]
+            ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type", "number_created_at", "credit_type"]
         )
 
     if not all_number_records:
         st.info("No number records found.")
     else:
-        # Step 1: get all unique VRS numbers from monthly records
-        with st.spinner("Fetching all VRS monthly records..."):
-            vrs_monthly = list_all(
-                "2-46246179",
-                ["number", "service_type"]
-            )
-        vrs_num_set = {
-            str(r["properties"].get("number") or "").strip()
-            for r in vrs_monthly
-            if norm(r["properties"].get("service_type") or "") == "vrs"
-        } - {""}
-
-        # Step 2: from number records, keep only those that are VRS AND Live
+        # Filter client-side: service_type = VRS AND number_status = Live
         rows = []
         for r in all_number_records:
             p = r.get("properties", {})
-            num = str(p.get("number") or "").strip()
-            if num not in vrs_num_set:
+            if norm(p.get("service_type") or "") != "vrs":
                 continue
             if norm(p.get("number_status") or "") != "live":
                 continue
+            num = str(p.get("number") or "").strip()
             created_raw = p.get("number_created_at") or ""
             try:
                 dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
@@ -771,6 +759,7 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                 "Number": num,
                 "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
                 "Email": p.get("email") or "",
+                "Service Type": p.get("service_type") or "-",
                 "Number Status": p.get("number_status") or "-",
                 "Usage Type": p.get("usage_type") or "-",
                 "Credit Type": p.get("credit_type") or "-",
