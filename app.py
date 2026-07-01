@@ -252,6 +252,7 @@ def build_report(matched_numbers):
         ))
 
     person_month_values = defaultdict(lambda: defaultdict(lambda: {"vrs": [], "cfz": [], "convo": []}))
+    num_month_values = defaultdict(lambda: defaultdict(float))  # num -> month -> vrs minutes
 
     for r in monthly_records:
         props = r.get("properties", {})
@@ -268,6 +269,7 @@ def build_report(matched_numbers):
         if service == "vrs":
             if usage is not None:
                 person_month_values[person_key][mkey]["vrs"].append(usage)
+                num_month_values[num][mkey] += usage
             if cfz is not None:
                 person_month_values[person_key][mkey]["cfz"].append(cfz)
         elif service == "convo now" and usage is not None:
@@ -312,7 +314,7 @@ def build_report(matched_numbers):
                          "Cost Diff ($)": round(cost_diff, 2), "Cost ROI": cost_roi})
 
     df = pd.DataFrame(rows)
-    return df, person_numbers, person_month_values, person_email_display
+    return df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status
 
 st.set_page_config(page_title="VRS / Convo Now Lookup", layout="wide", page_icon="📊")
 
@@ -729,7 +731,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
         st.warning("No number object record found for that search.")
     else:
         with st.spinner("Fetching monthly value data..."):
-            df, person_numbers, person_month_values, person_email_display = build_report(matched_numbers)
+            df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status = build_report(matched_numbers)
 
         st.write(f"Merged into {len(person_numbers)} person(s) by email")
 
@@ -771,11 +773,17 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             seg_counts = {"A": 0, "B": 0, "C": 0, "D": 0}
             retention_cards = []
 
-            for person_key in sorted(person_numbers.keys()):
-                months_data = person_month_values.get(person_key, {})
-                vrs_months = {
-                    mk: sum(v["vrs"]) for mk, v in months_data.items() if v.get("vrs")
-                }
+            # Analyze per VRS number (matching workflow logic)
+            for r in matched_numbers:
+                props = r.get("properties", {})
+                if norm(props.get("service_type") or "") != "vrs":
+                    continue
+
+                num = str(props.get("number") or "").strip()
+                if not num:
+                    continue
+
+                vrs_months = num_month_values.get(num, {})
                 if not vrs_months:
                     continue
 
@@ -790,7 +798,10 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     continue
 
                 baseline = sum(history) / len(history)
-                perf = (current_usage / baseline * 100) if baseline > 0 else 0
+                if baseline <= 0:
+                    continue
+
+                perf = current_usage / baseline * 100
 
                 if perf >= 90:   seg = "A"
                 elif perf >= 60: seg = "B"
@@ -800,20 +811,14 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 seg_counts[seg] += 1
                 meta = SEG_META[seg]
 
-                person_props = next(
-                    (r.get("properties", {}) for r in matched_numbers
-                     if (norm(r.get("properties", {}).get("email") or "") or f"num:{r.get('properties', {}).get('number') or ''}") == person_key),
-                    {}
-                )
-                name = f"{person_props.get('first_name') or ''} {person_props.get('last_name') or ''}".strip() or "—"
-                email = person_props.get("email") or "—"
-                number = person_props.get("number") or "—"
-                last_inbound = person_props.get("ursa_last_inbound_call") or "—"
-                last_outbound = person_props.get("ursa_last_outbound_call") or "—"
+                name = f"{props.get('first_name') or ''} {props.get('last_name') or ''}".strip() or "—"
+                email = props.get("email") or "—"
+                last_inbound = props.get("ursa_last_inbound_call") or "—"
+                last_outbound = props.get("ursa_last_outbound_call") or "—"
 
                 retention_cards.append({
-                    "person_key": person_key, "name": name, "email": email,
-                    "number": number, "seg": seg, "meta": meta,
+                    "name": name, "email": email, "number": num,
+                    "seg": seg, "meta": meta,
                     "baseline": baseline, "current_usage": current_usage,
                     "current_month": current_month, "perf": perf,
                     "history_months": len(history),
