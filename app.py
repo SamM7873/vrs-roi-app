@@ -242,7 +242,8 @@ def build_report(matched_numbers):
         chunk = distinct_numbers[i:i + 100]
         monthly_records.extend(fetch_all(
             "2-46246179",
-            ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type"],
+            ["number", "month_date", "usage_minutes", "cfz_minutes", "service_type",
+             "ursa_ios_minutes", "ursa_android_minutes", "ursa_web_minutes"],
             filter_groups=[
                 {"filters": [
                     {"propertyName": "number", "operator": "IN", "values": chunk}
@@ -252,6 +253,7 @@ def build_report(matched_numbers):
 
     person_month_values = defaultdict(lambda: defaultdict(lambda: {"vrs": [], "cfz": [], "convo": []}))
     num_month_values = defaultdict(lambda: defaultdict(float))  # num -> month -> vrs minutes
+    num_month_detail = defaultdict(lambda: defaultdict(lambda: {"ios": None, "android": None, "web": None, "cfz": None}))
 
     for r in monthly_records:
         props = r.get("properties", {})
@@ -263,6 +265,9 @@ def build_report(matched_numbers):
         mkey = month_key(props.get("month_date") or "")
         usage = to_float(props.get("usage_minutes"))
         cfz = to_float(props.get("cfz_minutes"))
+        ios = to_float(props.get("ursa_ios_minutes"))
+        android = to_float(props.get("ursa_android_minutes"))
+        web = to_float(props.get("ursa_web_minutes"))
         service = norm(props.get("service_type"))
 
         if service == "vrs":
@@ -275,6 +280,7 @@ def build_report(matched_numbers):
                     num_month_values[num][mkey] = 0.0
             if cfz is not None:
                 person_month_values[person_key][mkey]["cfz"].append(cfz)
+            num_month_detail[num][mkey] = {"ios": ios, "android": android, "web": web, "cfz": cfz}
         elif service == "convo now" and usage is not None:
             if norm(num_to_status.get(num) or "") != "suspended":
                 person_month_values[person_key][mkey]["convo"].append(usage)
@@ -317,7 +323,7 @@ def build_report(matched_numbers):
                          "Cost Diff ($)": round(cost_diff, 2), "Cost ROI": cost_roi})
 
     df = pd.DataFrame(rows)
-    return df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status
+    return df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail
 
 st.set_page_config(page_title="VRS / Convo Now Lookup", layout="wide", page_icon="📊")
 
@@ -735,7 +741,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
         st.warning("No number object record found for that search.")
     else:
         with st.spinner("Fetching monthly value data..."):
-            df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status = build_report(matched_numbers)
+            df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail = build_report(matched_numbers)
 
         st.write(f"Merged into {len(person_numbers)} person(s) by email")
 
@@ -832,11 +838,20 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
                 name = f"{props.get('first_name') or ''} {props.get('last_name') or ''}".strip() or "—"
                 email = props.get("email") or "—"
+                # Lifetime URSA/CFZ from number object
                 ursa_ios = to_float(props.get("ursa_ios_minutes"))
                 ursa_android = to_float(props.get("ursa_android_minutes"))
                 ursa_web = to_float(props.get("ursa_web_minutes"))
                 ursa_total = sum(x for x in [ursa_ios, ursa_android, ursa_web] if x is not None) or 0.0
                 cfz_min = to_float(props.get("cfz_minutes")) or 0.0
+
+                # Last month URSA/CFZ from monthly records
+                lm_detail = num_month_detail.get(num, {}).get(last_month_key, {}) if last_month_key else {}
+                lm_ios = lm_detail.get("ios")
+                lm_android = lm_detail.get("android")
+                lm_web = lm_detail.get("web")
+                lm_cfz = lm_detail.get("cfz")
+                lm_ursa_total = sum(x for x in [lm_ios, lm_android, lm_web] if x is not None) or 0.0
 
                 retention_cards.append({
                     "name": name, "email": email, "number": num,
@@ -848,6 +863,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     "last_month_key": last_month_key, "last_month_usage": last_month_usage, "last_month_perf": last_month_perf,
                     "ursa_ios": ursa_ios, "ursa_android": ursa_android, "ursa_web": ursa_web,
                     "ursa_total": ursa_total, "cfz_min": cfz_min,
+                    "lm_ios": lm_ios, "lm_android": lm_android, "lm_web": lm_web,
+                    "lm_cfz": lm_cfz, "lm_ursa_total": lm_ursa_total,
                 })
 
             # Summary metrics
@@ -882,7 +899,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       {meta['emoji']} Segment {rc['seg']} — {meta['label']}
     </span>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1rem;margin-bottom:1rem;">
+  <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:0.75rem;margin-bottom:1rem;">
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Historical Baseline</div>
       <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['baseline']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
@@ -909,12 +926,21 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       <div style="font-size:0.72rem;color:#9CA3AF;">vs baseline</div>
     </div>
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">URSA Minutes</div>
-      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['ursa_total']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
-      <div style="font-size:0.72rem;color:#9CA3AF;">iOS: {f"{rc['ursa_ios']:.1f}" if rc['ursa_ios'] is not None else "—"} · Android: {f"{rc['ursa_android']:.1f}" if rc['ursa_android'] is not None else "—"} · Web: {f"{rc['ursa_web']:.1f}" if rc['ursa_web'] is not None else "—"}</div>
+      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Mo. URSA</div>
+      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['lm_ursa_total']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
+      <div style="font-size:0.72rem;color:#9CA3AF;">iOS: {f"{rc['lm_ios']:.1f}" if rc['lm_ios'] is not None else "—"} · And: {f"{rc['lm_android']:.1f}" if rc['lm_android'] is not None else "—"} · Web: {f"{rc['lm_web']:.1f}" if rc['lm_web'] is not None else "—"}</div>
     </div>
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">CFZ Minutes</div>
+      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Mo. CFZ</div>
+      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{f"{rc['lm_cfz']:.1f}" if rc['lm_cfz'] is not None else "—"} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
+    </div>
+    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
+      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Lifetime URSA</div>
+      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['ursa_total']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
+      <div style="font-size:0.72rem;color:#9CA3AF;">iOS: {f"{rc['ursa_ios']:.1f}" if rc['ursa_ios'] is not None else "—"} · And: {f"{rc['ursa_android']:.1f}" if rc['ursa_android'] is not None else "—"} · Web: {f"{rc['ursa_web']:.1f}" if rc['ursa_web'] is not None else "—"}</div>
+    </div>
+    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
+      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Lifetime CFZ</div>
       <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['cfz_min']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
     </div>
   </div>
