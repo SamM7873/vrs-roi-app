@@ -798,14 +798,15 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 is_suspended = norm(p.get("number_status") or "") == "suspended"
                 show_monthly = not is_vrs and not is_suspended
                 grid_cols = "1fr 1fr 1fr" if (is_vrs or show_monthly) else "1fr 1fr"
-                html_card += (
-                    f'<div style="display:grid;grid-template-columns:{grid_cols};gap:1.25rem;">'
+                col1 = (
                     '<div>'
                     '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Contact</div>'
                     + row("📞 Phone", fmt(p.get("phone")))
                     + row("✉️ Email", fmt(p.get("email")))
                     + (row("🏠 Address", address) + row("🚨 Emergency", emergency) if is_vrs else "")
                     + '</div>'
+                )
+                col2 = (
                     '<div>'
                     '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Number Details</div>'
                     + row("📱 Number", fmt(p.get("number")))
@@ -813,45 +814,52 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     + row("🔧 Service Type", fmt(p.get("service_type")))
                     + row("👤 Usage Type", fmt(p.get("usage_type")))
                     + '</div>'
-                    + (
+                )
+                if is_vrs:
+                    col3 = (
                         '<div>'
                         '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">URSA Activity</div>'
                         '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
                         '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">First Login</div>'
-                        + ursa_badge(p.get("ursa_first_login")) +
-                        '</div>'
+                        + ursa_badge(p.get("ursa_first_login"))
+                        + '</div>'
                         '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
                         '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">1st Outbound Call</div>'
-                        + ursa_badge(p.get("ursa_first_outbound_call")) +
-                        '</div>'
+                        + ursa_badge(p.get("ursa_first_outbound_call"))
+                        + '</div>'
                         '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
                         '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">2nd Outbound Call</div>'
-                        + ursa_badge(p.get("ursa_second_outbound_call")) +
-                        '</div>'
+                        + ursa_badge(p.get("ursa_second_outbound_call"))
+                        + '</div>'
                         '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
                         '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Outbound Call</div>'
-                        + ursa_badge(p.get("ursa_last_outbound_call")) +
-                        '</div>'
+                        + ursa_badge(p.get("ursa_last_outbound_call"))
+                        + '</div>'
                         '<div style="padding:0.55rem 0;">'
                         '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Inbound Call</div>'
-                        + ursa_badge(p.get("ursa_last_inbound_call")) +
-                        '</div>'
-                        '</div>'
-                        if is_vrs else
-                        # Convo Now (non-suspended): show monthly usage minutes
-                        ('<div>'
-                        '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Monthly Usage (Convo Now)</div>'
-                        + (
-                            "".join(
-                                row(f"📆 {mk}", f"{sum(vals['convo']):.1f} min")
-                                for mk, vals in sorted(convo_monthly.items(), reverse=True)
-                                if vals.get("convo") and sum(vals["convo"]) > 0
-                            ) or row("No data", "—")
-                        )
+                        + ursa_badge(p.get("ursa_last_inbound_call"))
                         + '</div>'
-                        if show_monthly else "")
-                    + '</div>'
-                    '</div>'
+                        '</div>'
+                    )
+                elif show_monthly:
+                    convo_rows = "".join(
+                        row(f"📆 {mk}", f"{sum(vals['convo']):.1f} min")
+                        for mk, vals in sorted(convo_monthly.items(), reverse=True)
+                        if vals.get("convo") and sum(vals["convo"]) > 0
+                    ) or row("No data", "—")
+                    col3 = (
+                        '<div>'
+                        '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Monthly Usage (Convo Now)</div>'
+                        + convo_rows
+                        + '</div>'
+                    )
+                else:
+                    col3 = ""
+
+                html_card += (
+                    f'<div style="display:grid;grid-template-columns:{grid_cols};gap:1.25rem;">'
+                    + col1 + col2 + col3
+                    + '</div></div>'
                 )
                 st.markdown(html_card, unsafe_allow_html=True)
 
