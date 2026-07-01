@@ -747,9 +747,12 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             num = str(p.get("number") or "").strip()
             created_raw = p.get("createdate") or ""
             try:
-                created_fmt = datetime.fromisoformat(created_raw.replace("Z", "+00:00")).strftime("%m/%Y")
+                dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+                created_full = dt.strftime("%m/%d/%Y")
+                created_month = dt.strftime("%m/%Y")
             except Exception:
-                created_fmt = "-"
+                created_full = "-"
+                created_month = "-"
             rows.append({
                 "Number": num,
                 "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
@@ -757,7 +760,8 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                 "Usage Type": p.get("usage_type") or "-",
                 "Number Status": p.get("number_status") or "-",
                 "VRS": "Yes" if num in vrs_num_set else "No",
-                "Created": created_fmt,
+                "Number Created At": created_full,
+                "_created_month": created_month,
             })
 
         report_df = pd.DataFrame(rows)
@@ -774,26 +778,26 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
 
         st.markdown("#### Created by Month")
         created_counts = (
-            vrs_df[vrs_df["Created"] != "-"]
-            .groupby(["Created", "Usage Type"])
+            vrs_df[vrs_df["_created_month"] != "-"]
+            .groupby(["_created_month", "Usage Type"])
             .size()
             .reset_index(name="Count")
         )
         if not created_counts.empty:
-            created_counts["sort_key"] = pd.to_datetime(created_counts["Created"], format="%m/%Y", errors="coerce")
+            created_counts["sort_key"] = pd.to_datetime(created_counts["_created_month"], format="%m/%Y", errors="coerce")
             created_counts = created_counts.sort_values("sort_key")
             bar = alt.Chart(created_counts).mark_bar().encode(
-                x=alt.X("Created:N", sort=created_counts["Created"].tolist(), title="Month Created"),
+                x=alt.X("_created_month:N", sort=created_counts["_created_month"].tolist(), title="Month Created"),
                 y=alt.Y("Count:Q"),
                 color=alt.Color("Usage Type:N", scale=alt.Scale(
                     domain=["Personal", "Organization"],
                     range=["#2DB84B", "#1A4D2E"]
                 )),
-                tooltip=["Created", "Usage Type", "Count"]
+                tooltip=[alt.Tooltip("_created_month:N", title="Month"), "Usage Type", "Count"]
             ).properties(height=280)
             st.altair_chart(bar, use_container_width=True)
 
         st.markdown("#### Detail Table")
-        st.dataframe(vrs_df.drop(columns=["VRS"]), use_container_width=True)
+        st.dataframe(vrs_df.drop(columns=["VRS", "_created_month"]), use_container_width=True)
 
 st.markdown("</div></div>", unsafe_allow_html=True)
