@@ -22,7 +22,6 @@ if APP_PASSWORD:
     if not st.session_state.authenticated:
         st.markdown("""
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
             html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
             .stApp { background-color: #F2F2EE; }
             .login-hero {
