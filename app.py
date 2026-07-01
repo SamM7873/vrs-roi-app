@@ -766,77 +766,69 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             for r in matched_numbers:
                 p = r.get("properties", {})
                 name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
-                addr_parts = [p.get("address"), p.get("city"), p.get("state"), p.get("zip"), p.get("country")]
-                address = ", ".join(a for a in addr_parts if a) or "—"
-                emerg_parts = [p.get("emergency_address"), p.get("emergency_city"), p.get("emergency_state"), p.get("emergency_zip")]
-                emergency = ", ".join(a for a in emerg_parts if a) or "—"
+                addr_street = p.get("address") or ""
+                addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip") or p.get("postal_code")] if a)
+                address = "<br>".join(a for a in [addr_street, addr_csz] if a) or "—"
+
+                emerg_street = p.get("emergency_address") or ""
+                emerg_csz = ", ".join(a for a in [p.get("emergency_city"), p.get("emergency_state"), p.get("emergency_zip")] if a)
+                emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
                 initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
 
-                st.markdown(f"""
-                <div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.07);
-                            padding:1.5rem;margin-bottom:1.25rem;border:1px solid #F0F0EA;">
-                  <!-- Header -->
-                  <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;
-                              padding-bottom:1rem;border-bottom:2px solid #F0F0EA;">
-                    <div style="width:52px;height:52px;border-radius:50%;background:#2DB84B;
-                                display:flex;align-items:center;justify-content:center;
-                                font-size:1.2rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>
-                    <div>
-                      <div style="font-size:1.15rem;font-weight:800;color:#111827;">{name}</div>
-                      <div style="font-size:0.85rem;color:#6B7280;">{fmt(p.get('email'))}</div>
-                    </div>
-                    <div style="margin-left:auto;">{status_badge(p.get('number_status'))}</div>
-                  </div>
-
-                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;">
-                    <!-- Contact -->
-                    <div>
-                      <div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;
-                                  color:#2DB84B;margin-bottom:0.6rem;">Contact</div>
-                      {row("📞 Phone", fmt(p.get('phone')))}
-                      {row("✉️ Email", fmt(p.get('email')))}
-                      {row("🏠 Address", address)}
-                      {row("🚨 Emergency", emergency)}
-                    </div>
-
-                    <!-- Number Details -->
-                    <div>
-                      <div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;
-                                  color:#2DB84B;margin-bottom:0.6rem;">Number Details</div>
-                      {row("📱 Number", fmt(p.get('number')))}
-                      {row("📅 Created At", fmt(p.get('number_created_at')))}
-                      {row("🔧 Service Type", fmt(p.get('service_type')))}
-                      {row("👤 Usage Type", fmt(p.get('usage_type')))}
-                    </div>
-
-                    <!-- URSA Activity -->
-                    <div>
-                      <div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;
-                                  color:#2DB84B;margin-bottom:0.6rem;">URSA Activity</div>
-                      <div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
-                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">First Login</div>
-                        {ursa_badge(p.get('ursa_first_login'))}
-                      </div>
-                      <div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
-                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">1st Outbound Call</div>
-                        {ursa_badge(p.get('ursa_first_outbound_call'))}
-                      </div>
-                      <div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
-                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">2nd Outbound Call</div>
-                        {ursa_badge(p.get('ursa_second_outbound_call'))}
-                      </div>
-                      <div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
-                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Outbound Call</div>
-                        {ursa_badge(p.get('ursa_last_outbound_call'))}
-                      </div>
-                      <div style="padding:0.55rem 0;">
-                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Inbound Call</div>
-                        {ursa_badge(p.get('ursa_last_inbound_call'))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                """, unsafe_allow_html=True)
+                html_card = (
+                    '<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.07);'
+                    'padding:1.5rem;margin-bottom:1.25rem;border:1px solid #F0F0EA;">'
+                    '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;'
+                    'padding-bottom:1rem;border-bottom:2px solid #F0F0EA;">'
+                    f'<div style="width:52px;height:52px;border-radius:50%;background:#2DB84B;'
+                    f'display:flex;align-items:center;justify-content:center;'
+                    f'font-size:1.2rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
+                    f'<div><div style="font-size:1.15rem;font-weight:800;color:#111827;">{name}</div>'
+                    f'<div style="font-size:0.85rem;color:#6B7280;">{fmt(p.get("email"))}</div></div>'
+                    f'<div style="margin-left:auto;">{status_badge(p.get("number_status"))}</div>'
+                    '</div>'
+                    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;">'
+                    '<div>'
+                    '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Contact</div>'
+                    + row("📞 Phone", fmt(p.get("phone")))
+                    + row("✉️ Email", fmt(p.get("email")))
+                    + row("🏠 Address", address)
+                    + row("🚨 Emergency", emergency)
+                    + '</div>'
+                    '<div>'
+                    '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Number Details</div>'
+                    + row("📱 Number", fmt(p.get("number")))
+                    + row("📅 Created At", fmt(p.get("number_created_at")))
+                    + row("🔧 Service Type", fmt(p.get("service_type")))
+                    + row("👤 Usage Type", fmt(p.get("usage_type")))
+                    + '</div>'
+                    '<div>'
+                    '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">URSA Activity</div>'
+                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">First Login</div>'
+                    + ursa_badge(p.get("ursa_first_login")) +
+                    '</div>'
+                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">1st Outbound Call</div>'
+                    + ursa_badge(p.get("ursa_first_outbound_call")) +
+                    '</div>'
+                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">2nd Outbound Call</div>'
+                    + ursa_badge(p.get("ursa_second_outbound_call")) +
+                    '</div>'
+                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Outbound Call</div>'
+                    + ursa_badge(p.get("ursa_last_outbound_call")) +
+                    '</div>'
+                    '<div style="padding:0.55rem 0;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Inbound Call</div>'
+                    + ursa_badge(p.get("ursa_last_inbound_call")) +
+                    '</div>'
+                    '</div>'
+                    '</div>'
+                    '</div>'
+                )
+                st.markdown(html_card, unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)  # close content-card
 
