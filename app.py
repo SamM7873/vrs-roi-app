@@ -703,17 +703,15 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
     with st.spinner("Fetching number records..."):
         all_number_records = fetch_all(
             "2-40974683",
-            ["number", "email", "first_name", "last_name", "number_status", "usage_type", "number_created_at", "credit_type"],
-            filter_groups=[{"filters": [
-                {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-            ]}]
+            ["number", "email", "first_name", "last_name", "number_status", "usage_type", "number_created_at", "credit_type"]
         )
 
-    # Filter client-side for live + personal/organization
+    # Filter client-side: live, personal/organization, non-guest
     live_numbers = [
         r for r in all_number_records
         if norm(r["properties"].get("number_status") or "") == "live"
         and norm(r["properties"].get("usage_type") or "") in ("personal", "organization")
+        and norm(r["properties"].get("credit_type") or "") != "guest"
     ]
 
     if not live_numbers:
