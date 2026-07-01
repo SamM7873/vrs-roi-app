@@ -77,10 +77,27 @@ if APP_PASSWORD:
                 # Capture IP, location, device at login time
                 try:
                     hdrs = st.context.headers
-                    ip = hdrs.get("X-Forwarded-For", hdrs.get("X-Real-Ip", "Unknown"))
-                    if ip and "," in ip:
-                        ip = ip.split(",")[0].strip()
                     ua = hdrs.get("User-Agent", "Unknown")
+                    # Try multiple headers to find real public IP
+                    ip = "Unknown"
+                    def is_private(addr):
+                        return addr.startswith(("10.", "172.", "192.168.", "127.", "::1", "fc", "fd"))
+                    for header in ["X-Forwarded-For", "X-Real-Ip", "CF-Connecting-IP", "True-Client-IP", "X-Client-IP"]:
+                        val = hdrs.get(header, "")
+                        if val:
+                            for candidate in val.split(","):
+                                candidate = candidate.strip()
+                                if candidate and not is_private(candidate):
+                                    ip = candidate
+                                    break
+                        if ip != "Unknown":
+                            break
+                    # Fallback: try fetching our own public IP via external service
+                    if ip == "Unknown":
+                        try:
+                            ip = requests.get("https://api.ipify.org", timeout=3).text.strip()
+                        except Exception:
+                            pass
                 except Exception:
                     ip, ua = "Unknown", "Unknown"
                 # Geo lookup
