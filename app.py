@@ -892,7 +892,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       {meta['emoji']} Segment {rc['seg']} — {meta['label']}
     </span>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:0.75rem;margin-bottom:1rem;">
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.75rem;margin-bottom:1rem;">
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Historical Baseline</div>
       <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['baseline']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
@@ -917,20 +917,6 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Performance</div>
       <div style="font-size:1.3rem;font-weight:800;color:{color};">{rc['perf']:.1f}%</div>
       <div style="font-size:0.72rem;color:#9CA3AF;">vs baseline</div>
-    </div>
-    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Mo. CFZ</div>
-      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{f"{rc['lm_cfz']:.1f}" if rc['lm_cfz'] is not None else "—"} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
-      <div style="font-size:0.72rem;color:#9CA3AF;">{rc['last_month_key'] or "—"}</div>
-    </div>
-    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Lifetime URSA</div>
-      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['ursa_total']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
-      <div style="font-size:0.72rem;color:#9CA3AF;">iOS: {f"{rc['ursa_ios']:.1f}" if rc['ursa_ios'] is not None else "—"} · And: {f"{rc['ursa_android']:.1f}" if rc['ursa_android'] is not None else "—"} · Web: {f"{rc['ursa_web']:.1f}" if rc['ursa_web'] is not None else "—"}</div>
-    </div>
-    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Lifetime CFZ</div>
-      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['cfz_min']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
     </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
