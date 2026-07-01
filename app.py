@@ -112,10 +112,12 @@ if APP_PASSWORD:
                     "ua": ua, "time": login_time
                 }
                 # Send email notification
-                if EMAIL_SENDER and EMAIL_PASSWORD and EMAIL_RECEIVER:
+                email_status = ""
+                if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
+                    email_status = "⚠️ Email secrets not configured"
+                else:
                     try:
-                        body = f"""
-New login detected on VRS ROI App.
+                        body = f"""New login detected on VRS ROI App.
 
 Time:       {login_time}
 IP Address: {ip}
@@ -124,14 +126,16 @@ Device:     {device}
 User Agent: {ua}
 """
                         msg = MIMEText(body)
-                        msg["Subject"] = f"🔐 New Login — VRS ROI App ({device}, {location})"
+                        msg["Subject"] = f"New Login - VRS ROI App ({device}, {location})"
                         msg["From"] = EMAIL_SENDER
                         msg["To"] = EMAIL_RECEIVER
                         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
                             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
                             server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
-                    except Exception:
-                        pass
+                        email_status = "✅ Email sent"
+                    except Exception as e:
+                        email_status = f"❌ Email failed: {e}"
+                st.session_state.login_info["email_status"] = email_status
                 st.rerun()
             else:
                 st.error("Incorrect password.")
@@ -392,7 +396,8 @@ if "login_info" in st.session_state:
   <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">🕐 {li['time']}</div>
   <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">🌐 {li['ip']}</div>
   <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">📍 {li['location']}</div>
-  <div style="font-size:0.8rem;color:#374151;">💻 {li['device']}</div>
+  <div style="font-size:0.8rem;color:#374151;margin-bottom:0.3rem;">💻 {li['device']}</div>
+  <div style="font-size:0.75rem;color:#6B7280;">{li.get('email_status','')}</div>
 </div>
 """, unsafe_allow_html=True)
 
