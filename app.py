@@ -732,8 +732,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
         st.write(f"Merged into {len(person_numbers)} person(s) by email")
 
-        contact_tab, summary_tab, vrs_zero_tab, report_tab = st.tabs([
-            "Contact Card", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Detailed Report"
+        contact_tab, tickets_tab, summary_tab, vrs_zero_tab, report_tab = st.tabs([
+            "Contact Card", "Tickets", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Detailed Report"
         ])
         with report_tab:
             render_table_and_summary(df)
@@ -835,6 +835,105 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     '</div>'
                 )
                 st.markdown(html_card, unsafe_allow_html=True)
+
+        with tickets_tab:
+            # Collect unique emails from matched numbers
+            emails = list({
+                (r.get("properties", {}).get("email") or "").strip().lower()
+                for r in matched_numbers
+                if (r.get("properties", {}).get("email") or "").strip()
+            })
+
+            if not emails:
+                st.info("No email addresses found to look up tickets.")
+            else:
+                with st.spinner("Looking up contacts and tickets..."):
+                    # Step 1: find HubSpot contact IDs by email
+                    contact_ids = []
+                    for email in emails:
+                        resp = requests.post(
+                            f"{BASE_URL}/crm/v3/objects/contacts/search",
+                            headers=headers,
+                            json={"filterGroups": [{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}],
+                                  "properties": ["email"], "limit": 10},
+                            timeout=30,
+                        )
+                        if resp.status_code == 200:
+                            for c in resp.json().get("results", []):
+                                contact_ids.append(c["id"])
+                        time.sleep(0.26)
+
+                    # Step 2: get ticket IDs associated with each contact
+                    ticket_ids = []
+                    for cid in contact_ids:
+                        resp = requests.get(
+                            f"{BASE_URL}/crm/v3/objects/contacts/{cid}/associations/tickets",
+                            headers=headers, timeout=30,
+                        )
+                        if resp.status_code == 200:
+                            for t in resp.json().get("results", []):
+                                ticket_ids.append(t["id"])
+                        time.sleep(0.26)
+
+                    ticket_ids = list(set(ticket_ids))
+
+                    # Step 3: fetch ticket details
+                    ticket_rows = []
+                    for i in range(0, len(ticket_ids), 100):
+                        chunk = ticket_ids[i:i+100]
+                        resp = requests.post(
+                            f"{BASE_URL}/crm/v3/objects/tickets/search",
+                            headers=headers,
+                            json={
+                                "filterGroups": [{"filters": [{"propertyName": "hs_object_id", "operator": "IN", "values": chunk}]}],
+                                "properties": ["subject", "hs_pipeline_stage", "hs_ticket_priority",
+                                               "createdate", "hs_lastmodifieddate", "content", "hs_ticket_category"],
+                                "limit": 100,
+                            },
+                            timeout=30,
+                        )
+                        if resp.status_code == 200:
+                            for t in resp.json().get("results", []):
+                                tp = t.get("properties", {})
+                                ticket_rows.append({
+                                    "ID": t["id"],
+                                    "Subject": tp.get("subject") or "—",
+                                    "Status": tp.get("hs_pipeline_stage") or "—",
+                                    "Priority": tp.get("hs_ticket_priority") or "—",
+                                    "Category": tp.get("hs_ticket_category") or "—",
+                                    "Created": (tp.get("createdate") or "")[:10],
+                                    "Last Modified": (tp.get("hs_lastmodifieddate") or "")[:10],
+                                    "Description": tp.get("content") or "—",
+                                })
+                        time.sleep(0.26)
+
+                if not ticket_rows:
+                    st.info("No tickets found for this contact.")
+                else:
+                    tickets_df = pd.DataFrame(ticket_rows)
+
+                    # Summary metrics
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Total Tickets", len(tickets_df))
+                    c2.metric("Priorities", tickets_df["Priority"].nunique())
+                    c3.metric("Statuses", tickets_df["Status"].nunique())
+
+                    # Priority breakdown
+                    if len(tickets_df) > 0:
+                        pri_counts = tickets_df["Priority"].value_counts().reset_index()
+                        pri_counts.columns = ["Priority", "Count"]
+                        pri_chart = alt.Chart(pri_counts).mark_bar(
+                            color="#2DB84B", cornerRadiusTopLeft=4, cornerRadiusTopRight=4
+                        ).encode(
+                            x=alt.X("Priority:N", title=None),
+                            y=alt.Y("Count:Q", title="Tickets"),
+                            tooltip=["Priority", "Count"],
+                        ).properties(height=200)
+                        st.markdown("#### Tickets by Priority")
+                        st.altair_chart(pri_chart, use_container_width=True)
+
+                    st.markdown("#### All Tickets")
+                    st.dataframe(tickets_df, use_container_width=True)
 
 st.markdown('</div>', unsafe_allow_html=True)  # close content-card
 
