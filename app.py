@@ -765,10 +765,10 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             }
 
             INTERPRETATION = {
-                "A": lambda rc: f"Consumer is using {rc['perf']:.1f}% of their historical baseline. Usage is consistent and healthy.",
-                "B": lambda rc: f"Consumer is using {rc['perf']:.1f}% of their historical baseline. Slight decline — continue monitoring.",
-                "C": lambda rc: f"Consumer is using {rc['perf']:.1f}% of their historical baseline. Meaningful drop in usage. Requires monitoring and possible outreach.",
-                "D": lambda rc: f"Consumer is using {rc['perf']:.1f}% of their historical baseline. Severe drop. Immediate attention needed to prevent churn.",
+                "A": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is growing or stable — healthy engagement.",
+                "B": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is slightly declining — continue monitoring.",
+                "C": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is declining — requires outreach and support.",
+                "D": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is at risk — immediate action needed to prevent churn.",
             }
 
             st.markdown("#### VRS Consumer Retention Analysis")
@@ -815,10 +815,12 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 last_month_perf = (last_month_usage / baseline * 100) if (last_month_usage is not None and baseline > 0) else None
                 perf = (current_usage / baseline * 100) if current_usage > 0 else 0.0
 
-                if perf >= 90:   seg = "A"
-                elif perf >= 60: seg = "B"
-                elif perf >= 30: seg = "C"
-                else:            seg = "D"
+                # Segment based on last month performance (current month is in-progress)
+                seg_perf = last_month_perf if last_month_perf is not None else 0.0
+                if seg_perf >= 90:   seg = "A"
+                elif seg_perf >= 60: seg = "B"
+                elif seg_perf >= 30: seg = "C"
+                else:                seg = "D"
 
                 seg_counts[seg] += 1
                 meta = SEG_META[seg]
