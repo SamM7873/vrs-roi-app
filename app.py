@@ -866,27 +866,36 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                             contact_errors.append(f"Contact search error {resp.status_code}: {resp.text[:200]}")
                         time.sleep(0.26)
 
-                    # Step 2: search tickets directly by associations.contact
+                    # Collect phone numbers from matched numbers
+                    phones = list({
+                        (r.get("properties", {}).get("phone") or "").strip()
+                        for r in matched_numbers
+                        if (r.get("properties", {}).get("phone") or "").strip()
+                    })
+                    vrs_numbers = list({
+                        (r.get("properties", {}).get("number") or "").strip()
+                        for r in matched_numbers
+                        if (r.get("properties", {}).get("number") or "").strip()
+                    })
+
                     ticket_rows = []
                     ticket_errors = []
                     seen_ids = set()
-                    for cid in contact_ids:
+
+                    TICKET_PROPS = ["subject", "hs_pipeline_stage", "hs_ticket_priority",
+                                    "createdate", "hs_lastmodifieddate", "content",
+                                    "hs_ticket_category", "email", "phone"]
+
+                    def _collect_tickets(filter_groups):
                         after = None
                         while True:
-                            body = {
-                                "filterGroups": [{"filters": [{"propertyName": "associations.contact", "operator": "EQ", "value": cid}]}],
-                                "properties": ["subject", "hs_pipeline_stage", "hs_ticket_priority",
-                                               "createdate", "hs_lastmodifieddate", "content", "hs_ticket_category"],
-                                "limit": 100,
-                            }
+                            body = {"filterGroups": filter_groups, "properties": TICKET_PROPS, "limit": 100}
                             if after:
                                 body["after"] = after
-                            resp = requests.post(
-                                f"{BASE_URL}/crm/v3/objects/tickets/search",
-                                headers=headers, json=body, timeout=30,
-                            )
-                            if resp.status_code == 200:
-                                data = resp.json()
+                            r = requests.post(f"{BASE_URL}/crm/v3/objects/tickets/search",
+                                              headers=headers, json=body, timeout=30)
+                            if r.status_code == 200:
+                                data = r.json()
                                 for t in data.get("results", []):
                                     if t["id"] not in seen_ids:
                                         seen_ids.add(t["id"])
@@ -901,14 +910,33 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                                             "Last Modified": (tp.get("hs_lastmodifieddate") or "")[:10],
                                             "Description": tp.get("content") or "—",
                                         })
-                                paging = data.get("paging", {}).get("next", {})
-                                after = paging.get("after")
+                                after = data.get("paging", {}).get("next", {}).get("after")
                                 if not after:
                                     break
                             else:
-                                ticket_errors.append(f"Ticket search error {resp.status_code}: {resp.text[:200]}")
+                                ticket_errors.append(f"Ticket search error {r.status_code}: {r.text[:200]}")
                                 break
                             time.sleep(0.26)
+
+                    # Search by contact association
+                    for cid in contact_ids:
+                        _collect_tickets([{"filters": [{"propertyName": "associations.contact", "operator": "EQ", "value": cid}]}])
+                        time.sleep(0.26)
+
+                    # Search by email property on ticket
+                    for email in emails:
+                        _collect_tickets([{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}])
+                        time.sleep(0.26)
+
+                    # Search by phone property on ticket
+                    for phone in phones:
+                        _collect_tickets([{"filters": [{"propertyName": "phone", "operator": "EQ", "value": phone}]}])
+                        time.sleep(0.26)
+
+                    # Search by VRS number in subject or content
+                    for num in vrs_numbers:
+                        _collect_tickets([{"filters": [{"propertyName": "subject", "operator": "CONTAINS_TOKEN", "value": num}]}])
+                        time.sleep(0.26)
 
                 for e in contact_errors + ticket_errors:
                     st.error(e)
