@@ -695,26 +695,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if st.button("Load Numbers Report", key="load_numbers_report"):
-    with st.spinner("Fetching live number records..."):
-        live_numbers = fetch_all(
+    with st.spinner("Fetching number records..."):
+        all_number_records = fetch_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name", "number_status", "usage_type", "createdate", "credit_type"],
-            filter_groups=[
-                {"filters": [
-                    {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
-                    {"propertyName": "usage_type", "operator": "EQ", "value": "Personal"},
-                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                ]},
-                {"filters": [
-                    {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
-                    {"propertyName": "usage_type", "operator": "EQ", "value": "Organization"},
-                    {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                ]}
-            ]
+            filter_groups=[{"filters": [
+                {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+            ]}]
         )
 
+    # Filter client-side for live + personal/organization
+    live_numbers = [
+        r for r in all_number_records
+        if norm(r["properties"].get("number_status") or "") == "live"
+        and norm(r["properties"].get("usage_type") or "") in ("personal", "organization")
+    ]
+
     if not live_numbers:
-        st.info("No live numbers found.")
+        st.info("No live Personal or Organization numbers found.")
     else:
         all_nums = [str(r["properties"].get("number") or "").strip() for r in live_numbers]
         all_nums = [n for n in all_nums if n]
