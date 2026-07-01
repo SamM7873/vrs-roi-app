@@ -844,10 +844,10 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             total_analyzed = sum(seg_counts.values())
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Analyzed", total_analyzed)
-            c2.metric(f"🔥 A — HOT",  seg_counts["A"])
-            c3.metric(f"🌡️ B — WARM", seg_counts["B"])
-            c4.metric(f"❄️ C — COOL", seg_counts["C"])
-            c5.metric(f"🧊 D — COLD", seg_counts["D"])
+            c2.metric(f"📈 A — GROWTH",   seg_counts["A"])
+            c3.metric(f"✅ B — STABLE",   seg_counts["B"])
+            c4.metric(f"⚠️ C — DECLINING", seg_counts["C"])
+            c5.metric(f"🚨 D — AT RISK",  seg_counts["D"])
 
             if not retention_cards:
                 st.info("No retention data available — insufficient historical usage.")
