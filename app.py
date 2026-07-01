@@ -664,14 +664,23 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
     render_charts(filtered_person_numbers, person_month_values, person_email_display)
 
 
-st.markdown('<div class="search-card"><div class="search-card-title">Search</div>', unsafe_allow_html=True)
-col1, col2, col3 = st.columns(3)
+st.markdown("""
+<div class="search-card">
+  <div class="search-card-title">🔍 Search</div>
+  <div style="font-size:0.85rem;color:#6B7280;margin-bottom:1rem;">
+    Search by phone number, email address, or name
+  </div>
+""", unsafe_allow_html=True)
+col1, col2, col3 = st.columns([2, 1, 1])
 with col1:
-    search_input = st.text_input("Number(s) or email(s)", placeholder="e.g. 5551234567, user@email.com")
+    search_input = st.text_input("Number(s) or email(s)", placeholder="e.g. 5551234567, user@email.com", label_visibility="collapsed")
+    st.caption("📞 Number or ✉️ Email")
 with col2:
-    first_name_input = st.text_input("First name", placeholder="e.g. Jane")
+    first_name_input = st.text_input("First name", placeholder="First name", label_visibility="collapsed")
+    st.caption("👤 First name")
 with col3:
-    last_name_input = st.text_input("Last name", placeholder="e.g. Smith")
+    last_name_input = st.text_input("Last name", placeholder="Last name", label_visibility="collapsed")
+    st.caption("👤 Last name")
 st.markdown('</div>', unsafe_allow_html=True)
 
 if st.button("Search") and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
@@ -734,6 +743,26 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
         with vrs_zero_tab:
             render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
         with contact_tab:
+            def fmt(v):
+                return v if v else "—"
+
+            def status_badge(status):
+                color = "#2DB84B" if norm(status) == "live" else "#6B7280"
+                return f'<span style="background:{color};color:#fff;padding:2px 10px;border-radius:999px;font-size:0.75rem;font-weight:700;">{status or "—"}</span>'
+
+            def ursa_badge(v):
+                if v:
+                    return f'<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:999px;font-size:0.75rem;font-weight:600;">✓ {v}</span>'
+                return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 10px;border-radius:999px;font-size:0.75rem;">Not yet</span>'
+
+            def row(label, value):
+                return f"""
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;
+                            padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
+                  <span style="color:#6B7280;font-size:0.82rem;font-weight:500;min-width:160px;">{label}</span>
+                  <span style="color:#111827;font-size:0.85rem;font-weight:500;text-align:right;">{value}</span>
+                </div>"""
+
             for r in matched_numbers:
                 p = r.get("properties", {})
                 name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
@@ -741,33 +770,73 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 address = ", ".join(a for a in addr_parts if a) or "—"
                 emerg_parts = [p.get("emergency_address"), p.get("emergency_city"), p.get("emergency_state"), p.get("emergency_zip")]
                 emergency = ", ".join(a for a in emerg_parts if a) or "—"
+                initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
 
-                def fmt(v):
-                    return v if v else "—"
+                st.markdown(f"""
+                <div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.07);
+                            padding:1.5rem;margin-bottom:1.25rem;border:1px solid #F0F0EA;">
+                  <!-- Header -->
+                  <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;
+                              padding-bottom:1rem;border-bottom:2px solid #F0F0EA;">
+                    <div style="width:52px;height:52px;border-radius:50%;background:#2DB84B;
+                                display:flex;align-items:center;justify-content:center;
+                                font-size:1.2rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>
+                    <div>
+                      <div style="font-size:1.15rem;font-weight:800;color:#111827;">{name}</div>
+                      <div style="font-size:0.85rem;color:#6B7280;">{fmt(p.get('email'))}</div>
+                    </div>
+                    <div style="margin-left:auto;">{status_badge(p.get('number_status'))}</div>
+                  </div>
 
-                with st.expander(f"{name} — {fmt(p.get('number'))}", expanded=len(matched_numbers) == 1):
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        st.markdown("**Contact**")
-                        st.markdown(f"**Name:** {name}")
-                        st.markdown(f"**Email:** {fmt(p.get('email'))}")
-                        st.markdown(f"**Phone:** {fmt(p.get('phone'))}")
-                        st.markdown(f"**Address:** {address}")
-                        st.markdown(f"**Emergency Address:** {emergency}")
-                        st.markdown("---")
-                        st.markdown("**Number Details**")
-                        st.markdown(f"**Number:** {fmt(p.get('number'))}")
-                        st.markdown(f"**Number Created At:** {fmt(p.get('number_created_at'))}")
-                        st.markdown(f"**Number Status:** {fmt(p.get('number_status'))}")
-                        st.markdown(f"**Service Type:** {fmt(p.get('service_type'))}")
-                        st.markdown(f"**Usage Type:** {fmt(p.get('usage_type'))}")
-                    with c2:
-                        st.markdown("**URSA Activity**")
-                        st.markdown(f"**First Login:** {fmt(p.get('ursa_first_login'))}")
-                        st.markdown(f"**First Outbound Call:** {fmt(p.get('ursa_first_outbound_call'))}")
-                        st.markdown(f"**Second Outbound Call:** {fmt(p.get('ursa_second_outbound_call'))}")
-                        st.markdown(f"**Last Outbound Call:** {fmt(p.get('ursa_last_outbound_call'))}")
-                        st.markdown(f"**Last Inbound Call:** {fmt(p.get('ursa_last_inbound_call'))}")
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;">
+                    <!-- Contact -->
+                    <div>
+                      <div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                                  color:#2DB84B;margin-bottom:0.6rem;">Contact</div>
+                      {row("📞 Phone", fmt(p.get('phone')))}
+                      {row("✉️ Email", fmt(p.get('email')))}
+                      {row("🏠 Address", address)}
+                      {row("🚨 Emergency", emergency)}
+                    </div>
+
+                    <!-- Number Details -->
+                    <div>
+                      <div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                                  color:#2DB84B;margin-bottom:0.6rem;">Number Details</div>
+                      {row("📱 Number", fmt(p.get('number')))}
+                      {row("📅 Created At", fmt(p.get('number_created_at')))}
+                      {row("🔧 Service Type", fmt(p.get('service_type')))}
+                      {row("👤 Usage Type", fmt(p.get('usage_type')))}
+                    </div>
+
+                    <!-- URSA Activity -->
+                    <div>
+                      <div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                                  color:#2DB84B;margin-bottom:0.6rem;">URSA Activity</div>
+                      <div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
+                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">First Login</div>
+                        {ursa_badge(p.get('ursa_first_login'))}
+                      </div>
+                      <div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
+                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">1st Outbound Call</div>
+                        {ursa_badge(p.get('ursa_first_outbound_call'))}
+                      </div>
+                      <div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
+                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">2nd Outbound Call</div>
+                        {ursa_badge(p.get('ursa_second_outbound_call'))}
+                      </div>
+                      <div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
+                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Outbound Call</div>
+                        {ursa_badge(p.get('ursa_last_outbound_call'))}
+                      </div>
+                      <div style="padding:0.55rem 0;">
+                        <div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Inbound Call</div>
+                        {ursa_badge(p.get('ursa_last_inbound_call'))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)  # close content-card
 
