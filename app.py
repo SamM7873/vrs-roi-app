@@ -732,8 +732,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
         st.write(f"Merged into {len(person_numbers)} person(s) by email")
 
-        report_tab, summary_tab, vrs_zero_tab, contact_tab = st.tabs([
-            "Detailed Report", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Contact Card"
+        contact_tab, summary_tab, vrs_zero_tab, report_tab = st.tabs([
+            "Contact Card", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Detailed Report"
         ])
         with report_tab:
             render_table_and_summary(df)
@@ -796,8 +796,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Contact</div>'
                     + row("📞 Phone", fmt(p.get("phone")))
                     + row("✉️ Email", fmt(p.get("email")))
-                    + row("🏠 Address", address)
-                    + row("🚨 Emergency", emergency)
+                    + (row("🏠 Address", address) + row("🚨 Emergency", emergency) if is_vrs else "")
                     + '</div>'
                     '<div>'
                     '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Number Details</div>'
