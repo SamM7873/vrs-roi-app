@@ -942,32 +942,75 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     st.error(e)
 
                 if not ticket_rows:
-                    st.info("No tickets found for this contact.")
+                    st.markdown("""
+<div style="text-align:center;padding:3rem 1rem;">
+  <div style="font-size:2.5rem;margin-bottom:0.5rem;">🎫</div>
+  <div style="font-size:1.1rem;font-weight:600;color:#374151;margin-bottom:0.25rem;">No tickets found</div>
+  <div style="font-size:0.85rem;color:#9CA3AF;">No support tickets are linked to this contact.</div>
+</div>""", unsafe_allow_html=True)
                 else:
                     tickets_df = pd.DataFrame(ticket_rows)
 
-                    # Summary metrics
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Total Tickets", len(tickets_df))
-                    c2.metric("Priorities", tickets_df["Priority"].nunique())
-                    c3.metric("Statuses", tickets_df["Status"].nunique())
+                    PRIORITY_COLOR = {"high": "#EF4444", "medium": "#F59E0B", "low": "#3B82F6", "—": "#9CA3AF"}
+                    STATUS_COLOR  = {"1": "#3B82F6", "2": "#F59E0B", "3": "#2DB84B", "4": "#9CA3AF"}
 
-                    # Priority breakdown
-                    if len(tickets_df) > 0:
-                        pri_counts = tickets_df["Priority"].value_counts().reset_index()
-                        pri_counts.columns = ["Priority", "Count"]
-                        pri_chart = alt.Chart(pri_counts).mark_bar(
-                            color="#2DB84B", cornerRadiusTopLeft=4, cornerRadiusTopRight=4
-                        ).encode(
-                            x=alt.X("Priority:N", title=None),
-                            y=alt.Y("Count:Q", title="Tickets"),
-                            tooltip=["Priority", "Count"],
-                        ).properties(height=200)
-                        st.markdown("#### Tickets by Priority")
-                        st.altair_chart(pri_chart, use_container_width=True)
+                    def pri_badge(p):
+                        c = PRIORITY_COLOR.get((p or "").lower(), "#9CA3AF")
+                        label = (p or "—").upper()
+                        return f'<span style="background:{c};color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:99px;letter-spacing:0.5px;">{label}</span>'
 
-                    st.markdown("#### All Tickets")
-                    st.dataframe(tickets_df, use_container_width=True)
+                    def status_badge(s):
+                        labels = {"1": "NEW", "2": "WAITING", "3": "CLOSED", "4": "ON HOLD"}
+                        c = STATUS_COLOR.get(str(s), "#6B7280")
+                        label = labels.get(str(s), str(s) or "—")
+                        return f'<span style="background:{c}22;color:{c};border:1px solid {c}55;font-size:0.7rem;font-weight:700;padding:2px 9px;border-radius:99px;">{label}</span>'
+
+                    total = len(tickets_df)
+                    high  = (tickets_df["Priority"].str.lower() == "high").sum()
+                    open_ = (~tickets_df["Status"].isin(["3","4","CLOSED"])).sum()
+
+                    st.markdown(f"""
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
+  <div style="background:linear-gradient(135deg,#2DB84B,#22a040);border-radius:14px;padding:1.25rem 1.5rem;color:#fff;">
+    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">Total Tickets</div>
+    <div style="font-size:2rem;font-weight:900;">{total}</div>
+  </div>
+  <div style="background:linear-gradient(135deg,#EF4444,#dc2626);border-radius:14px;padding:1.25rem 1.5rem;color:#fff;">
+    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">High Priority</div>
+    <div style="font-size:2rem;font-weight:900;">{high}</div>
+  </div>
+  <div style="background:linear-gradient(135deg,#3B82F6,#2563eb);border-radius:14px;padding:1.25rem 1.5rem;color:#fff;">
+    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">Open</div>
+    <div style="font-size:2rem;font-weight:900;">{open_}</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+                    cards_html = '<div style="display:flex;flex-direction:column;gap:0.85rem;">'
+                    for row in ticket_rows:
+                        desc = row["Description"]
+                        desc_snippet = (desc[:160] + "…") if len(desc) > 160 else desc
+                        cards_html += f"""
+<div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:1.25rem 1.5rem;
+            box-shadow:0 1px 4px rgba(0,0,0,0.05);transition:box-shadow 0.2s;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:0.72rem;font-weight:600;color:#9CA3AF;letter-spacing:0.5px;margin-bottom:0.2rem;">#{row['ID']}</div>
+      <div style="font-size:1rem;font-weight:700;color:#111827;margin-bottom:0.5rem;word-break:break-word;">{row['Subject']}</div>
+      <div style="font-size:0.83rem;color:#6B7280;line-height:1.5;">{desc_snippet}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;white-space:nowrap;">
+      {pri_badge(row['Priority'])}
+      {status_badge(row['Status'])}
+    </div>
+  </div>
+  <div style="display:flex;gap:1.5rem;margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid #F3F4F6;flex-wrap:wrap;">
+    <span style="font-size:0.78rem;color:#6B7280;">📂 <b>{row['Category']}</b></span>
+    <span style="font-size:0.78rem;color:#6B7280;">📅 Created: <b>{row['Created']}</b></span>
+    <span style="font-size:0.78rem;color:#6B7280;">✏️ Updated: <b>{row['Last Modified']}</b></span>
+  </div>
+</div>"""
+                    cards_html += "</div>"
+                    st.markdown(cards_html, unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)  # close content-card
 
