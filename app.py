@@ -85,13 +85,16 @@ if APP_PASSWORD:
                     ip, ua = "Unknown", "Unknown"
                 # Geo lookup
                 try:
-                    geo = requests.get(f"https://ipapi.co/{ip}/json/", timeout=5).json()
-                    city = geo.get("city", "")
-                    region = geo.get("region", "")
-                    country = geo.get("country_name", "")
-                    location = ", ".join(filter(None, [city, region, country])) or "Unknown"
-                except Exception:
-                    location = "Unknown"
+                    geo = requests.get(f"http://ip-api.com/json/{ip}?fields=city,regionName,country,status", timeout=5).json()
+                    if geo.get("status") == "success":
+                        city = geo.get("city", "")
+                        region = geo.get("regionName", "")
+                        country = geo.get("country", "")
+                        location = ", ".join(filter(None, [city, region, country])) or "Unknown"
+                    else:
+                        location = f"Lookup failed ({ip})"
+                except Exception as e:
+                    location = f"Error: {e}"
                 # Parse device from user agent
                 ua_lower = ua.lower()
                 if "mobile" in ua_lower or "android" in ua_lower:
