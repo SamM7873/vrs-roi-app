@@ -795,7 +795,9 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     '</div>'
                 )
                 is_vrs = norm(p.get("service_type") or "") == "vrs"
-                grid_cols = "1fr 1fr 1fr" if is_vrs else "1fr 1fr 1fr"
+                is_suspended = norm(p.get("number_status") or "") == "suspended"
+                show_monthly = not is_vrs and not is_suspended
+                grid_cols = "1fr 1fr 1fr" if (is_vrs or show_monthly) else "1fr 1fr"
                 html_card += (
                     f'<div style="display:grid;grid-template-columns:{grid_cols};gap:1.25rem;">'
                     '<div>'
@@ -836,8 +838,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                         '</div>'
                         '</div>'
                         if is_vrs else
-                        # Convo Now: show monthly usage minutes
-                        '<div>'
+                        # Convo Now (non-suspended): show monthly usage minutes
+                        ('<div>'
                         '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Monthly Usage (Convo Now)</div>'
                         + (
                             "".join(
@@ -847,7 +849,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                             ) or row("No data", "—")
                         )
                         + '</div>'
-                    )
+                        if show_monthly else "")
                     + '</div>'
                     '</div>'
                 )
