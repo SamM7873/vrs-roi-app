@@ -15,6 +15,7 @@ if not HUBSPOT_TOKEN:
     st.stop()
 
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", os.environ.get("APP_PASSWORD", ""))
+SLACK_WEBHOOK_URL = st.secrets.get("SLACK_WEBHOOK_URL", os.environ.get("SLACK_WEBHOOK_URL", ""))
 if APP_PASSWORD:
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -101,10 +102,30 @@ if APP_PASSWORD:
                 else:
                     device = "Desktop"
                 # Store in session
+                login_time = datetime.now().strftime("%b %d, %Y at %I:%M %p")
                 st.session_state.login_info = {
                     "ip": ip, "location": location, "device": device,
-                    "ua": ua, "time": datetime.now().strftime("%b %d, %Y at %I:%M %p")
+                    "ua": ua, "time": login_time
                 }
+                # Send Slack notification
+                if SLACK_WEBHOOK_URL:
+                    try:
+                        slack_payload = {
+                            "text": f"🔐 *New Login — VRS ROI App*",
+                            "attachments": [{
+                                "color": "#2DB84B",
+                                "fields": [
+                                    {"title": "Time", "value": login_time, "short": True},
+                                    {"title": "IP Address", "value": ip, "short": True},
+                                    {"title": "Location", "value": location, "short": True},
+                                    {"title": "Device", "value": device, "short": True},
+                                    {"title": "User Agent", "value": ua, "short": False},
+                                ]
+                            }]
+                        }
+                        requests.post(SLACK_WEBHOOK_URL, json=slack_payload, timeout=5)
+                    except Exception:
+                        pass
                 st.rerun()
             else:
                 st.error("Incorrect password.")
