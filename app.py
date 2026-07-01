@@ -253,7 +253,7 @@ def build_report(matched_numbers):
 
     person_month_values = defaultdict(lambda: defaultdict(lambda: {"vrs": [], "cfz": [], "convo": []}))
     num_month_values = defaultdict(lambda: defaultdict(float))  # num -> month -> vrs minutes
-    num_month_detail = defaultdict(lambda: defaultdict(lambda: {"cfz": None}))
+    num_month_detail = {}  # num -> month -> {"cfz": value}
 
     for r in monthly_records:
         props = r.get("properties", {})
@@ -277,6 +277,8 @@ def build_report(matched_numbers):
                     num_month_values[num][mkey] = 0.0
             if cfz is not None:
                 person_month_values[person_key][mkey]["cfz"].append(cfz)
+            if num not in num_month_detail:
+                num_month_detail[num] = {}
             num_month_detail[num][mkey] = {"cfz": cfz}
         elif service == "convo now" and usage is not None:
             if norm(num_to_status.get(num) or "") != "suspended":
