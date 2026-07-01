@@ -850,6 +850,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                 with st.spinner("Looking up contacts and tickets..."):
                     # Step 1: find HubSpot contact IDs by email
                     contact_ids = []
+                    contact_errors = []
                     for email in emails:
                         resp = requests.post(
                             f"{BASE_URL}/crm/v3/objects/contacts/search",
@@ -861,24 +862,30 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                         if resp.status_code == 200:
                             for c in resp.json().get("results", []):
                                 contact_ids.append(c["id"])
+                        else:
+                            contact_errors.append(f"Contact search error {resp.status_code}: {resp.text[:200]}")
                         time.sleep(0.26)
 
                     # Step 2: get ticket IDs associated with each contact
                     ticket_ids = []
+                    assoc_errors = []
                     for cid in contact_ids:
                         resp = requests.get(
-                            f"{BASE_URL}/crm/v3/objects/contacts/{cid}/associations/tickets",
+                            f"{BASE_URL}/crm/v4/objects/contacts/{cid}/associations/tickets",
                             headers=headers, timeout=30,
                         )
                         if resp.status_code == 200:
                             for t in resp.json().get("results", []):
-                                ticket_ids.append(t["id"])
+                                ticket_ids.append(t.get("toObjectId") or t.get("id"))
+                        else:
+                            assoc_errors.append(f"Association error {resp.status_code}: {resp.text[:200]}")
                         time.sleep(0.26)
 
-                    ticket_ids = list(set(ticket_ids))
+                    ticket_ids = [str(t) for t in set(ticket_ids) if t]
 
-                    # Step 3: fetch ticket details
+                    # Step 3: fetch ticket details in batches
                     ticket_rows = []
+                    ticket_errors = []
                     for i in range(0, len(ticket_ids), 100):
                         chunk = ticket_ids[i:i+100]
                         resp = requests.post(
@@ -905,7 +912,14 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                                     "Last Modified": (tp.get("hs_lastmodifieddate") or "")[:10],
                                     "Description": tp.get("content") or "—",
                                 })
+                        else:
+                            ticket_errors.append(f"Ticket fetch error {resp.status_code}: {resp.text[:200]}")
                         time.sleep(0.26)
+
+                # Show diagnostic info
+                st.caption(f"Emails searched: {emails} | Contacts found: {contact_ids} | Ticket IDs: {ticket_ids}")
+                for e in contact_errors + assoc_errors + ticket_errors:
+                    st.error(e)
 
                 if not ticket_rows:
                     st.info("No tickets found for this contact.")
