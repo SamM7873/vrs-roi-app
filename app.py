@@ -709,96 +709,30 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             ]}]
         )
 
-    # Filter client-side: live, personal/organization, non-guest
-    live_numbers = [
-        r for r in all_number_records
-        if norm(r["properties"].get("number_status") or "") == "live"
-        and norm(r["properties"].get("usage_type") or "") in ("personal", "organization")
-        and norm(r["properties"].get("credit_type") or "") != "guest"
-    ]
-
-    if not live_numbers:
-        st.info("No live Personal or Organization numbers found.")
+    if not all_number_records:
+        st.info("No number records found.")
     else:
-        all_nums = [str(r["properties"].get("number") or "").strip() for r in live_numbers]
-        all_nums = [n for n in all_nums if n]
-
-        with st.spinner("Checking VRS activity..."):
-            vrs_num_set = set()
-            for i in range(0, len(all_nums), 100):
-                chunk = all_nums[i:i + 100]
-                if i > 0:
-                    time.sleep(0.3)
-                vrs_recs = fetch_all(
-                    "2-46246179",
-                    ["number", "service_type"],
-                    filter_groups=[{"filters": [
-                        {"propertyName": "number", "operator": "IN", "values": chunk},
-                        {"propertyName": "service_type", "operator": "IN", "values": ["VRS"]}
-                    ]}]
-                )
-                for r in vrs_recs:
-                    n = str(r["properties"].get("number") or "").strip()
-                    if n:
-                        vrs_num_set.add(n)
-
         rows = []
-        for r in live_numbers:
+        for r in all_number_records:
             p = r.get("properties", {})
             num = str(p.get("number") or "").strip()
             created_raw = p.get("number_created_at") or ""
             try:
-                dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
-                created_full = dt.strftime("%m/%d/%Y")
-                created_month = dt.strftime("%m/%Y")
+                created_full = datetime.fromisoformat(created_raw.replace("Z", "+00:00")).strftime("%m/%d/%Y")
             except Exception:
                 created_full = "-"
-                created_month = "-"
             rows.append({
                 "Number": num,
                 "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
                 "Email": p.get("email") or "",
-                "Usage Type": p.get("usage_type") or "-",
                 "Number Status": p.get("number_status") or "-",
-                "VRS": "Yes" if num in vrs_num_set else "No",
+                "Usage Type": p.get("usage_type") or "-",
+                "Credit Type": p.get("credit_type") or "-",
                 "Number Created At": created_full,
-                "_created_month": created_month,
             })
 
         report_df = pd.DataFrame(rows)
-        vrs_df = report_df[report_df["VRS"] == "Yes"]
-
-        total = len(vrs_df)
-        personal_count = (vrs_df["Usage Type"].str.lower() == "personal").sum()
-        org_count = (vrs_df["Usage Type"].str.lower() == "organization").sum()
-
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Total Live VRS Numbers", total)
-        m2.metric("Personal", personal_count)
-        m3.metric("Organization", org_count)
-
-        st.markdown("#### Created by Month")
-        created_counts = (
-            vrs_df[vrs_df["_created_month"] != "-"]
-            .groupby(["_created_month", "Usage Type"])
-            .size()
-            .reset_index(name="Count")
-        )
-        if not created_counts.empty:
-            created_counts["sort_key"] = pd.to_datetime(created_counts["_created_month"], format="%m/%Y", errors="coerce")
-            created_counts = created_counts.sort_values("sort_key")
-            bar = alt.Chart(created_counts).mark_bar().encode(
-                x=alt.X("_created_month:N", sort=created_counts["_created_month"].tolist(), title="Month Created"),
-                y=alt.Y("Count:Q"),
-                color=alt.Color("Usage Type:N", scale=alt.Scale(
-                    domain=["Personal", "Organization"],
-                    range=["#2DB84B", "#1A4D2E"]
-                )),
-                tooltip=[alt.Tooltip("_created_month:N", title="Month"), "Usage Type", "Count"]
-            ).properties(height=280)
-            st.altair_chart(bar, use_container_width=True)
-
-        st.markdown("#### Detail Table")
-        st.dataframe(vrs_df.drop(columns=["VRS", "_created_month"]), use_container_width=True)
+        st.write(f"**{len(report_df)} number(s) found**")
+        st.dataframe(report_df, use_container_width=True)
 
 st.markdown("</div></div>", unsafe_allow_html=True)
