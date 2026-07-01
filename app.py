@@ -751,10 +751,10 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
         with retention_tab:
             SEG_META = {
-                "A": {"label": "HOT",  "emoji": "🔥", "color": "#2DB84B", "desc": "Consistent & healthy"},
-                "B": {"label": "WARM", "emoji": "🌡️", "color": "#3B82F6", "desc": "Slight decline but ok"},
-                "C": {"label": "COOL", "emoji": "❄️", "color": "#F59E0B", "desc": "Meaningful drop"},
-                "D": {"label": "COLD", "emoji": "🧊", "color": "#EF4444", "desc": "Severe drop, at risk"},
+                "A": {"label": "GROWTH", "emoji": "📈", "color": "#2DB84B", "desc": "Usage exceeded baseline"},
+                "B": {"label": "STABLE", "emoji": "✅", "color": "#3B82F6", "desc": "Near baseline, healthy"},
+                "C": {"label": "DECLINING", "emoji": "⚠️", "color": "#F59E0B", "desc": "Notable drop in usage"},
+                "D": {"label": "AT RISK", "emoji": "🚨", "color": "#EF4444", "desc": "Severe drop, churn risk"},
             }
 
             NEXT_STEPS = {
@@ -765,8 +765,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             }
 
             INTERPRETATION = {
-                "A": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is growing or stable — healthy engagement.",
-                "B": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is slightly declining — continue monitoring.",
+                "A": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is growing — usage exceeded baseline.",
+                "B": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is stable — usage is near baseline.",
                 "C": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is declining — requires outreach and support.",
                 "D": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is at risk — immediate action needed to prevent churn.",
             }
@@ -817,10 +817,10 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
                 # Segment based on last month performance (current month is in-progress)
                 seg_perf = last_month_perf if last_month_perf is not None else 0.0
-                if seg_perf >= 90:   seg = "A"
-                elif seg_perf >= 60: seg = "B"
-                elif seg_perf >= 30: seg = "C"
-                else:                seg = "D"
+                if seg_perf >= 100:  seg = "A"  # Growth
+                elif seg_perf >= 75: seg = "B"  # Stable
+                elif seg_perf >= 40: seg = "C"  # Declining
+                else:                seg = "D"  # At Risk
 
                 seg_counts[seg] += 1
                 meta = SEG_META[seg]
