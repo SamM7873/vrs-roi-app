@@ -716,8 +716,8 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             [
                 "number", "email", "credit_type", "first_name", "last_name",
                 "number_status", "usage_type", "service_type", "number_created_at",
-                "phone", "address", "city", "state", "zip", "country",
-                "emergency_address", "emergency_city", "emergency_state", "emergency_zip",
+                "phone", "street1", "street2", "city", "state", "zip_code",
+                "emerg_street1", "emerg_street2", "emerg_city", "emerg_state", "emerg_zip_code",
                 "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call",
                 "ursa_last_outbound_call", "ursa_last_inbound_call",
             ],
@@ -766,12 +766,12 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             for r in matched_numbers:
                 p = r.get("properties", {})
                 name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
-                addr_street = p.get("address") or ""
-                addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip") or p.get("postal_code")] if a)
+                addr_street = " ".join(a for a in [p.get("street1"), p.get("street2")] if a)
+                addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip_code")] if a)
                 address = "<br>".join(a for a in [addr_street, addr_csz] if a) or "—"
 
-                emerg_street = p.get("emergency_address") or ""
-                emerg_csz = ", ".join(a for a in [p.get("emergency_city"), p.get("emergency_state"), p.get("emergency_zip")] if a)
+                emerg_street = " ".join(a for a in [p.get("emerg_street1"), p.get("emerg_street2")] if a)
+                emerg_csz = ", ".join(a for a in [p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")] if a)
                 emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
                 initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
 
