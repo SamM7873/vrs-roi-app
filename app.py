@@ -803,36 +803,26 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                 ).properties(height=320)
                 st.altair_chart(chart, use_container_width=True)
 
-            st.markdown("#### Numbers Created At")
-            tab_daily, tab_weekly, tab_monthly, tab_yearly = st.tabs(["Daily (This Month)", "Weekly (This Month)", "Monthly", "Yearly"])
+            st.markdown("#### Numbers Created At — Daily (This Month)")
+            daily = (
+                this_month_df.assign(_day=this_month_df["_dt"].dt.strftime("%m/%d"))
+                .groupby("_day").size().reset_index(name="Count").sort_values("_day")
+            )
+            bar_chart(daily, "_day", "Day", daily["_day"].tolist())
 
-            with tab_daily:
-                daily = (
-                    this_month_df.assign(_day=this_month_df["_dt"].dt.strftime("%m/%d"))
-                    .groupby("_day").size().reset_index(name="Count").sort_values("_day")
-                )
-                bar_chart(daily, "_day", "Day", daily["_day"].tolist())
+            st.markdown("#### Numbers Created At — Weekly (This Month)")
+            weekly = (
+                this_month_df.assign(_week=this_month_df["_week"])
+                .groupby("_week").size().reset_index(name="Count").sort_values("_week")
+            )
+            bar_chart(weekly, "_week", "Week Starting", weekly["_week"].tolist())
 
-            with tab_weekly:
-                weekly = (
-                    this_month_df.assign(_week=this_month_df["_week"])
-                    .groupby("_week").size().reset_index(name="Count").sort_values("_week")
-                )
-                bar_chart(weekly, "_week", "Week Starting", weekly["_week"].tolist())
-
-            with tab_monthly:
-                monthly = (
-                    df_dated.assign(_month=df_dated["_dt"].dt.strftime("%Y-%m"))
-                    .groupby("_month").size().reset_index(name="Count").sort_values("_month")
-                )
-                bar_chart(monthly, "_month", "Month", monthly["_month"].tolist())
-
-            with tab_yearly:
-                yearly = (
-                    df_dated.assign(_year=df_dated["_dt"].dt.strftime("%Y"))
-                    .groupby("_year").size().reset_index(name="Count").sort_values("_year")
-                )
-                bar_chart(yearly, "_year", "Year", yearly["_year"].tolist())
+            st.markdown("#### Numbers Created At — Monthly (All Time)")
+            monthly = (
+                df_dated.assign(_month=df_dated["_dt"].dt.strftime("%Y-%m"))
+                .groupby("_month").size().reset_index(name="Count").sort_values("_month")
+            )
+            bar_chart(monthly, "_month", "Month", monthly["_month"].tolist())
 
             # Detail table
             st.markdown("#### Detail Table")
