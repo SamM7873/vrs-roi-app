@@ -572,25 +572,38 @@ def render_profit_loss_summary(df):
         st.info("No monthly data available for this search.")
         return
 
-    minutes_diff = pd.to_numeric(month_rows["VRS - Convo Now"], errors="coerce")
-    cost_diff = pd.to_numeric(month_rows["Cost Diff ($)"], errors="coerce")
+    vrs_mins   = pd.to_numeric(month_rows["VRS Minutes"],       errors="coerce").fillna(0)
+    convo_mins = pd.to_numeric(month_rows["Convo Now Minutes"], errors="coerce").fillna(0)
+    vrs_cost   = pd.to_numeric(month_rows["VRS Cost ($)"],      errors="coerce").fillna(0)
+    convo_cost = pd.to_numeric(month_rows["Convo Now Cost ($)"],errors="coerce").fillna(0)
+    cost_diff  = pd.to_numeric(month_rows["Cost Diff ($)"],     errors="coerce")
 
-    profit_months = month_rows[month_rows["ROI"] == "PROFIT"]
-    loss_months = month_rows[month_rows["ROI"] == "LOSS"]
+    profit_months     = month_rows[month_rows["ROI"] == "PROFIT"]
+    loss_months       = month_rows[month_rows["ROI"] == "LOSS"]
     cost_profit_months = month_rows[month_rows["Cost ROI"] == "PROFIT"]
-    cost_loss_months = month_rows[month_rows["Cost ROI"] == "LOSS"]
+    cost_loss_months   = month_rows[month_rows["Cost ROI"] == "LOSS"]
 
-    st.markdown("#### Minutes-based")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("PROFIT months", len(profit_months), f"+{minutes_diff[minutes_diff > 0].sum():.1f} min")
-    c2.metric("LOSS months", len(loss_months), f"{minutes_diff[minutes_diff < 0].sum():.1f} min")
-    c3.metric("Net minutes (VRS - Convo Now)", f"{minutes_diff.sum():.1f}")
+    # ── VRS ────────────────────────────────────────────────────────────────────
+    st.markdown("#### VRS")
+    v1, v2, v3 = st.columns(3)
+    v1.metric("Total Minutes", f"{vrs_mins.sum():,.1f} min")
+    v2.metric("Total Cost", f"${vrs_cost.sum():,.2f}")
+    v3.metric("Rate", f"${VRS_RATE_PER_MINUTE}/min")
 
-    st.markdown("#### Cost-based")
-    d1, d2, d3 = st.columns(3)
-    d1.metric("PROFIT months", len(cost_profit_months), f"+${cost_diff[cost_diff > 0].sum():,.2f}")
-    d2.metric("LOSS months", len(cost_loss_months), f"-${abs(cost_diff[cost_diff < 0].sum()):,.2f}")
-    d3.metric("Net cost (VRS - Convo Now)", f"${cost_diff.sum():,.2f}")
+    # ── Convo Now ──────────────────────────────────────────────────────────────
+    st.markdown("#### Convo Now")
+    n1, n2, n3 = st.columns(3)
+    n1.metric("Total Minutes", f"{convo_mins.sum():,.1f} min")
+    n2.metric("Total Cost", f"${convo_cost.sum():,.2f}")
+    n3.metric("Rate", f"${CONVO_NOW_RATE_PER_MINUTE}/min")
+
+    # ── Cost Summary ───────────────────────────────────────────────────────────
+    st.markdown("#### Cost Summary")
+    s1, s2, s3 = st.columns(3)
+    net = cost_diff.sum()
+    s1.metric("PROFIT months", len(cost_profit_months), f"+${cost_diff[cost_diff > 0].sum():,.2f}")
+    s2.metric("LOSS months",   len(cost_loss_months),   f"-${abs(cost_diff[cost_diff < 0].sum()):,.2f}")
+    s3.metric("Net Cost (VRS − Convo Now)", f"${net:,.2f}", delta_color="inverse")
 
     st.markdown("#### All LOSS months")
     if loss_months.empty:
