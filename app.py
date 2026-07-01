@@ -114,9 +114,9 @@ def classify_cost_roi(vrs_minutes, convo_minutes):
 
 def highlight_roi(val):
     if val == "LOSS":
-        return "background-color: #3B1219; color: #F87171"
+        return "background-color: #FEE2E2; color: #B91C1C; font-weight: 600"
     if val == "PROFIT":
-        return "background-color: #0F2D1F; color: #4ADE80"
+        return "background-color: #DCFCE7; color: #15803D; font-weight: 600"
     return ""
 
 def build_report(matched_numbers):
@@ -238,243 +238,231 @@ st.set_page_config(page_title="VRS / Convo Now Lookup", layout="wide", page_icon
 
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
 
+    /* ── Background ── */
     .stApp {
-        background-color: #0D0F1A;
-        color: #E8EAF0;
+        background-color: #F2F2EE;
     }
 
-    /* Sidebar & main container */
-    section[data-testid="stSidebar"] {
-        background-color: #13152A;
-    }
-
-    /* Hero */
-    .hero-banner {
-        background: linear-gradient(135deg, #5B2EFF 0%, #A855F7 60%, #E040FB 100%);
-        padding: 3rem 2.5rem;
-        border-radius: 20px;
-        margin-bottom: 2rem;
+    /* ── Top announcement bar ── */
+    .announce-bar {
+        background-color: #1A4D2E;
+        color: #FFFFFF;
         text-align: center;
+        font-size: 0.82rem;
+        font-weight: 500;
+        padding: 0.55rem 1rem;
+        border-radius: 10px;
+        margin-bottom: 0;
+        letter-spacing: 0.2px;
+    }
+
+    /* ── Hero ── */
+    .hero-wrap {
+        background-color: #2DB84B;
+        border-radius: 0 0 32px 32px;
+        padding: 2.5rem 2rem 3rem;
+        margin-bottom: 0;
         position: relative;
         overflow: hidden;
     }
-    .hero-banner::before {
-        content: "";
-        position: absolute;
-        top: -60px; right: -60px;
-        width: 220px; height: 220px;
-        background: rgba(255,255,255,0.06);
-        border-radius: 50%;
-    }
-    .hero-banner::after {
-        content: "";
-        position: absolute;
-        bottom: -80px; left: -40px;
-        width: 280px; height: 280px;
-        background: rgba(255,255,255,0.04);
-        border-radius: 50%;
-    }
-    .hero-banner h1 {
+    .hero-logo {
+        font-size: 1.6rem;
+        font-weight: 900;
         color: #FFFFFF;
-        font-size: 2.2rem;
-        font-weight: 800;
-        margin-bottom: 0.6rem;
-        letter-spacing: -0.5px;
+        letter-spacing: -1px;
+        margin-bottom: 2rem;
     }
-    .hero-banner p {
-        color: rgba(255,255,255,0.80);
-        font-size: 1.05rem;
-        margin: 0;
+    .hero-wrap h1 {
+        color: #FFFFFF;
+        font-size: 2.4rem;
+        font-weight: 900;
+        margin-bottom: 0.5rem;
+        letter-spacing: -1px;
+        line-height: 1.1;
+    }
+    .hero-wrap p {
+        color: rgba(255,255,255,0.85);
+        font-size: 1rem;
         font-weight: 400;
-    }
-    .hero-badge {
-        display: inline-block;
-        background: rgba(255,255,255,0.15);
-        color: #fff;
-        font-size: 0.72rem;
-        font-weight: 600;
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        padding: 0.25rem 0.85rem;
-        border-radius: 999px;
-        margin-bottom: 1rem;
-        backdrop-filter: blur(4px);
+        margin: 0;
     }
 
-    /* Search card */
+    /* ── Content card ── */
+    .content-card {
+        background: #FFFFFF;
+        border-radius: 28px 28px 16px 16px;
+        padding: 2rem 2rem 1.5rem;
+        margin-top: -1.5rem;
+        box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+    }
+
+    /* ── Search card ── */
     .search-card {
-        background: #13152A;
-        border: 1px solid #2A2D4A;
+        background: #F7F7F3;
+        border: 1px solid #E4E4DE;
         border-radius: 16px;
-        padding: 1.5rem 1.75rem 1.25rem;
-        margin-bottom: 1.75rem;
+        padding: 1.4rem 1.5rem 1.2rem;
+        margin-bottom: 1.5rem;
     }
     .search-card-title {
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 1.2px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 1.4px;
         text-transform: uppercase;
-        color: #8B8FA8;
-        margin-bottom: 1rem;
+        color: #888880;
+        margin-bottom: 0.9rem;
     }
 
-    /* Inputs */
+    /* ── Inputs ── */
     .stTextInput label {
-        color: #A0A4BC !important;
-        font-size: 0.82rem !important;
-        font-weight: 500 !important;
+        color: #444440 !important;
+        font-size: 0.83rem !important;
+        font-weight: 600 !important;
     }
     .stTextInput > div > div > input {
-        background-color: #1C1F35 !important;
-        border: 1.5px solid #2A2D4A !important;
-        border-radius: 10px !important;
-        color: #E8EAF0 !important;
-        padding: 0.65rem 1rem !important;
-        font-size: 0.95rem !important;
-        transition: border-color 0.2s;
+        background-color: #FFFFFF !important;
+        border: 1.5px solid #D8D8D2 !important;
+        border-radius: 999px !important;
+        color: #1A1A1A !important;
+        padding: 0.6rem 1.1rem !important;
+        font-size: 0.93rem !important;
+        transition: border-color 0.2s, box-shadow 0.2s;
     }
     .stTextInput > div > div > input:focus {
-        border-color: #7C3AED !important;
-        box-shadow: 0 0 0 3px rgba(124,58,237,0.2) !important;
+        border-color: #2DB84B !important;
+        box-shadow: 0 0 0 3px rgba(45,184,75,0.15) !important;
     }
     .stTextInput > div > div > input::placeholder {
-        color: #4A4E6A !important;
+        color: #AAAAA4 !important;
     }
 
-    /* Buttons */
+    /* ── Buttons ── */
     div.stButton > button {
-        background: linear-gradient(135deg, #5B2EFF 0%, #A855F7 100%);
+        background-color: #2DB84B;
         color: #FFFFFF;
-        border-radius: 10px;
+        border-radius: 999px;
         border: none;
-        padding: 0.6rem 2rem;
+        padding: 0.6rem 2.2rem;
         font-weight: 700;
         font-size: 0.95rem;
-        letter-spacing: 0.3px;
-        transition: opacity 0.2s, transform 0.1s;
-        box-shadow: 0 4px 15px rgba(91,46,255,0.35);
+        letter-spacing: 0.2px;
+        transition: background-color 0.2s, transform 0.1s;
+        box-shadow: 0 2px 8px rgba(45,184,75,0.25);
     }
     div.stButton > button:hover {
-        opacity: 0.88;
-        transform: translateY(-1px);
+        background-color: #25A340;
         color: #FFFFFF;
+        transform: translateY(-1px);
     }
     div.stButton > button:active {
         transform: translateY(0);
+        background-color: #1E8C35;
     }
 
-    /* Tabs */
+    /* ── Tabs ── */
     .stTabs [data-baseweb="tab-list"] {
-        background-color: #13152A;
-        border-radius: 12px;
-        padding: 4px;
+        background-color: #F0F0EB;
+        border-radius: 999px;
+        padding: 4px 6px;
         gap: 4px;
-        border: 1px solid #2A2D4A;
+        border: 1px solid #E0E0DA;
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        color: #8B8FA8;
+        border-radius: 999px;
+        color: #666660;
         font-weight: 500;
-        font-size: 0.88rem;
-        padding: 0.45rem 1.1rem;
+        font-size: 0.87rem;
+        padding: 0.4rem 1.1rem;
     }
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #5B2EFF, #A855F7) !important;
+        background-color: #2DB84B !important;
         color: #FFFFFF !important;
-        font-weight: 600 !important;
+        font-weight: 700 !important;
     }
     .stTabs [data-baseweb="tab-border"] {
         display: none;
     }
+    .stTabs [data-baseweb="tab-panel"] {
+        padding-top: 1.25rem;
+    }
 
-    /* Dataframe */
+    /* ── Dataframe ── */
     div[data-testid="stDataFrame"] {
         border-radius: 14px;
         overflow: hidden;
-        border: 1px solid #2A2D4A;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+        border: 1px solid #E4E4DE;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.05);
     }
 
-    /* Metrics */
+    /* ── Metrics ── */
     div[data-testid="stMetric"] {
-        background: #13152A;
-        border: 1px solid #2A2D4A;
-        border-radius: 14px;
-        padding: 1rem 1.25rem;
+        background: #FFFFFF;
+        border: 1px solid #E4E4DE;
+        border-radius: 16px;
+        padding: 1.1rem 1.3rem;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.04);
     }
     div[data-testid="stMetric"] label {
-        color: #8B8FA8 !important;
-        font-size: 0.78rem !important;
-        font-weight: 600 !important;
+        color: #888880 !important;
+        font-size: 0.75rem !important;
+        font-weight: 700 !important;
         text-transform: uppercase;
-        letter-spacing: 0.8px;
+        letter-spacing: 0.9px;
     }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-        color: #E8EAF0 !important;
-        font-size: 1.8rem !important;
-        font-weight: 700 !important;
+        color: #1A1A1A !important;
+        font-size: 1.9rem !important;
+        font-weight: 800 !important;
     }
     div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
-        font-size: 0.85rem !important;
+        font-size: 0.84rem !important;
         font-weight: 500 !important;
     }
 
-    /* Subheaders & text */
+    /* ── Typography ── */
     h2, h3 {
-        color: #E8EAF0 !important;
-        font-weight: 700 !important;
-    }
-    .stMarkdown p, .stWrite {
-        color: #A0A4BC;
+        color: #1A1A1A !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.3px;
     }
 
-    /* Divider */
+    /* ── Divider ── */
     hr {
-        border-color: #2A2D4A;
+        border-color: #E4E4DE;
     }
 
-    /* Spinner */
+    /* ── Spinner ── */
     .stSpinner > div {
-        border-top-color: #7C3AED !important;
+        border-top-color: #2DB84B !important;
     }
 
-    /* Alerts */
+    /* ── Alerts ── */
     .stAlert {
-        border-radius: 10px;
-        border: none;
-    }
-
-    /* Info/warning/error override */
-    div[data-testid="stNotification"] {
-        background: #13152A;
-        border: 1px solid #2A2D4A;
-        border-radius: 10px;
-        color: #E8EAF0;
-    }
-
-    /* Caption */
-    .stCaption {
-        color: #5A5E7A !important;
+        border-radius: 12px;
     }
 </style>
 
-<div class="hero-banner">
-    <div class="hero-badge">ROI Analytics</div>
-    <h1>VRS / Convo Now Minutes Lookup</h1>
-    <p>Search by number or email to compare usage minutes and ROI month over month</p>
+<div class="announce-bar">Convo Call is your new VRS app — Switch today</div>
+
+<div class="hero-wrap">
+    <div class="hero-logo">convo</div>
+    <h1>VRS / Convo Now<br>Minutes Lookup</h1>
+    <p>Search by number or email to compare usage and ROI by month</p>
 </div>
+
+<div class="content-card">
 """, unsafe_allow_html=True)
 
 COLOR_MAP = {
-    "VRS Minutes": "#A855F7",
-    "CFZ Minutes": "#38BDF8",
-    "Convo Now Minutes": "#F472B6",
+    "VRS Minutes": "#2DB84B",
+    "CFZ Minutes": "#1A4D2E",
+    "Convo Now Minutes": "#A3D9A5",
 }
 
 def render_table_and_summary(df):
@@ -659,3 +647,5 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             render_profit_loss_summary(df)
         with vrs_zero_tab:
             render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
+
+st.markdown('</div>', unsafe_allow_html=True)
