@@ -812,6 +812,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
                 # Last month = most recent historical month
                 last_month_key, last_month_usage = history_pairs[-1] if history_pairs else (None, None)
+                last_month_perf = (last_month_usage / baseline * 100) if (last_month_usage is not None and baseline > 0) else None
                 perf = (current_usage / baseline * 100) if current_usage > 0 else 0.0
 
                 if perf >= 90:   seg = "A"
@@ -833,7 +834,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     "baseline": baseline, "current_usage": current_usage,
                     "current_month": current_month, "perf": perf,
                     "history_months": len(history),
-                    "last_month_key": last_month_key, "last_month_usage": last_month_usage,
+                    "last_month_key": last_month_key, "last_month_usage": last_month_usage, "last_month_perf": last_month_perf,
                     "last_inbound": last_inbound, "last_outbound": last_outbound,
                 })
 
@@ -869,7 +870,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       {meta['emoji']} Segment {rc['seg']} — {meta['label']}
     </span>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:1rem;">
+  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:1rem;margin-bottom:1rem;">
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Historical Baseline</div>
       <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['baseline']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
@@ -879,6 +880,11 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Month</div>
       <div style="font-size:1.3rem;font-weight:800;color:#111827;">{f"{rc['last_month_usage']:.1f}" if rc['last_month_usage'] is not None else "—"} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
       <div style="font-size:0.72rem;color:#9CA3AF;">{rc['last_month_key'] or "—"}</div>
+    </div>
+    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
+      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Month Perf</div>
+      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{f"{rc['last_month_perf']:.1f}%" if rc['last_month_perf'] is not None else "—"}</div>
+      <div style="font-size:0.72rem;color:#9CA3AF;">vs baseline</div>
     </div>
     <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
       <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Current Month</div>
