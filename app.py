@@ -6,6 +6,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import time
+import smtplib
+from email.mime.text import MIMEText
 from datetime import datetime
 from collections import defaultdict
 
@@ -15,7 +17,9 @@ if not HUBSPOT_TOKEN:
     st.stop()
 
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", os.environ.get("APP_PASSWORD", ""))
-SLACK_WEBHOOK_URL = st.secrets.get("SLACK_WEBHOOK_URL", os.environ.get("SLACK_WEBHOOK_URL", ""))
+EMAIL_SENDER   = st.secrets.get("EMAIL_SENDER", os.environ.get("EMAIL_SENDER", ""))
+EMAIL_PASSWORD = st.secrets.get("EMAIL_PASSWORD", os.environ.get("EMAIL_PASSWORD", ""))
+EMAIL_RECEIVER = st.secrets.get("EMAIL_RECEIVER", os.environ.get("EMAIL_RECEIVER", ""))
 if APP_PASSWORD:
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -107,23 +111,25 @@ if APP_PASSWORD:
                     "ip": ip, "location": location, "device": device,
                     "ua": ua, "time": login_time
                 }
-                # Send Slack notification
-                if SLACK_WEBHOOK_URL:
+                # Send email notification
+                if EMAIL_SENDER and EMAIL_PASSWORD and EMAIL_RECEIVER:
                     try:
-                        slack_payload = {
-                            "text": f"🔐 *New Login — VRS ROI App*",
-                            "attachments": [{
-                                "color": "#2DB84B",
-                                "fields": [
-                                    {"title": "Time", "value": login_time, "short": True},
-                                    {"title": "IP Address", "value": ip, "short": True},
-                                    {"title": "Location", "value": location, "short": True},
-                                    {"title": "Device", "value": device, "short": True},
-                                    {"title": "User Agent", "value": ua, "short": False},
-                                ]
-                            }]
-                        }
-                        requests.post(SLACK_WEBHOOK_URL, json=slack_payload, timeout=5)
+                        body = f"""
+New login detected on VRS ROI App.
+
+Time:       {login_time}
+IP Address: {ip}
+Location:   {location}
+Device:     {device}
+User Agent: {ua}
+"""
+                        msg = MIMEText(body)
+                        msg["Subject"] = f"🔐 New Login — VRS ROI App ({device}, {location})"
+                        msg["From"] = EMAIL_SENDER
+                        msg["To"] = EMAIL_RECEIVER
+                        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+                            server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
                     except Exception:
                         pass
                 st.rerun()
