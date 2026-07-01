@@ -704,7 +704,14 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
     with st.spinner("Searching number object..."):
         matched_numbers = fetch_all(
             "2-40974683",
-            ["number", "email", "credit_type", "first_name", "last_name", "number_status", "usage_type"],
+            [
+                "number", "email", "credit_type", "first_name", "last_name",
+                "number_status", "usage_type", "service_type", "number_created_at",
+                "phone", "address", "city", "state", "zip", "country",
+                "emergency_address", "emergency_city", "emergency_state", "emergency_zip",
+                "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call",
+                "ursa_last_outbound_call", "ursa_last_inbound_call",
+            ],
             filter_groups=filter_groups
         )
 
@@ -716,7 +723,9 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
 
         st.write(f"Merged into {len(person_numbers)} person(s) by email")
 
-        report_tab, summary_tab, vrs_zero_tab = st.tabs(["Detailed Report", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1"])
+        report_tab, summary_tab, vrs_zero_tab, contact_tab = st.tabs([
+            "Detailed Report", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Contact Card"
+        ])
         with report_tab:
             render_table_and_summary(df)
             render_charts(person_numbers, person_month_values, person_email_display)
@@ -724,6 +733,41 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
             render_profit_loss_summary(df)
         with vrs_zero_tab:
             render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
+        with contact_tab:
+            for r in matched_numbers:
+                p = r.get("properties", {})
+                name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
+                addr_parts = [p.get("address"), p.get("city"), p.get("state"), p.get("zip"), p.get("country")]
+                address = ", ".join(a for a in addr_parts if a) or "—"
+                emerg_parts = [p.get("emergency_address"), p.get("emergency_city"), p.get("emergency_state"), p.get("emergency_zip")]
+                emergency = ", ".join(a for a in emerg_parts if a) or "—"
+
+                def fmt(v):
+                    return v if v else "—"
+
+                with st.expander(f"{name} — {fmt(p.get('number'))}", expanded=len(matched_numbers) == 1):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.markdown("**Contact**")
+                        st.markdown(f"**Name:** {name}")
+                        st.markdown(f"**Email:** {fmt(p.get('email'))}")
+                        st.markdown(f"**Phone:** {fmt(p.get('phone'))}")
+                        st.markdown(f"**Address:** {address}")
+                        st.markdown(f"**Emergency Address:** {emergency}")
+                        st.markdown("---")
+                        st.markdown("**Number Details**")
+                        st.markdown(f"**Number:** {fmt(p.get('number'))}")
+                        st.markdown(f"**Number Created At:** {fmt(p.get('number_created_at'))}")
+                        st.markdown(f"**Number Status:** {fmt(p.get('number_status'))}")
+                        st.markdown(f"**Service Type:** {fmt(p.get('service_type'))}")
+                        st.markdown(f"**Usage Type:** {fmt(p.get('usage_type'))}")
+                    with c2:
+                        st.markdown("**URSA Activity**")
+                        st.markdown(f"**First Login:** {fmt(p.get('ursa_first_login'))}")
+                        st.markdown(f"**First Outbound Call:** {fmt(p.get('ursa_first_outbound_call'))}")
+                        st.markdown(f"**Second Outbound Call:** {fmt(p.get('ursa_second_outbound_call'))}")
+                        st.markdown(f"**Last Outbound Call:** {fmt(p.get('ursa_last_outbound_call'))}")
+                        st.markdown(f"**Last Inbound Call:** {fmt(p.get('ursa_last_inbound_call'))}")
 
 st.markdown('</div>', unsafe_allow_html=True)  # close content-card
 
