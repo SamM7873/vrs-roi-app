@@ -851,7 +851,7 @@ if st.button("Load URSA Report", key="load_ursa_report"):
         ursa_records = list_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name", "number_status", "service_type",
-             "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound"]
+             "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"]
         )
 
     rows = []
@@ -868,7 +868,7 @@ if st.button("Load URSA Report", key="load_ursa_report"):
             "Last Name": p.get("last_name") or "",
             "URSA First Login": p.get("ursa_first_login") or "",
             "URSA First Outbound Call": p.get("ursa_first_outbound_call") or "",
-            "URSA Second Outbound": p.get("ursa_second_outbound") or "",
+            "URSA Second Outbound Call": p.get("ursa_second_outbound_call") or "",
         })
 
     if not rows:
