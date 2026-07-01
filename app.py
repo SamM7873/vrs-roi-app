@@ -916,6 +916,47 @@ if st.button("Load URSA Report", key="load_ursa_report"):
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Geographic Report ──────────────────────────────────────────────────────────
+import folium
+from folium.plugins import HeatMap
+from streamlit_folium import st_folium
+from geopy.geocoders import ArcGIS
+
+@st.cache_data(show_spinner=False)
+def geocode_cities(city_state_pairs):
+    """Geocode unique (city, state) tuples. Cached so it only runs once."""
+    geolocator = ArcGIS(timeout=10)
+    results = {}
+    for city, state in city_state_pairs:
+        key = f"{city}, {state}"
+        try:
+            loc = geolocator.geocode(key)
+            if loc:
+                results[key] = (loc.latitude, loc.longitude)
+        except Exception:
+            pass
+        time.sleep(0.05)
+    return results
+
+US_STATE_ABBR = {
+    "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA",
+    "Colorado":"CO","Connecticut":"CT","Delaware":"DE","Florida":"FL","Georgia":"GA",
+    "Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA",
+    "Kansas":"KS","Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD",
+    "Massachusetts":"MA","Michigan":"MI","Minnesota":"MN","Mississippi":"MS",
+    "Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH",
+    "New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC",
+    "North Dakota":"ND","Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA",
+    "Rhode Island":"RI","South Carolina":"SC","South Dakota":"SD","Tennessee":"TN",
+    "Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA","Washington":"WA",
+    "West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY","District of Columbia":"DC",
+}
+
+def to_abbr(s):
+    s = s.strip()
+    if len(s) == 2:
+        return s.upper()
+    return US_STATE_ABBR.get(s.title(), s.upper()[:2])
+
 st.markdown("""
 <div style="margin-top: 2.5rem;">
 <div style="background:#2DB84B;border-radius:20px 20px 0 0;padding:1.5rem 1.75rem 1rem;">
@@ -923,7 +964,7 @@ st.markdown("""
                 color:rgba(255,255,255,0.7);margin-bottom:0.4rem;">Analytics</div>
     <div style="font-size:1.6rem;font-weight:900;color:#fff;letter-spacing:-0.5px;">Geographic Report</div>
     <div style="color:rgba(255,255,255,0.8);font-size:0.93rem;margin-top:0.3rem;">
-        Live VRS numbers by city and state
+        Live VRS numbers density heatmap by city and state
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -956,27 +997,6 @@ if st.button("Load Geographic Report", key="load_geo_report"):
     else:
         geo_df = pd.DataFrame(rows)
         geo_df = geo_df[geo_df["State"] != ""]
-
-        US_STATE_ABBR = {
-            "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA",
-            "Colorado":"CO","Connecticut":"CT","Delaware":"DE","Florida":"FL","Georgia":"GA",
-            "Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA",
-            "Kansas":"KS","Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD",
-            "Massachusetts":"MA","Michigan":"MI","Minnesota":"MN","Mississippi":"MS",
-            "Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH",
-            "New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC",
-            "North Dakota":"ND","Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA",
-            "Rhode Island":"RI","South Carolina":"SC","South Dakota":"SD","Tennessee":"TN",
-            "Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA","Washington":"WA",
-            "West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY","District of Columbia":"DC",
-        }
-
-        def to_abbr(s):
-            s = s.strip()
-            if len(s) == 2:
-                return s.upper()
-            return US_STATE_ABBR.get(s.title(), s.upper()[:2])
-
         geo_df["State Code"] = geo_df["State"].apply(to_abbr)
 
         state_counts = geo_df.groupby(["State", "State Code"]).size().reset_index(name="Count")
@@ -992,7 +1012,35 @@ if st.button("Load Geographic Report", key="load_geo_report"):
         col2.metric("States Covered", state_counts["State Code"].nunique())
         col3.metric("Cities Covered", geo_df[geo_df["City"] != ""]["City"].nunique())
 
-        st.markdown("#### Numbers by State — Heatmap")
+        # Geocode unique city+state pairs
+        unique_pairs = list({(r["City"], r["State"]) for _, r in city_counts.iterrows() if r["City"]})
+        with st.spinner(f"Geocoding {len(unique_pairs)} unique cities (cached after first run)..."):
+            coords = geocode_cities(tuple(unique_pairs))
+
+        # Build heatmap points weighted by count
+        heat_data = []
+        for _, row in city_counts.iterrows():
+            key = f"{row['City']}, {row['State']}"
+            if key in coords:
+                lat, lon = coords[key]
+                heat_data.append([lat, lon, row["Count"]])
+
+        st.markdown("#### Density Heatmap")
+        if heat_data:
+            m = folium.Map(location=[39.5, -98.35], zoom_start=4, tiles="CartoDB dark_matter")
+            HeatMap(
+                heat_data,
+                radius=20,
+                blur=15,
+                max_zoom=10,
+                gradient={0.2: "green", 0.5: "yellow", 0.8: "orange", 1.0: "red"},
+            ).add_to(m)
+            st_folium(m, width="100%", height=520)
+        else:
+            st.info("No city coordinates could be resolved.")
+
+        # Choropleth by state
+        st.markdown("#### Numbers by State")
         fig_state = px.choropleth(
             state_counts,
             locations="State Code",
@@ -1013,6 +1061,7 @@ if st.button("Load Geographic Report", key="load_geo_report"):
         )
         st.plotly_chart(fig_state, use_container_width=True)
 
+        # Top 20 cities bar chart
         st.markdown("#### Top 20 Cities")
         top_cities = city_counts.head(20)
         fig_city = go.Figure(go.Bar(
