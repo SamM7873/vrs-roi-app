@@ -893,15 +893,13 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     ticket_rows = []
                     ticket_errors = []
                     seen_ids = set()
-                    debug_lines = []
 
                     TICKET_PROPS = ["subject", "hs_pipeline_stage", "hs_ticket_priority",
                                     "createdate", "hs_lastmodifieddate", "content",
                                     "hs_ticket_category", "email", "phone"]
 
-                    def _collect_tickets(filter_groups, label=""):
+                    def _collect_tickets(filter_groups):
                         after = None
-                        found = 0
                         while True:
                             body = {"filterGroups": filter_groups, "properties": TICKET_PROPS, "limit": 100}
                             if after:
@@ -913,14 +911,12 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                                 for t in data.get("results", []):
                                     if t["id"] not in seen_ids:
                                         seen_ids.add(t["id"])
-                                        found += 1
                                         tp = t.get("properties", {})
                                         raw_stage = tp.get("hs_pipeline_stage") or ""
                                         ticket_rows.append({
                                             "ID": t["id"],
                                             "Subject": tp.get("subject") or "—",
                                             "Status": stage_labels.get(raw_stage, raw_stage) or "—",
-                                            "_stage_id": raw_stage,
                                             "Priority": tp.get("hs_ticket_priority") or "—",
                                             "Category": tp.get("hs_ticket_category") or "—",
                                             "Created": (tp.get("createdate") or "")[:10],
@@ -931,41 +927,32 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                                 if not after:
                                     break
                             else:
-                                ticket_errors.append(f"Ticket search error [{label}] {r.status_code}: {r.text[:300]}")
+                                ticket_errors.append(f"Ticket search error {r.status_code}: {r.text[:300]}")
                                 break
                             time.sleep(0.26)
-                        debug_lines.append(f"{label}: {found} ticket(s)")
 
                     # Search by contact association
                     for cid in contact_ids:
-                        _collect_tickets([{"filters": [{"propertyName": "associations.contact", "operator": "EQ", "value": cid}]}], f"assoc contact {cid}")
+                        _collect_tickets([{"filters": [{"propertyName": "associations.contact", "operator": "EQ", "value": cid}]}])
                         time.sleep(0.26)
 
                     # Search by email property on ticket
                     for email in emails:
-                        _collect_tickets([{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}], f"email={email}")
+                        _collect_tickets([{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}])
                         time.sleep(0.26)
 
                     # Search by phone property on ticket
                     for phone in phones:
-                        _collect_tickets([{"filters": [{"propertyName": "phone", "operator": "EQ", "value": phone}]}], f"phone={phone}")
+                        _collect_tickets([{"filters": [{"propertyName": "phone", "operator": "EQ", "value": phone}]}])
                         time.sleep(0.26)
 
                     # Search by VRS number in subject
                     for num in vrs_numbers:
-                        _collect_tickets([{"filters": [{"propertyName": "subject", "operator": "CONTAINS_TOKEN", "value": num}]}], f"subject~{num}")
+                        _collect_tickets([{"filters": [{"propertyName": "subject", "operator": "CONTAINS_TOKEN", "value": num}]}])
                         time.sleep(0.26)
 
                 for e in contact_errors + ticket_errors:
                     st.error(e)
-
-                with st.expander("🔍 Debug info", expanded=False):
-                    st.caption(f"Emails: {emails}")
-                    st.caption(f"Contact IDs: {contact_ids}")
-                    st.caption(f"Phones: {phones}")
-                    st.caption(f"VRS numbers searched: {vrs_numbers[:5]}")
-                    for d in debug_lines:
-                        st.caption(d)
 
                 if not ticket_rows:
                     st.markdown("""
