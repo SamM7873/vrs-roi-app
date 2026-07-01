@@ -1010,7 +1010,7 @@ if st.button("Search") and (search_input.strip() or first_name_input.strip() or 
                     cards_html = '<div style="display:flex;flex-direction:column;gap:0.85rem;">'
                     for row in ticket_rows:
                         desc = row["Description"]
-                        desc_snippet = (desc[:160] + "…") if len(desc) > 160 else desc
+                        desc_snippet = desc
                         cards_html += f"""
 <div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:1.25rem 1.5rem;
             box-shadow:0 1px 4px rgba(0,0,0,0.05);transition:box-shadow 0.2s;">
