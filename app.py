@@ -608,7 +608,6 @@ st.markdown("""
     <p>Search by number or email to compare usage and ROI by month</p>
 </div>
 
-<div class="content-card">
 """, unsafe_allow_html=True)
 
 COLOR_MAP = {
@@ -752,28 +751,30 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
     render_charts(filtered_person_numbers, person_month_values, person_email_display)
 
 
+# ── Search card ──
 st.markdown("""
-<div style="text-align:center;padding:1.5rem 0 0.5rem;">
-  <div style="font-size:1.6rem;font-weight:900;color:#111827;letter-spacing:-0.5px;margin-bottom:0.25rem;">VRS Lookup</div>
-  <div style="font-size:0.9rem;color:#6B7280;margin-bottom:1.5rem;">Search by number, email, or name</div>
+<div style="background:#fff;border-radius:20px;box-shadow:0 2px 16px rgba(0,0,0,0.07);
+            padding:2rem 2rem 1.5rem;max-width:680px;margin:0 auto 2rem;">
+  <div style="text-align:center;margin-bottom:1.25rem;">
+    <div style="font-size:1.5rem;font-weight:900;color:#111827;letter-spacing:-0.5px;">VRS Lookup</div>
+    <div style="font-size:0.88rem;color:#9CA3AF;margin-top:0.2rem;">Search by number, email, or name</div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
-_, mid, _ = st.columns([1, 3, 1])
+_, mid, _ = st.columns([1, 4, 1])
 with mid:
-    search_input = st.text_input("search", placeholder="🔍  Phone number, email address...", label_visibility="collapsed")
+    search_input = st.text_input("search", placeholder="🔍  Phone number or email address...", label_visibility="collapsed")
     c1, c2 = st.columns(2)
     with c1:
         first_name_input = st.text_input("first", placeholder="👤  First name", label_visibility="collapsed")
     with c2:
         last_name_input = st.text_input("last", placeholder="👤  Last name", label_visibility="collapsed")
-    st.markdown("<div style='text-align:center;margin-top:0.5rem;'>", unsafe_allow_html=True)
     search_clicked = st.button("Search", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("<hr style='border:none;border-top:1px solid #F3F4F6;margin:1.5rem 0;'>", unsafe_allow_html=True)
-
+# ── Results card ──
 if search_clicked and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
+    st.markdown('<div style="background:#fff;border-radius:20px;box-shadow:0 2px 16px rgba(0,0,0,0.07);padding:1.5rem 2rem;margin-top:0.5rem;">', unsafe_allow_html=True)
     search_terms = [t.strip() for t in search_input.split(",") if t.strip()]
     first_name_input = first_name_input.strip()
     last_name_input = last_name_input.strip()
