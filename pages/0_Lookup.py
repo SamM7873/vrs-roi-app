@@ -754,13 +754,21 @@ section[data-testid="stSidebar"] [aria-selected="true"] {
     background-color: rgba(0,166,81,0.25) !important;
     color: #fff !important; border-radius: 8px;
 }
+.search-card-col {
+    background: #fff !important;
+    border-radius: 12px !important;
+    border: 1px solid #E5E7EB !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.07) !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+}
 [data-testid="stHorizontalBlock"]:has([data-testid="stColumn"]) [data-testid="stColumn"]:nth-child(2) {
     background: #fff;
-    border-radius: 0 0 12px 12px;
-    padding: 1.5rem 1.75rem 2rem !important;
+    border-radius: 12px;
     border: 1px solid #E5E7EB;
-    border-top: none;
     box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+    overflow: hidden;
+    padding: 0 !important;
 }
 .stTextInput > div > div > input {
     border-radius: 8px !important;
@@ -786,21 +794,20 @@ div.stButton > button:hover { background-color: #008F46; }
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("<div style='margin-top:2.5rem;'></div>", unsafe_allow_html=True)
 _, mid, _ = st.columns([1, 2, 1])
 
-# Logo header above card
-st.markdown("""
-<div style="max-width:480px;margin:3rem auto 0;">
-  <div style="background:linear-gradient(135deg,#00A651 0%,#008F46 100%);
-              border-radius:12px 12px 0 0;padding:1.75rem 2rem;text-align:center;">
-    <div style="font-size:1.9rem;font-weight:900;color:#fff;letter-spacing:-1.5px;line-height:1;">convo</div>
-    <div style="color:rgba(255,255,255,0.75);font-size:0.82rem;margin-top:0.35rem;
-                letter-spacing:0.5px;text-transform:uppercase;font-weight:500;">VRS Consumer Lookup</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
 with mid:
+    # Green banner header inside the card column
+    st.markdown("""
+<div style="background:linear-gradient(135deg,#00A651 0%,#008F46 100%);
+            padding:1.6rem 2rem;text-align:center;margin:-1px -1px 0;">
+  <div style="font-size:1.75rem;font-weight:900;color:#fff;letter-spacing:-1.5px;line-height:1;">convo</div>
+  <div style="color:rgba(255,255,255,0.75);font-size:0.78rem;margin-top:0.3rem;
+              letter-spacing:0.6px;text-transform:uppercase;font-weight:500;">VRS Consumer Lookup</div>
+</div>
+<div style="padding:1.5rem 1.75rem 1.75rem;">
+""", unsafe_allow_html=True)
     search_input = st.text_input("search", placeholder="Search by phone number or email...", label_visibility="collapsed")
     c1, c2 = st.columns(2)
     with c1:
@@ -808,6 +815,7 @@ with mid:
     with c2:
         last_name_input = st.text_input("last", placeholder="Last name", label_visibility="collapsed")
     search_clicked = st.button("Search", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Results ──
 if search_clicked and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
@@ -906,7 +914,11 @@ if "search_results" in st.session_state:
 
     def ursa_badge(v):
         if v:
-            return f'<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:6px;font-size:0.75rem;font-weight:600;">✓ {v}</span>'
+            try:
+                fmt_v = datetime.fromisoformat(v.replace("Z", "+00:00")).strftime("%b %d, %Y %I:%M %p")
+            except Exception:
+                fmt_v = v
+            return f'<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:6px;font-size:0.75rem;font-weight:600;">✓ {fmt_v}</span>'
         return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 8px;border-radius:6px;font-size:0.75rem;">Not yet</span>'
 
     def info_row(label, value):
@@ -981,7 +993,7 @@ if "search_results" in st.session_state:
             + info_row("Service Type", fmt(p.get("service_type")))
             + info_row("Usage Type", fmt(p.get("usage_type")))
             + info_row("Credit Type", fmt(p.get("credit_type")))
-            + info_row("Created", fmt(p.get("number_created_at")))
+            + info_row("Created", (lambda v: datetime.fromisoformat(v.replace("Z","+00:00")).strftime("%b %d, %Y") if v else "—")(p.get("number_created_at") or ""))
             + '</div>'
         )
 
