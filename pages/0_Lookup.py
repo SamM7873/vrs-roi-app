@@ -602,12 +602,6 @@ st.markdown("""
     }
 </style>
 
-<div style="text-align:center;padding:2.5rem 1rem 1.5rem;">
-  <div style="display:inline-block;background:#2DB84B;border-radius:20px;padding:1.1rem 2.4rem;">
-    <span style="font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;font-family:'Inter',sans-serif;">convo</span>
-  </div>
-</div>
-
 """, unsafe_allow_html=True)
 
 COLOR_MAP = {
@@ -753,20 +747,19 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
 
 # ── Search card ──
 st.markdown("""
-<div style="margin-top: 2.5rem;">
-<div style="background:#2DB84B;border-radius:20px 20px 0 0;padding:1.5rem 1.75rem 1rem;">
-    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;
-                color:rgba(255,255,255,0.7);margin-bottom:0.4rem;">Lookup</div>
-    <div style="font-size:1.6rem;font-weight:900;color:#fff;letter-spacing:-0.5px;">VRS Consumer Lookup</div>
-    <div style="color:rgba(255,255,255,0.8);font-size:0.93rem;margin-top:0.3rem;">
-        Search by phone number, email, or name
-    </div>
-</div>
-<div style="background:#fff;border-radius:0 0 20px 20px;padding:1.75rem 2rem 2rem;
-            box-shadow:0 2px 16px rgba(0,0,0,0.06);margin-bottom:2rem;">
+
+<div style="max-width:560px;margin:3rem auto 2rem;background:#fff;border-radius:24px;
+            box-shadow:0 4px 24px rgba(0,0,0,0.09);overflow:hidden;">
+  <!-- logo bar -->
+  <div style="background:#2DB84B;padding:2rem;text-align:center;">
+    <span style="font-size:2.2rem;font-weight:900;color:#fff;letter-spacing:-1.5px;">convo</span>
+    <div style="color:rgba(255,255,255,0.8);font-size:0.88rem;margin-top:0.4rem;">VRS Consumer Lookup</div>
+  </div>
+  <!-- search body -->
+  <div style="padding:1.75rem 2rem 2rem;">
 """, unsafe_allow_html=True)
 
-_, mid, _ = st.columns([1, 4, 1])
+_, mid, _ = st.columns([1, 6, 1])
 with mid:
     search_input = st.text_input("search", placeholder="🔍  Phone number or email address...", label_visibility="collapsed")
     c1, c2 = st.columns(2)
