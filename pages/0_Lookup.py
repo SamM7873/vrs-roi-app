@@ -753,9 +753,13 @@ def render_charts(person_numbers, person_month_values, person_email_display):
 
         long_df = chart_df.melt(id_vars="Month", var_name="Metric", value_name="Minutes")
 
-        chart = alt.Chart(long_df).mark_line(point=True).encode(
-            x=alt.X("Month", sort=sorted_months),
-            y="Minutes",
+        chart = alt.Chart(long_df).mark_line(
+            point=alt.OverlayMarkDef(size=60, filled=True),
+            interpolate="monotone",
+            strokeWidth=2.5
+        ).encode(
+            x=alt.X("Month", sort=sorted_months, axis=alt.Axis(labelAngle=-35, title=None)),
+            y=alt.Y("Minutes", axis=alt.Axis(grid=True, gridColor="#F3F4F6")),
             color=alt.Color("Metric", scale=alt.Scale(
                 domain=list(COLOR_MAP.keys()),
                 range=list(COLOR_MAP.values())
