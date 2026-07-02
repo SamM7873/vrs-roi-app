@@ -25,28 +25,30 @@ def require_auth():
     if not st.session_state.authenticated:
         st.markdown("""
         <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
             html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-            .stApp { background-color: #F2F2EE; }
-            .login-hero {
-                background-color: #2DB84B;
-                border-radius: 0 0 32px 32px;
-                padding: 3rem 2rem 3.5rem;
-                text-align: center; margin-bottom: 0;
+            .stApp { background-color: #F6F8FA; }
+            .login-wrap { max-width:400px;margin:5vh auto 0;padding:0 1rem; }
+            .login-logo-area { text-align:center;margin-bottom:1.5rem; }
+            .logo-mark {
+                display:inline-flex;align-items:center;justify-content:center;
+                width:52px;height:52px;background:#00A651;border-radius:12px;
+                font-size:1.3rem;font-weight:900;color:#fff;letter-spacing:-1px;margin-bottom:0.75rem;
             }
-            .login-logo { font-size:1.6rem;font-weight:900;color:#fff;letter-spacing:-1px;margin-bottom:1.5rem; }
-            .login-hero h2 { color:#fff;font-size:2rem;font-weight:900;letter-spacing:-0.5px;margin-bottom:0.5rem; }
-            .login-hero p { color:rgba(255,255,255,0.85);font-size:0.97rem;margin:0; }
-            .login-card { background:#fff;border-radius:24px;padding:2rem 1.75rem;margin-top:-1.5rem;box-shadow:0 2px 16px rgba(0,0,0,0.06); }
-            .stTextInput > div > div > input { border-radius:999px !important;border:1.5px solid #D8D8D2 !important;padding:0.6rem 1.1rem !important;font-size:0.93rem !important; }
-            .stTextInput > div > div > input:focus { border-color:#2DB84B !important;box-shadow:0 0 0 3px rgba(45,184,75,0.15) !important; }
-            div.stButton > button { background-color:#2DB84B;color:#fff;border-radius:999px;border:none;padding:0.6rem 2.2rem;font-weight:700;font-size:0.95rem;width:100%;box-shadow:0 2px 8px rgba(45,184,75,0.25); }
-            div.stButton > button:hover { background-color:#25A340;color:#fff; }
+            .login-logo-area h2 { font-size:1.3rem;font-weight:800;color:#1F2937;margin:0 0 0.25rem; }
+            .login-logo-area p { color:#6B7280;font-size:0.85rem;margin:0; }
+            .login-card { background:#fff;border-radius:14px;padding:2rem 1.75rem;border:1px solid #E5E7EB;box-shadow:0 4px 16px rgba(0,0,0,0.06); }
+            .stTextInput > div > div > input { border-radius:8px !important;border:1.5px solid #E5E7EB !important;padding:0.6rem 1rem !important;font-size:0.93rem !important;background:#F6F8FA !important; }
+            .stTextInput > div > div > input:focus { border-color:#00A651 !important;box-shadow:0 0 0 3px rgba(0,166,81,0.12) !important;background:#fff !important; }
+            div.stButton > button { background-color:#00A651;color:#fff;border-radius:8px;border:none;padding:0.6rem 2.2rem;font-weight:700;font-size:0.95rem;width:100%;box-shadow:0 1px 4px rgba(0,166,81,0.3); }
+            div.stButton > button:hover { background-color:#008F46;color:#fff; }
         </style>
-        <div class="login-hero">
-            <div class="login-logo">convo</div>
+        <div class="login-wrap">
+          <div class="login-logo-area">
+            <div class="logo-mark">c</div>
             <h2>VRS / Convo Now Lookup</h2>
-            <p>Please enter the password to continue</p>
-        </div>
+            <p>Please enter your password to continue</p>
+          </div>
         <div class="login-card">
         """, unsafe_allow_html=True)
         entered = st.text_input("Password", type="password", placeholder="Enter password")
@@ -203,37 +205,78 @@ CONVO_NOW_RATE_PER_MINUTE = 2.60
 COMMON_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-    .stApp { background-color: #F2F2EE; }
-    section[data-testid="stSidebar"] { background-color: #fff; border-right: 1px solid #E5E7EB; }
-    div.stButton > button {
-        background-color: #2DB84B; color: #fff;
-        border-radius: 999px; border: none;
-        padding: 0.55rem 1.4rem; font-weight: 700;
-        font-size: 0.93rem;
-        box-shadow: 0 2px 8px rgba(45,184,75,0.2);
+    :root {
+        --primary: #00A651;
+        --primary-dark: #008F46;
+        --background: #F6F8FA;
+        --card: #FFFFFF;
+        --text: #1F2937;
+        --border: #E5E7EB;
     }
-    div.stButton > button:hover { background-color: #25A340; }
-    .stTabs [data-baseweb="tab-list"] { background-color:#F0F0EB;border-radius:999px;padding:4px 6px;border:1px solid #E0E0DA; }
-    .stTabs [data-baseweb="tab"] { border-radius:999px;color:#666660;font-weight:600;font-size:0.88rem;padding:0.4rem 1.1rem; }
-    .stTabs [aria-selected="true"] { background-color:#2DB84B !important;color:#FFFFFF !important;font-weight:700 !important; }
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: var(--text); }
+    .stApp { background-color: var(--background); }
+    section[data-testid="stSidebar"] {
+        background-color: #0D3B26;
+        border-right: none;
+    }
+    section[data-testid="stSidebar"] * { color: rgba(255,255,255,0.85) !important; }
+    section[data-testid="stSidebar"] a[aria-selected="true"],
+    section[data-testid="stSidebar"] [aria-selected="true"] {
+        background-color: rgba(0,166,81,0.25) !important;
+        color: #fff !important;
+        border-radius: 8px;
+    }
+    div.stButton > button {
+        background-color: var(--primary); color: #fff;
+        border-radius: 8px; border: none;
+        padding: 0.55rem 1.4rem; font-weight: 600;
+        font-size: 0.93rem;
+        box-shadow: 0 1px 4px rgba(0,166,81,0.25);
+        transition: background 0.15s;
+    }
+    div.stButton > button:hover { background-color: var(--primary-dark); }
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: var(--background);
+        border-radius: 8px; padding: 3px 4px;
+        border: 1px solid var(--border);
+        gap: 2px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 6px; color: #6B7280;
+        font-weight: 500; font-size: 0.88rem;
+        padding: 0.35rem 1rem;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: var(--primary) !important;
+        color: #FFFFFF !important; font-weight: 700 !important;
+    }
     .stTabs [data-baseweb="tab-border"] { display:none; }
     .stTabs [data-baseweb="tab-panel"] { padding-top:1.25rem; }
+    [data-testid="metric-container"] {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    [data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
 </style>
 """
 
 
 def report_header(title, subtitle, section="Analytics"):
     st.markdown(f"""
-<div style="margin-top:2rem;">
-<div style="background:#2DB84B;border-radius:20px 20px 0 0;padding:1.5rem 1.75rem 1rem;">
-    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;
-                color:rgba(255,255,255,0.7);margin-bottom:0.4rem;">{section}</div>
-    <div style="font-size:1.6rem;font-weight:900;color:#fff;letter-spacing:-0.5px;">{title}</div>
-    <div style="color:rgba(255,255,255,0.8);font-size:0.93rem;margin-top:0.3rem;">{subtitle}</div>
+<div style="margin-top:1.5rem;">
+<div style="background:linear-gradient(135deg,#00A651 0%,#008F46 100%);
+            border-radius:12px 12px 0 0;padding:1.25rem 1.75rem 1rem;">
+    <div style="font-size:0.68rem;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;
+                color:rgba(255,255,255,0.65);margin-bottom:0.3rem;">{section}</div>
+    <div style="font-size:1.45rem;font-weight:800;color:#fff;letter-spacing:-0.3px;">{title}</div>
+    <div style="color:rgba(255,255,255,0.75);font-size:0.88rem;margin-top:0.2rem;">{subtitle}</div>
 </div>
-<div style="background:#fff;border-radius:0 0 20px 20px;padding:1.75rem 2rem 2rem;
-            box-shadow:0 2px 16px rgba(0,0,0,0.06);margin-bottom:2rem;">
+<div style="background:#FFFFFF;border-radius:0 0 12px 12px;padding:1.75rem 2rem 2rem;
+            border:1px solid #E5E7EB;border-top:none;
+            box-shadow:0 2px 8px rgba(0,0,0,0.05);margin-bottom:2rem;">
 """, unsafe_allow_html=True)
 
 
