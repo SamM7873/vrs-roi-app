@@ -1358,13 +1358,9 @@ if "search_results" in st.session_state:
                     _collect_tickets([{"filters": [{"propertyName": "phone", "operator": "EQ", "value": phone}]}])
                     time.sleep(0.26)
 
-                # Search by VRS number in subject or number property
+                # Search by VRS number in subject
                 for num in vrs_numbers:
                     _collect_tickets([{"filters": [{"propertyName": "subject", "operator": "CONTAINS_TOKEN", "value": num}]}])
-                    time.sleep(0.26)
-                    _collect_tickets([{"filters": [{"propertyName": "number", "operator": "EQ", "value": num}]}])
-                    time.sleep(0.26)
-                    _collect_tickets([{"filters": [{"propertyName": "content", "operator": "CONTAINS_TOKEN", "value": num}]}])
                     time.sleep(0.26)
 
                 # Search by pipeline + email for pipelines that may not use standard associations
@@ -1378,12 +1374,6 @@ if "search_results" in st.session_state:
                         _collect_tickets([{"filters": [
                             {"propertyName": "hs_pipeline", "operator": "EQ", "value": pl_id},
                             {"propertyName": "email", "operator": "EQ", "value": email},
-                        ]}])
-                        time.sleep(0.26)
-                    for num in vrs_numbers:
-                        _collect_tickets([{"filters": [
-                            {"propertyName": "hs_pipeline", "operator": "EQ", "value": pl_id},
-                            {"propertyName": "subject", "operator": "CONTAINS_TOKEN", "value": num},
                         ]}])
                         time.sleep(0.26)
 
