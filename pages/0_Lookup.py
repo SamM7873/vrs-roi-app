@@ -1356,8 +1356,12 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
                 else:
                     tickets_df = pd.DataFrame(ticket_rows)
 
-                    # Pipeline dropdown filter
-                    all_pipelines = sorted(tickets_df["Pipeline"].unique().tolist())
+                    # Pipeline dropdown filter — exclude internal/irrelevant pipelines
+                    EXCLUDED_PIPELINES = {"HubSpot Requests", "Convo Greeting", "Sponsorship"}
+                    ticket_rows = [r for r in ticket_rows if r["Pipeline"] not in EXCLUDED_PIPELINES]
+                    tickets_df = pd.DataFrame(ticket_rows) if ticket_rows else tickets_df.iloc[0:0]
+
+                    all_pipelines = sorted(set(r["Pipeline"] for r in ticket_rows))
                     pipeline_options = ["All Pipelines"] + all_pipelines
                     selected_pipeline = st.selectbox("Filter by Pipeline", pipeline_options, key="ticket_pipeline_filter")
                     if selected_pipeline != "All Pipelines":
