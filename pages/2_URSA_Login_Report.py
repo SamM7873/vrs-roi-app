@@ -10,12 +10,12 @@ require_auth()
 report_header("URSA Login Report", "First login, first outbound, and second outbound timestamps")
 
 if st.button("Load URSA Report", key="load_ursa_report"):
-    with st.spinner("Fetching all number records for URSA report..."):
-        ursa_records = list_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name", "number_status", "service_type",
-             "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"]
-        )
+    ursa_records = list_all(
+        "2-40974683",
+        ["number", "email", "first_name", "last_name", "number_status", "service_type",
+         "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
+        progress_label="Fetching URSA records"
+    )
 
     rows = []
     for r in ursa_records:

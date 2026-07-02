@@ -31,11 +31,11 @@ def to_abbr(s):
 report_header("Geographic Report", "Live VRS numbers by city and state")
 
 if st.button("Load Geographic Report", key="load_geo_report"):
-    with st.spinner("Fetching all number records for geographic report..."):
-        geo_records = list_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name", "number_status", "service_type", "city", "state"]
-        )
+    geo_records = list_all(
+        "2-40974683",
+        ["number", "email", "first_name", "last_name", "number_status", "service_type", "city", "state"],
+        progress_label="Fetching geographic records"
+    )
 
     rows = []
     for r in geo_records:
