@@ -1215,7 +1215,6 @@ if "search_results" in st.session_state:
             p = reg.get("properties", {})
             lex = p.get("lex_verification_status") or ""
             urd = p.get("urd_status") or ""
-            itrs = p.get("is_itrs_registered") or "false"
             cancelled = str(p.get("is_cancelled") or "false").lower() == "true"
             reg_type = (p.get("registration_type") or "").replace("_", " ").title()
             number_val = p.get("number") or "—"
@@ -1223,7 +1222,6 @@ if "search_results" in st.session_state:
 
             lex_done = lex in ("automatic_success", "manual_success")
             urd_done = urd == "completed"
-            itrs_done = str(itrs).lower() == "true"
 
             steps_html = (
                 '<div style="display:flex;align-items:center;margin:0.75rem 0 1rem;">'
@@ -1232,8 +1230,6 @@ if "search_results" in st.session_state:
                 + progress_step("LEX\nVerified", lex_done)
                 + progress_line(urd_done)
                 + progress_step("URD", urd_done)
-                + progress_line(itrs_done)
-                + progress_step("iTRS", itrs_done)
                 + progress_line(not cancelled)
                 + progress_step("Active", not cancelled and urd_done)
                 + '</div>'
@@ -1253,7 +1249,6 @@ if "search_results" in st.session_state:
                 + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Usage</div><div style="font-size:0.82rem;color:#1F2937;">{(p.get("usage_type") or "—").title()}</div></div>'
                 + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">LEX Verification</div>{lex_badge(lex)}</div>'
                 + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">URD Status</div>{urd_badge(urd)}</div>'
-                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">iTRS Registered</div>{bool_badge(itrs)}</div>'
                 + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Submitted</div><div style="font-size:0.8rem;color:#1F2937;">{fmt_dt(p.get("submitted_at"))}</div></div>'
                 + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Registered</div><div style="font-size:0.8rem;color:#1F2937;">{fmt_dt(p.get("registered_at"))}</div></div>'
                 + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">LEX Verified</div><div style="font-size:0.8rem;color:#1F2937;">{fmt_dt(p.get("lex_verified_at"))}</div></div>'
