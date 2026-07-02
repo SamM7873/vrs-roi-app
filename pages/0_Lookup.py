@@ -961,6 +961,53 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
         reverse=True
     )
 
+    # Quick ticket count (total only)
+    ticket_count = 0
+    quick_emails = list({(r.get("properties", {}).get("email") or "").strip().lower()
+                         for r in matched_numbers
+                         if (r.get("properties", {}).get("email") or "").strip()})[:8]
+    for qe in quick_emails:
+        tr = requests.post(
+            f"{BASE_URL}/crm/v3/objects/tickets/search",
+            headers=headers,
+            json={"filterGroups": [{"filters": [{"propertyName": "email", "operator": "EQ", "value": qe}]}],
+                  "properties": ["hs_pipeline_stage"], "limit": 1},
+            timeout=10,
+        )
+        if tr.status_code == 200:
+            ticket_count += tr.json().get("total", 0)
+        time.sleep(0.2)
+
+    # Account age from earliest registration or number creation date
+    earliest_date = None
+    for reg in matched_registrations:
+        d = reg.get("properties", {}).get("registration_created_at") or ""
+        if d:
+            try:
+                dt = datetime.fromisoformat(d.replace("Z", "+00:00"))
+                if earliest_date is None or dt < earliest_date:
+                    earliest_date = dt
+            except Exception:
+                pass
+    if earliest_date is None:
+        for r in matched_numbers:
+            d = r.get("properties", {}).get("number_created_at") or ""
+            if d:
+                try:
+                    dt = datetime.fromisoformat(d.replace("Z", "+00:00"))
+                    if earliest_date is None or dt < earliest_date:
+                        earliest_date = dt
+                except Exception:
+                    pass
+    if earliest_date:
+        now_tz = datetime.now(earliest_date.tzinfo)
+        total_days = (now_tz - earliest_date).days
+        years = total_days // 365
+        months_rem = (total_days % 365) // 30
+        account_age = f"{years}y {months_rem}m" if years > 0 else f"{months_rem}m"
+    else:
+        account_age = "—"
+
     if not matched_numbers and not matched_registrations:
         st.warning("No records found for that search.")
         st.session_state.pop("search_results", None)
@@ -975,6 +1022,7 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
             num_month_values=num_month_values, num_to_person=num_to_person,
             num_to_status=num_to_status, num_month_detail=num_month_detail,
             matched_registrations=matched_registrations,
+            ticket_count=ticket_count, account_age=account_age,
         )
 
 if "search_results" in st.session_state:
@@ -989,6 +1037,8 @@ if "search_results" in st.session_state:
     num_to_status = _r["num_to_status"]
     num_month_detail = _r["num_month_detail"]
     matched_registrations = _r.get("matched_registrations", [])
+    ticket_count = _r.get("ticket_count", "—")
+    account_age = _r.get("account_age", "—")
 
     # ── Dashboard stat tiles ──
     total_nums = len(matched_numbers)
@@ -997,17 +1047,25 @@ if "search_results" in st.session_state:
     month_rows = df[df["Month"] != "-"] if not df.empty else df
     total_vrs_min = pd.to_numeric(month_rows["VRS Minutes"], errors="coerce").sum() if not month_rows.empty else 0
     total_convo_min = pd.to_numeric(month_rows["Convo Now Minutes"], errors="coerce").sum() if not month_rows.empty else 0
+    cost_saved = (total_vrs_min * VRS_RATE_PER_MINUTE) - (total_convo_min * CONVO_NOW_RATE_PER_MINUTE)
+    saved_color = "#00A651" if cost_saved >= 0 else "#EF4444"
 
-    st.markdown("""
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
-""", unsafe_allow_html=True)
-    sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-    sc1.metric("Numbers Found", total_nums)
-    sc2.metric("Registrations", total_regs)
-    sc3.metric("Live VRS", live_vrs)
-    sc4.metric("Total VRS Minutes", f"{total_vrs_min:,.1f}")
-    sc5.metric("Total Convo Now Minutes", f"{total_convo_min:,.1f}")
-    st.markdown("</div>", unsafe_allow_html=True)
+    def _tile(label, value, sub="", color="#1F2937"):
+        return (f'<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:0.85rem 1.1rem;">'
+                f'<div style="font-size:0.6rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">{label}</div>'
+                f'<div style="font-size:1.25rem;font-weight:800;color:{color};line-height:1.1;">{value}</div>'
+                + (f'<div style="font-size:0.68rem;color:#9CA3AF;margin-top:0.15rem;">{sub}</div>' if sub else '')
+                + '</div>')
+
+    st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0.65rem;margin-bottom:1.5rem;">
+  {_tile("Numbers Found", total_nums)}
+  {_tile("Registrations", total_regs)}
+  {_tile("Live VRS", live_vrs)}
+  {_tile("Tickets", ticket_count)}
+  {_tile("Account Age", account_age)}
+  {_tile("Total VRS Min", f"{total_vrs_min:,.1f}")}
+  {_tile("Cost Saved", f"${cost_saved:,.2f}", color=saved_color)}
+</div>""", unsafe_allow_html=True)
 
     # ── Contact dashboard cards ──
     def fmt(v):
@@ -1805,5 +1863,15 @@ if "search_results" in st.session_state:
 </div>"""
                 cards_html += "</div>"
                 st.markdown(cards_html, unsafe_allow_html=True)
+
+    # ── CSV export ──
+    if not df.empty:
+        csv_data = df.to_csv(index=False)
+        st.download_button(
+            "Download Results as CSV",
+            csv_data,
+            file_name=f"vrs_lookup_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+        )
 
 st.markdown('</div>', unsafe_allow_html=True)  # close content-card
