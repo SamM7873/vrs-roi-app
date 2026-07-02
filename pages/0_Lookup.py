@@ -1057,14 +1057,12 @@ if "search_results" in st.session_state:
                 + (f'<div style="font-size:0.68rem;color:#9CA3AF;margin-top:0.15rem;">{sub}</div>' if sub else '')
                 + '</div>')
 
-    st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0.65rem;margin-bottom:1.5rem;">
+    st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.65rem;margin-bottom:1.5rem;">
   {_tile("Numbers Found", total_nums)}
   {_tile("Registrations", total_regs)}
   {_tile("Live VRS", live_vrs)}
-  {_tile("Tickets", ticket_count)}
   {_tile("Account Age", account_age)}
   {_tile("Total VRS Min", f"{total_vrs_min:,.1f}")}
-  {_tile("Cost Saved", f"${cost_saved:,.2f}", color=saved_color)}
 </div>""", unsafe_allow_html=True)
 
     # ── Contact dashboard cards ──
