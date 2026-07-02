@@ -96,7 +96,7 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
     <span class="hs-spin" style="font-size:1.4rem;">🔄</span>
     <div>
       <div style="font-weight:700;color:#111827;font-size:0.95rem;">{progress_label}</div>
-      <div style="color:#6B7280;font-size:0.82rem;">{fetched:,} records fetched&nbsp;·&nbsp;<b style="color:#2DB84B;">{pct}%</b></div>
+      <div style="color:#6B7280;font-size:0.82rem;">{fetched:,} records fetched</div>
     </div>
   </div>
   <div style="display:flex;gap:3px;">{bar_html}</div>
