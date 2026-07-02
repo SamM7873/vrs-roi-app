@@ -916,12 +916,42 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
     else:
         with st.spinner("Fetching monthly value data..."):
             df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail = build_report(matched_numbers)
+
+        # Fetch registrations by email
+        reg_emails = list({
+            (r.get("properties", {}).get("email") or "").strip().lower()
+            for r in matched_numbers
+            if (r.get("properties", {}).get("email") or "").strip()
+        })
+        matched_registrations = []
+        if reg_emails:
+            with st.spinner("Fetching registration records..."):
+                reg_filter_groups = [
+                    {"filters": [{"propertyName": "email", "operator": "IN", "values": reg_emails}]}
+                ]
+                matched_registrations = fetch_all(
+                    "2-58833629",
+                    [
+                        "registration_id", "registration_uuid", "registration_type",
+                        "email", "first_name", "last_name", "number",
+                        "service_type", "usage_type",
+                        "lex_verification_status", "lex_verified_at",
+                        "urd_status", "urd_registration_created_at",
+                        "is_itrs_registered", "is_cancelled", "is_backordered",
+                        "submitted_at", "registered_at", "registration_created_at",
+                        "vrs_record_status_flags", "portin_status",
+                        "city", "state", "zip_code",
+                    ],
+                    filter_groups=reg_filter_groups
+                )
+
         # Cache results so tab/dropdown interactions don't lose them
         st.session_state["search_results"] = dict(
             matched_numbers=matched_numbers, df=df, person_numbers=person_numbers,
             person_month_values=person_month_values, person_email_display=person_email_display,
             num_month_values=num_month_values, num_to_person=num_to_person,
             num_to_status=num_to_status, num_month_detail=num_month_detail,
+            matched_registrations=matched_registrations,
         )
 
 if "search_results" in st.session_state:
@@ -935,6 +965,7 @@ if "search_results" in st.session_state:
     num_to_person = _r["num_to_person"]
     num_to_status = _r["num_to_status"]
     num_month_detail = _r["num_month_detail"]
+    matched_registrations = _r.get("matched_registrations", [])
 
     # ── Dashboard stat tiles ──
     total_nums = len(matched_numbers)
@@ -1102,6 +1133,105 @@ if "search_results" in st.session_state:
         grid_css = f"grid-template-columns:repeat({len(cols)},1fr)"
         grid_html = f'<div style="display:grid;{grid_css};gap:1rem;margin-bottom:1.25rem;">{"".join(cols)}</div>'
         st.markdown(grid_html, unsafe_allow_html=True)
+
+    # ── Registration cards ──
+    if matched_registrations:
+        def fmt_dt(v):
+            if not v: return "—"
+            try:
+                return datetime.fromisoformat(v.replace("Z", "+00:00")).strftime("%b %d, %Y")
+            except Exception:
+                return v
+
+        def lex_badge(v):
+            colors = {
+                "automatic_success": ("#DCFCE7", "#15803D", "Auto Verified"),
+                "manual_success":    ("#DCFCE7", "#15803D", "Manual Verified"),
+                "pending":           ("#FEF9C3", "#92400E", "Pending"),
+                "not_verified":      ("#FEE2E2", "#B91C1C", "Not Verified"),
+                "unknown":           ("#F3F4F6", "#6B7280", "Unknown"),
+            }
+            bg, fg, label = colors.get(v or "", ("#F3F4F6", "#6B7280", v or "—"))
+            return f'<span style="background:{bg};color:{fg};padding:2px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;">{label}</span>'
+
+        def urd_badge(v):
+            colors = {"completed": ("#DCFCE7","#15803D"), "registering": ("#DBEAFE","#1D4ED8"),
+                      "pending": ("#FEF9C3","#92400E"), "new": ("#F3F4F6","#6B7280")}
+            bg, fg = colors.get(v or "", ("#F3F4F6","#6B7280"))
+            return f'<span style="background:{bg};color:{fg};padding:2px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;">{(v or "—").title()}</span>'
+
+        def bool_badge(v):
+            if str(v).lower() == "true":
+                return '<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;">Yes</span>'
+            return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 8px;border-radius:6px;font-size:0.72rem;">No</span>'
+
+        def progress_step(label, done):
+            bg = "#00A651" if done else "#E5E7EB"
+            fg = "#fff" if done else "#9CA3AF"
+            check = "✓" if done else "·"
+            return (
+                f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">'
+                f'<div style="width:28px;height:28px;border-radius:50%;background:{bg};color:{fg};'
+                f'display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:800;">{check}</div>'
+                f'<div style="font-size:0.62rem;color:#6B7280;text-align:center;max-width:52px;">{label}</div>'
+                f'</div>'
+            )
+
+        def progress_line(done):
+            bg = "#00A651" if done else "#E5E7EB"
+            return f'<div style="flex:1;height:2px;background:{bg};margin-top:14px;"></div>'
+
+        st.markdown('<div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin:0.5rem 0 0.75rem;">Registrations</div>', unsafe_allow_html=True)
+
+        for reg in matched_registrations:
+            p = reg.get("properties", {})
+            lex = p.get("lex_verification_status") or ""
+            urd = p.get("urd_status") or ""
+            itrs = p.get("is_itrs_registered") or "false"
+            cancelled = str(p.get("is_cancelled") or "false").lower() == "true"
+            reg_type = (p.get("registration_type") or "").replace("_", " ").title()
+            number_val = p.get("number") or "—"
+            reg_id = p.get("registration_id") or "—"
+
+            lex_done = lex in ("automatic_success", "manual_success")
+            urd_done = urd == "completed"
+            itrs_done = str(itrs).lower() == "true"
+
+            steps_html = (
+                '<div style="display:flex;align-items:center;margin:0.75rem 0 1rem;">'
+                + progress_step("Submitted", True)
+                + progress_line(lex_done)
+                + progress_step("LEX\nVerified", lex_done)
+                + progress_line(urd_done)
+                + progress_step("URD", urd_done)
+                + progress_line(itrs_done)
+                + progress_step("iTRS", itrs_done)
+                + progress_line(not cancelled)
+                + progress_step("Active", not cancelled and urd_done)
+                + '</div>'
+            )
+
+            reg_html = (
+                '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;margin-bottom:1rem;">'
+                + card_header("Registration")
+                + f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">'
+                + f'<div style="font-size:1.1rem;font-weight:800;color:#1F2937;">#{reg_id}</div>'
+                + (f'<span style="background:#FEE2E2;color:#B91C1C;padding:2px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;">Cancelled</span>' if cancelled else '')
+                + f'</div>'
+                + steps_html
+                + f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;padding-top:0.75rem;border-top:1px solid #F3F4F6;">'
+                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Type</div><div style="font-size:0.82rem;font-weight:600;color:#1F2937;">{reg_type or "—"}</div></div>'
+                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Number</div><div style="font-size:0.82rem;font-weight:600;color:#1F2937;">{number_val}</div></div>'
+                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Usage</div><div style="font-size:0.82rem;color:#1F2937;">{(p.get("usage_type") or "—").title()}</div></div>'
+                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">LEX Verification</div>{lex_badge(lex)}</div>'
+                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">URD Status</div>{urd_badge(urd)}</div>'
+                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">iTRS Registered</div>{bool_badge(itrs)}</div>'
+                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Submitted</div><div style="font-size:0.8rem;color:#1F2937;">{fmt_dt(p.get("submitted_at"))}</div></div>'
+                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Registered</div><div style="font-size:0.8rem;color:#1F2937;">{fmt_dt(p.get("registered_at"))}</div></div>'
+                + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">LEX Verified</div><div style="font-size:0.8rem;color:#1F2937;">{fmt_dt(p.get("lex_verified_at"))}</div></div>'
+                + '</div></div>'
+            )
+            st.markdown(reg_html, unsafe_allow_html=True)
 
     st.markdown("---")
 
