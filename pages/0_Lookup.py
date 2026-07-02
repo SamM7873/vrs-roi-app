@@ -929,7 +929,7 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
                 "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call",
                 "ursa_last_outbound_call", "ursa_last_inbound_call",
                 "ursa_ios_minutes", "ursa_android_minutes", "ursa_web_minutes", "cfz_minutes",
-                "number_deleted", "deleted_reason",
+                "number_deleted_at", "deleted_reason",
             ],
             filter_groups=filter_groups
         )
@@ -1151,7 +1151,7 @@ if "search_results" in st.session_state:
         )
 
         # ── Number Details card ──
-        _num_deleted = p.get("number_deleted") or ""
+        _num_deleted = p.get("number_deleted_at") or ""
         _del_reason  = p.get("deleted_reason") or ""
         _fmt_date = lambda v: datetime.fromisoformat(v.replace("Z","+00:00")).strftime("%b %d, %Y") if v else "—"
         number_col_html = (
