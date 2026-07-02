@@ -433,19 +433,44 @@ st.markdown("""
 
     /* ── Search card ── */
     .search-card {
-        background: #F7F7F3;
-        border: 1px solid #E4E4DE;
-        border-radius: 16px;
-        padding: 1.4rem 1.5rem 1.2rem;
+        background: transparent;
         margin-bottom: 1.5rem;
+        text-align: center;
     }
     .search-card-title {
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 1.4px;
-        text-transform: uppercase;
-        color: #888880;
-        margin-bottom: 0.9rem;
+        display: none;
+    }
+    /* Google-style input */
+    div[data-testid="stTextInput"] input {
+        border-radius: 999px !important;
+        border: 1.5px solid #E0E0E0 !important;
+        padding: 0.75rem 1.5rem !important;
+        font-size: 1rem !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+        transition: box-shadow 0.2s, border-color 0.2s !important;
+    }
+    div[data-testid="stTextInput"] input:focus {
+        border-color: #2DB84B !important;
+        box-shadow: 0 4px 20px rgba(45,184,75,0.15) !important;
+        outline: none !important;
+    }
+    div[data-testid="stTextInput"] input:hover {
+        box-shadow: 0 4px 14px rgba(0,0,0,0.12) !important;
+    }
+    /* Search button */
+    div[data-testid="stButton"] button {
+        border-radius: 999px !important;
+        background: #2DB84B !important;
+        color: #fff !important;
+        font-weight: 600 !important;
+        padding: 0.5rem 2rem !important;
+        border: none !important;
+        box-shadow: 0 2px 8px rgba(45,184,75,0.25) !important;
+        font-size: 0.95rem !important;
+        transition: background 0.15s !important;
+    }
+    div[data-testid="stButton"] button:hover {
+        background: #25A340 !important;
     }
 
     /* ── Inputs ── */
@@ -728,25 +753,27 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
 
 
 st.markdown("""
-<div class="search-card">
-  <div class="search-card-title">🔍 Search</div>
-  <div style="font-size:0.85rem;color:#6B7280;margin-bottom:1rem;">
-    Search by phone number, email address, or name
-  </div>
+<div style="text-align:center;padding:1.5rem 0 0.5rem;">
+  <div style="font-size:1.6rem;font-weight:900;color:#111827;letter-spacing:-0.5px;margin-bottom:0.25rem;">VRS Lookup</div>
+  <div style="font-size:0.9rem;color:#6B7280;margin-bottom:1.5rem;">Search by number, email, or name</div>
+</div>
 """, unsafe_allow_html=True)
-col1, col2, col3 = st.columns([2, 1, 1])
-with col1:
-    search_input = st.text_input("Number(s) or email(s)", placeholder="e.g. 5551234567, user@email.com", label_visibility="collapsed")
-    st.caption("📞 Number or ✉️ Email")
-with col2:
-    first_name_input = st.text_input("First name", placeholder="First name", label_visibility="collapsed")
-    st.caption("👤 First name")
-with col3:
-    last_name_input = st.text_input("Last name", placeholder="Last name", label_visibility="collapsed")
-    st.caption("👤 Last name")
-st.markdown('</div>', unsafe_allow_html=True)
 
-if st.button("Search") and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
+_, mid, _ = st.columns([1, 3, 1])
+with mid:
+    search_input = st.text_input("search", placeholder="🔍  Phone number, email address...", label_visibility="collapsed")
+    c1, c2 = st.columns(2)
+    with c1:
+        first_name_input = st.text_input("first", placeholder="👤  First name", label_visibility="collapsed")
+    with c2:
+        last_name_input = st.text_input("last", placeholder="👤  Last name", label_visibility="collapsed")
+    st.markdown("<div style='text-align:center;margin-top:0.5rem;'>", unsafe_allow_html=True)
+    search_clicked = st.button("Search", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<hr style='border:none;border-top:1px solid #F3F4F6;margin:1.5rem 0;'>", unsafe_allow_html=True)
+
+if search_clicked and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
     search_terms = [t.strip() for t in search_input.split(",") if t.strip()]
     first_name_input = first_name_input.strip()
     last_name_input = last_name_input.strip()
