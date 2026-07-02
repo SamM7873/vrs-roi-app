@@ -11,11 +11,11 @@ require_auth()
 report_header("Numbers Report", "Live VRS numbers by usage type and created date")
 
 if st.button("Load Numbers Report", key="load_numbers_report"):
-    with st.spinner("Fetching all number records (45k+, may take a moment)..."):
-        all_number_records = list_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type", "number_created_at", "credit_type"]
-        )
+    all_number_records = list_all(
+        "2-40974683",
+        ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type", "number_created_at", "credit_type"],
+        progress_label="Fetching number records"
+    )
 
     if not all_number_records:
         st.info("No number records found.")

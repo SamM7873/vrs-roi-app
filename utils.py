@@ -60,10 +60,27 @@ def require_auth():
         st.stop()
 
 
-def list_all(object_type_id, properties):
+def list_all(object_type_id, properties, progress_label="Loading..."):
+    """Fetch all records with a green progress bar."""
     url = f"{BASE_URL}/crm/v3/objects/{object_type_id}"
     all_results = []
     after = None
+    # Use HubSpot total count for accurate progress
+    total_estimate = None
+
+    status_text = st.empty()
+    bar = st.progress(0, text="")
+
+    # Apply green styling to the progress bar
+    st.markdown("""
+    <style>
+    div[data-testid="stProgress"] > div > div > div {
+        background-color: #2DB84B !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    page_num = 0
     while True:
         params = {"limit": 100, "properties": ",".join(properties)}
         if after:
@@ -80,10 +97,32 @@ def list_all(object_type_id, properties):
         if not results:
             break
         all_results.extend(results)
+        page_num += 1
+
+        # Estimate total from first page paging info
+        if total_estimate is None:
+            # HubSpot doesn't give total in list endpoint; estimate from pages seen
+            total_estimate = max(data.get("total", 0), len(all_results))
+
         after = data.get("paging", {}).get("next", {}).get("after")
+        fetched = len(all_results)
+
+        if after and total_estimate and total_estimate > 0:
+            pct = min(int(fetched / total_estimate * 100), 95)
+        elif not after:
+            pct = 100
+        else:
+            # Unknown total — pulse based on pages (cap at 90%)
+            pct = min(page_num * 5, 90)
+
+        bar.progress(pct, text=f"{progress_label} — {fetched:,} records ({pct}%)")
+
         if not after:
             break
         time.sleep(0.26)
+
+    bar.progress(100, text=f"✅ Done — {len(all_results):,} records loaded")
+    status_text.empty()
     return all_results
 
 
