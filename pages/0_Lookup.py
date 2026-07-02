@@ -602,10 +602,10 @@ st.markdown("""
     }
 </style>
 
-<div class="hero-wrap">
-    <div class="hero-logo">convo</div>
-    <h1>VRS / Convo Now<br>Minutes Lookup</h1>
-    <p>Search by number or email to compare usage and ROI by month</p>
+<div style="text-align:center;padding:2.5rem 1rem 1.5rem;">
+  <div style="display:inline-block;background:#2DB84B;border-radius:20px;padding:1.1rem 2.4rem;">
+    <span style="font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1px;font-family:'Inter',sans-serif;">convo</span>
+  </div>
 </div>
 
 """, unsafe_allow_html=True)
