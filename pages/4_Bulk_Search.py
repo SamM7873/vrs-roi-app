@@ -250,7 +250,7 @@ if run_clicked and raw_input.strip():
         except Exception:
             return ""
 
-    styler = show_df.style.applymap(color_saved, subset=["Cost Saved ($)"])
+    styler = show_df.style.map(color_saved, subset=["Cost Saved ($)"])
     st.dataframe(styler, use_container_width=True, hide_index=True)
 
     # ── CSV export ──
