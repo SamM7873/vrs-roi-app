@@ -61,25 +61,48 @@ def require_auth():
 
 
 def list_all(object_type_id, properties, progress_label="Loading..."):
-    """Fetch all records with a green progress bar."""
+    """Fetch all records with an animated loading card."""
     url = f"{BASE_URL}/crm/v3/objects/{object_type_id}"
     all_results = []
     after = None
-    # Use HubSpot total count for accurate progress
     total_estimate = None
+    loader = st.empty()
 
-    status_text = st.empty()
-    bar = st.progress(0, text="")
+    def _show(fetched, pct, done=False):
+        if done:
+            loader.markdown(f"""
+<div style="display:flex;align-items:center;gap:1rem;background:#F0FDF4;border:1.5px solid #2DB84B;
+            border-radius:14px;padding:1rem 1.5rem;margin:0.5rem 0;">
+  <div style="font-size:1.6rem;">✅</div>
+  <div>
+    <div style="font-weight:700;color:#15803D;font-size:0.95rem;">Done!</div>
+    <div style="color:#166534;font-size:0.85rem;">{fetched:,} records loaded</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+        else:
+            filled = int(pct / 5)
+            bar_html = "".join(
+                f'<div style="width:14px;height:14px;border-radius:3px;background:{"#2DB84B" if i < filled else "#D1FAE5"};"></div>'
+                for i in range(20)
+            )
+            loader.markdown(f"""
+<style>
+@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+.hs-spin {{ display:inline-block;animation:spin 1s linear infinite; }}
+</style>
+<div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;
+            padding:1.1rem 1.5rem;margin:0.5rem 0;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+  <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+    <span class="hs-spin" style="font-size:1.4rem;">🔄</span>
+    <div>
+      <div style="font-weight:700;color:#111827;font-size:0.95rem;">{progress_label}</div>
+      <div style="color:#6B7280;font-size:0.82rem;">{fetched:,} records fetched&nbsp;·&nbsp;<b style="color:#2DB84B;">{pct}%</b></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:3px;">{bar_html}</div>
+</div>""", unsafe_allow_html=True)
 
-    # Apply green styling to the progress bar
-    st.markdown("""
-    <style>
-    div[data-testid="stProgress"] > div > div > div {
-        background-color: #2DB84B !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
+    _show(0, 0)
     page_num = 0
     while True:
         params = {"limit": 100, "properties": ",".join(properties)}
@@ -99,9 +122,7 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
         all_results.extend(results)
         page_num += 1
 
-        # Estimate total from first page paging info
         if total_estimate is None:
-            # HubSpot doesn't give total in list endpoint; estimate from pages seen
             total_estimate = max(data.get("total", 0), len(all_results))
 
         after = data.get("paging", {}).get("next", {}).get("after")
@@ -112,17 +133,14 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
         elif not after:
             pct = 100
         else:
-            # Unknown total — pulse based on pages (cap at 90%)
             pct = min(page_num * 5, 90)
 
-        bar.progress(pct, text=f"{progress_label} — {fetched:,} records ({pct}%)")
-
+        _show(fetched, pct)
         if not after:
             break
         time.sleep(0.15)
 
-    bar.progress(100, text=f"✅ Done — {len(all_results):,} records loaded")
-    status_text.empty()
+    _show(len(all_results), 100, done=True)
     return all_results
 
 
