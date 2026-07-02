@@ -895,7 +895,30 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
             {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
         ]})
 
-    with st.spinner("Searching number object..."):
+    reg_props = [
+        "registration_id", "registration_uuid", "registration_type",
+        "email", "first_name", "last_name", "number",
+        "service_type", "usage_type",
+        "lex_verification_status", "lex_verified_at",
+        "urd_status", "urd_registration_created_at",
+        "is_itrs_registered", "is_cancelled", "is_backordered",
+        "submitted_at", "registered_at", "registration_created_at",
+        "vrs_record_status_flags", "portin_status",
+        "city", "state", "zip_code",
+    ]
+
+    # Build registration filter groups from same search terms
+    reg_filter_groups_direct = []
+    for i in range(0, len(search_terms), 100):
+        chunk = search_terms[i:i + 100]
+        reg_filter_groups_direct.append({"filters": [{"propertyName": "number", "operator": "IN", "values": chunk}]})
+        reg_filter_groups_direct.append({"filters": [{"propertyName": "email", "operator": "IN", "values": chunk}]})
+    if first_name_input:
+        reg_filter_groups_direct.append({"filters": [{"propertyName": "first_name", "operator": "CONTAINS_TOKEN", "value": first_name_input}]})
+    if last_name_input:
+        reg_filter_groups_direct.append({"filters": [{"propertyName": "last_name", "operator": "CONTAINS_TOKEN", "value": last_name_input}]})
+
+    with st.spinner("Searching..."):
         matched_numbers = fetch_all(
             "2-40974683",
             [
@@ -909,59 +932,43 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
             ],
             filter_groups=filter_groups
         )
+        # Always search registration object directly from search terms
+        direct_regs = fetch_all("2-58833629", reg_props, filter_groups=reg_filter_groups_direct) if reg_filter_groups_direct else []
 
-    if not matched_numbers:
-        st.warning("No number object record found for that search.")
+    # Also expand registration search using emails/numbers from matched_numbers
+    extra_regs = []
+    if matched_numbers:
+        reg_emails = list({(r.get("properties", {}).get("email") or "").strip().lower() for r in matched_numbers if (r.get("properties", {}).get("email") or "").strip()})
+        reg_numbers = list({(r.get("properties", {}).get("number") or "").strip() for r in matched_numbers if (r.get("properties", {}).get("number") or "").strip()})
+        expand_groups = []
+        if reg_emails:
+            expand_groups.append({"filters": [{"propertyName": "email", "operator": "IN", "values": reg_emails}]})
+        if reg_numbers:
+            expand_groups.append({"filters": [{"propertyName": "number", "operator": "IN", "values": reg_numbers}]})
+        if expand_groups:
+            extra_regs = fetch_all("2-58833629", reg_props, filter_groups=expand_groups)
+
+    # Merge and deduplicate registrations
+    seen_ids = set()
+    matched_registrations = []
+    for reg in direct_regs + extra_regs:
+        rid = reg.get("properties", {}).get("registration_id") or reg.get("id")
+        if rid not in seen_ids:
+            seen_ids.add(rid)
+            matched_registrations.append(reg)
+    matched_registrations.sort(
+        key=lambda x: x.get("properties", {}).get("registration_created_at") or "",
+        reverse=True
+    )
+
+    if not matched_numbers and not matched_registrations:
+        st.warning("No records found for that search.")
         st.session_state.pop("search_results", None)
     else:
-        with st.spinner("Fetching monthly value data..."):
-            df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail = build_report(matched_numbers)
-
-        # Fetch registrations by email OR number (covers port-out/port-in with different email)
-        reg_emails = list({
-            (r.get("properties", {}).get("email") or "").strip().lower()
-            for r in matched_numbers
-            if (r.get("properties", {}).get("email") or "").strip()
-        })
-        reg_numbers = list({
-            (r.get("properties", {}).get("number") or "").strip()
-            for r in matched_numbers
-            if (r.get("properties", {}).get("number") or "").strip()
-        })
-        reg_props = [
-            "registration_id", "registration_uuid", "registration_type",
-            "email", "first_name", "last_name", "number",
-            "service_type", "usage_type",
-            "lex_verification_status", "lex_verified_at",
-            "urd_status", "urd_registration_created_at",
-            "is_itrs_registered", "is_cancelled", "is_backordered",
-            "submitted_at", "registered_at", "registration_created_at",
-            "vrs_record_status_flags", "portin_status",
-            "city", "state", "zip_code",
-        ]
-        matched_registrations = []
-        with st.spinner("Fetching registration records..."):
-            reg_filter_groups = []
-            if reg_emails:
-                reg_filter_groups.append({"filters": [{"propertyName": "email", "operator": "IN", "values": reg_emails}]})
-            if reg_numbers:
-                reg_filter_groups.append({"filters": [{"propertyName": "number", "operator": "IN", "values": reg_numbers}]})
-            if reg_filter_groups:
-                raw_regs = fetch_all("2-58833629", reg_props, filter_groups=reg_filter_groups)
-                # Deduplicate by registration_id
-                seen_ids = set()
-                for reg in raw_regs:
-                    rid = reg.get("properties", {}).get("registration_id") or reg.get("id")
-                    if rid not in seen_ids:
-                        seen_ids.add(rid)
-                        matched_registrations.append(reg)
-                # Sort newest first
-                matched_registrations.sort(
-                    key=lambda x: x.get("properties", {}).get("registration_created_at") or "",
-                    reverse=True
-                )
-
-        # Cache results so tab/dropdown interactions don't lose them
+        df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail = (
+            build_report(matched_numbers) if matched_numbers
+            else (pd.DataFrame(), {}, {}, {}, {}, {}, {}, {})
+        )
         st.session_state["search_results"] = dict(
             matched_numbers=matched_numbers, df=df, person_numbers=person_numbers,
             person_month_values=person_month_values, person_email_display=person_email_display,
@@ -985,6 +992,7 @@ if "search_results" in st.session_state:
 
     # ── Dashboard stat tiles ──
     total_nums = len(matched_numbers)
+    total_regs = len(matched_registrations)
     live_vrs = sum(1 for r in matched_numbers if norm(r.get("properties",{}).get("number_status") or "") == "live" and norm(r.get("properties",{}).get("service_type") or "") == "vrs")
     month_rows = df[df["Month"] != "-"] if not df.empty else df
     total_vrs_min = pd.to_numeric(month_rows["VRS Minutes"], errors="coerce").sum() if not month_rows.empty else 0
@@ -993,11 +1001,12 @@ if "search_results" in st.session_state:
     st.markdown("""
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
 """, unsafe_allow_html=True)
-    sc1, sc2, sc3, sc4 = st.columns(4)
+    sc1, sc2, sc3, sc4, sc5 = st.columns(5)
     sc1.metric("Numbers Found", total_nums)
-    sc2.metric("Live VRS", live_vrs)
-    sc3.metric("Total VRS Minutes", f"{total_vrs_min:,.1f}")
-    sc4.metric("Total Convo Now Minutes", f"{total_convo_min:,.1f}")
+    sc2.metric("Registrations", total_regs)
+    sc3.metric("Live VRS", live_vrs)
+    sc4.metric("Total VRS Minutes", f"{total_vrs_min:,.1f}")
+    sc5.metric("Total Convo Now Minutes", f"{total_convo_min:,.1f}")
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Contact dashboard cards ──
@@ -1027,6 +1036,9 @@ if "search_results" in st.session_state:
 
     def card_header(title):
         return f'<div style="font-size:0.65rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#00A651;margin-bottom:0.6rem;">{title}</div>'
+
+    if not matched_numbers:
+        st.info("No number object records found — showing registration records only.")
 
     sorted_numbers = sorted(
         matched_numbers,
@@ -1251,7 +1263,9 @@ if "search_results" in st.session_state:
 
     st.markdown("---")
 
-    # ── Analysis tabs ──
+    # ── Analysis tabs (only when number records exist) ──
+    if not matched_numbers:
+        st.stop()
     tickets_tab, retention_tab, summary_tab, vrs_zero_tab, report_tab = st.tabs([
         "Tickets", "Retention", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Detailed Report"
     ])
