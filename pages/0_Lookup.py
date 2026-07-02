@@ -608,40 +608,84 @@ COLOR_MAP = {
 }
 
 def render_table_and_summary(df):
-    styler = df.style
-    if hasattr(styler, "map"):
-        styler = styler.map(highlight_roi, subset=["ROI", "Cost ROI"])
-    else:
-        styler = styler.applymap(highlight_roi, subset=["ROI", "Cost ROI"])
+    month_rows = df[df["Month"] != "-"].copy()
+    if month_rows.empty:
+        st.info("No monthly data available.")
+        return
 
-    st.dataframe(styler, use_container_width=True)
+    vrs_mins   = pd.to_numeric(month_rows["VRS Minutes"],        errors="coerce").fillna(0)
+    convo_mins = pd.to_numeric(month_rows["Convo Now Minutes"],  errors="coerce").fillna(0)
+    vrs_cost   = pd.to_numeric(month_rows["VRS Cost ($)"],       errors="coerce").fillna(0)
+    convo_cost = pd.to_numeric(month_rows["Convo Now Cost ($)"], errors="coerce").fillna(0)
+    cost_diff  = pd.to_numeric(month_rows["Cost Diff ($)"],      errors="coerce").fillna(0)
 
-    total_months = len(df[df["Month"] != "-"])
-    loss_count = (df["ROI"] == "LOSS").sum()
-    profit_count = (df["ROI"] == "PROFIT").sum()
+    profit_count = (month_rows["Cost ROI"] == "PROFIT").sum()
+    loss_count   = (month_rows["Cost ROI"] == "LOSS").sum()
+    total_months = len(month_rows)
+    net = cost_diff.sum()
+    net_color = "#00A651" if net >= 0 else "#EF4444"
+    net_label = "PROFIT" if net >= 0 else "LOSS"
 
-    profit_pct = (profit_count / total_months * 100) if total_months > 0 else 0.0
-    loss_pct = (loss_count / total_months * 100) if total_months > 0 else 0.0
+    # ── Summary stat tiles ──
+    def stat_tile(label, value, sub="", color="#1F2937"):
+        return f"""<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+  <div style="font-size:0.65rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.3rem;">{label}</div>
+  <div style="font-size:1.5rem;font-weight:800;color:{color};line-height:1.1;">{value}</div>
+  {f'<div style="font-size:0.75rem;color:#9CA3AF;margin-top:0.2rem;">{sub}</div>' if sub else ''}
+</div>"""
 
-    st.write(
-        f"**Minutes-based Summary:** {profit_count} PROFIT month(s) ({profit_pct:.1f}%), "
-        f"{loss_count} LOSS month(s) ({loss_pct:.1f}%), out of {total_months} total month(s)"
-    )
+    tiles_html = f"""<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.85rem;margin-bottom:1.5rem;">
+  {stat_tile("Total VRS Minutes", f"{vrs_mins.sum():,.1f}", f"@ ${VRS_RATE_PER_MINUTE}/min")}
+  {stat_tile("Total Convo Now Min", f"{convo_mins.sum():,.1f}", f"@ ${CONVO_NOW_RATE_PER_MINUTE}/min")}
+  {stat_tile("Net Cost Saved", f"${abs(net):,.2f}", net_label, net_color)}
+  {stat_tile("Profit / Loss Months", f"{profit_count}P · {loss_count}L", f"of {total_months} total months")}
+</div>"""
+    st.markdown(tiles_html, unsafe_allow_html=True)
 
-    cost_loss_count = (df["Cost ROI"] == "LOSS").sum()
-    cost_profit_count = (df["Cost ROI"] == "PROFIT").sum()
-    cost_profit_pct = (cost_profit_count / total_months * 100) if total_months > 0 else 0.0
-    cost_loss_pct = (cost_loss_count / total_months * 100) if total_months > 0 else 0.0
+    # ── Month-by-month table ──
+    st.markdown("""<div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+                   color:#6B7280;margin-bottom:0.6rem;">Month-by-Month Breakdown</div>""", unsafe_allow_html=True)
 
-    total_vrs_cost = pd.to_numeric(df["VRS Cost ($)"], errors="coerce").sum()
-    total_convo_cost = pd.to_numeric(df["Convo Now Cost ($)"], errors="coerce").sum()
+    def roi_badge(val):
+        if val == "PROFIT":
+            return '<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;">PROFIT</span>'
+        if val == "LOSS":
+            return '<span style="background:#FEE2E2;color:#B91C1C;padding:2px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;">LOSS</span>'
+        return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 8px;border-radius:6px;font-size:0.72rem;">—</span>'
 
-    st.write(
-        f"**Cost-based Summary (VRS @ ${VRS_RATE_PER_MINUTE}/min, Convo Now @ ${CONVO_NOW_RATE_PER_MINUTE}/min):** "
-        f"{cost_profit_count} PROFIT month(s) ({cost_profit_pct:.1f}%), "
-        f"{cost_loss_count} LOSS month(s) ({cost_loss_pct:.1f}%) — "
-        f"Total VRS Cost: ${total_vrs_cost:,.2f}, Total Convo Now Cost: ${total_convo_cost:,.2f}"
-    )
+    header = """<div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 1fr 1fr 100px;
+                gap:0.5rem;padding:0.5rem 1rem;background:#F6F8FA;border-radius:8px 8px 0 0;
+                border:1px solid #E5E7EB;border-bottom:none;
+                font-size:0.68rem;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6B7280;">
+  <div>Month</div><div>VRS Min</div><div>Convo Now Min</div>
+  <div>VRS Cost</div><div>Convo Now Cost</div><div>Saved ($)</div><div style="text-align:center;">ROI</div>
+</div>"""
+
+    rows_html = ""
+    for i, (_, row) in enumerate(month_rows.sort_values("Month", key=lambda s: s.map(month_sort_key), ascending=False).iterrows()):
+        bg = "#fff" if i % 2 == 0 else "#FAFAFA"
+        vrs_m  = row["VRS Minutes"]
+        con_m  = row["Convo Now Minutes"]
+        vrs_c  = row["VRS Cost ($)"]
+        con_c  = row["Convo Now Cost ($)"]
+        diff_v = row["Cost Diff ($)"]
+        roi_v  = row["Cost ROI"]
+        try: diff_str = f"${float(diff_v):+,.2f}"
+        except: diff_str = str(diff_v)
+        diff_color = "#15803D" if roi_v == "PROFIT" else "#B91C1C" if roi_v == "LOSS" else "#6B7280"
+        rows_html += f"""<div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 1fr 1fr 100px;
+            gap:0.5rem;padding:0.55rem 1rem;background:{bg};border:1px solid #E5E7EB;border-top:none;
+            font-size:0.83rem;color:#1F2937;align-items:center;">
+  <div style="font-weight:600;color:#374151;">{row['Month']}</div>
+  <div>{f"{float(vrs_m):,.1f}" if vrs_m not in ("-", None) else "—"}</div>
+  <div>{f"{float(con_m):,.1f}" if con_m not in ("-", None) else "—"}</div>
+  <div>{f"${float(vrs_c):,.2f}" if vrs_c not in ("-", None) else "—"}</div>
+  <div>{f"${float(con_c):,.2f}" if con_c not in ("-", None) else "—"}</div>
+  <div style="font-weight:600;color:{diff_color};">{diff_str}</div>
+  <div style="text-align:center;">{roi_badge(roi_v)}</div>
+</div>"""
+
+    st.markdown(f'<div style="border-radius:8px;overflow:hidden;">{header}{rows_html}</div>', unsafe_allow_html=True)
 
 def render_profit_loss_summary(df):
     month_rows = df[df["Month"] != "-"]
@@ -683,11 +727,13 @@ def render_profit_loss_summary(df):
     s2.metric("LOSS months",   len(cost_loss_months),   f"-${abs(cost_diff[cost_diff < 0].sum()):,.2f}")
     s3.metric("Net Cost (VRS − Convo Now)", f"${net:,.2f}", delta_color="inverse")
 
-    st.markdown("#### All LOSS months")
+    st.markdown("""<div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+                   color:#6B7280;margin:1.25rem 0 0.6rem;">Loss Months Detail</div>""", unsafe_allow_html=True)
     if loss_months.empty:
-        st.write("No LOSS months found.")
+        st.markdown('<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:0.75rem 1rem;color:#15803D;font-size:0.85rem;">No LOSS months — all months are profitable.</div>', unsafe_allow_html=True)
     else:
-        st.dataframe(loss_months, use_container_width=True)
+        cols_show = ["Month", "VRS Minutes", "Convo Now Minutes", "VRS Cost ($)", "Convo Now Cost ($)", "Cost Diff ($)", "Cost ROI"]
+        st.dataframe(loss_months[cols_show].reset_index(drop=True), use_container_width=True, hide_index=True)
 
 def render_charts(person_numbers, person_month_values, person_email_display):
     st.subheader("VRS vs Convo Now — Month-over-Month Comparison")
