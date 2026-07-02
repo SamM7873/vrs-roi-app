@@ -823,623 +823,643 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
 
     if not matched_numbers:
         st.warning("No number object record found for that search.")
+        st.session_state.pop("search_results", None)
     else:
         with st.spinner("Fetching monthly value data..."):
             df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail = build_report(matched_numbers)
+        # Cache results so tab/dropdown interactions don't lose them
+        st.session_state["search_results"] = dict(
+            matched_numbers=matched_numbers, df=df, person_numbers=person_numbers,
+            person_month_values=person_month_values, person_email_display=person_email_display,
+            num_month_values=num_month_values, num_to_person=num_to_person,
+            num_to_status=num_to_status, num_month_detail=num_month_detail,
+        )
 
-        st.write(f"Merged into {len(person_numbers)} person(s) by email")
+if "search_results" in st.session_state:
+    _r = st.session_state["search_results"]
+    matched_numbers = _r["matched_numbers"]
+    df = _r["df"]
+    person_numbers = _r["person_numbers"]
+    person_month_values = _r["person_month_values"]
+    person_email_display = _r["person_email_display"]
+    num_month_values = _r["num_month_values"]
+    num_to_person = _r["num_to_person"]
+    num_to_status = _r["num_to_status"]
+    num_month_detail = _r["num_month_detail"]
 
-        contact_tab, tickets_tab, retention_tab, summary_tab, vrs_zero_tab, report_tab = st.tabs([
-            "Contact Card", "Tickets", "Retention", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Detailed Report"
-        ])
-        with report_tab:
-            render_table_and_summary(df)
-            render_charts(person_numbers, person_month_values, person_email_display)
-        with summary_tab:
-            render_profit_loss_summary(df)
-        with vrs_zero_tab:
-            render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
-        with retention_tab:
-            SEG_META = {
-                "A": {"label": "GROWTH", "emoji": "📈", "color": "#2DB84B", "desc": "Usage exceeded baseline"},
-                "B": {"label": "STABLE", "emoji": "✅", "color": "#3B82F6", "desc": "Near baseline, healthy"},
-                "C": {"label": "DECLINING", "emoji": "⚠️", "color": "#F59E0B", "desc": "Notable drop in usage"},
-                "D": {"label": "AT RISK", "emoji": "🚨", "color": "#EF4444", "desc": "Severe drop, churn risk"},
-            }
+    st.write(f"Merged into {len(person_numbers)} person(s) by email")
 
-            NEXT_STEPS = {
-                "A": ["No action required at this time.", "Continue monitoring monthly usage."],
-                "B": ["Monitor usage trend over next 1–2 months.", "No immediate outreach needed."],
-                "C": ["Reach out with personalized support.", "Identify pain points.", "Offer training or resources."],
-                "D": ["URGENT: Schedule customer success call.", "Investigate reason for drop.", "Prepare retention strategy."],
-            }
+    contact_tab, tickets_tab, retention_tab, summary_tab, vrs_zero_tab, report_tab = st.tabs([
+        "Contact Card", "Tickets", "Retention", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Detailed Report"
+    ])
+    with report_tab:
+        render_table_and_summary(df)
+        render_charts(person_numbers, person_month_values, person_email_display)
+    with summary_tab:
+        render_profit_loss_summary(df)
+    with vrs_zero_tab:
+        render_vrs_zero_convo_active(df, person_numbers, person_month_values, person_email_display)
+    with retention_tab:
+        SEG_META = {
+            "A": {"label": "GROWTH", "emoji": "📈", "color": "#2DB84B", "desc": "Usage exceeded baseline"},
+            "B": {"label": "STABLE", "emoji": "✅", "color": "#3B82F6", "desc": "Near baseline, healthy"},
+            "C": {"label": "DECLINING", "emoji": "⚠️", "color": "#F59E0B", "desc": "Notable drop in usage"},
+            "D": {"label": "AT RISK", "emoji": "🚨", "color": "#EF4444", "desc": "Severe drop, churn risk"},
+        }
 
-            INTERPRETATION = {
-                "A": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is growing — usage exceeded baseline.",
-                "B": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is stable — usage is near baseline.",
-                "C": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is declining — requires outreach and support.",
-                "D": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is at risk — immediate action needed to prevent churn.",
-            }
+        NEXT_STEPS = {
+            "A": ["No action required at this time.", "Continue monitoring monthly usage."],
+            "B": ["Monitor usage trend over next 1–2 months.", "No immediate outreach needed."],
+            "C": ["Reach out with personalized support.", "Identify pain points.", "Offer training or resources."],
+            "D": ["URGENT: Schedule customer success call.", "Investigate reason for drop.", "Prepare retention strategy."],
+        }
 
-            st.markdown("#### VRS Consumer Retention Analysis")
-            analysis_date = datetime.now().strftime("%b %d, %Y at %I:%M %p")
+        INTERPRETATION = {
+            "A": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is growing — usage exceeded baseline.",
+            "B": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is stable — usage is near baseline.",
+            "C": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is declining — requires outreach and support.",
+            "D": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is at risk — immediate action needed to prevent churn.",
+        }
 
-            seg_counts = {"A": 0, "B": 0, "C": 0, "D": 0}
-            retention_cards = []
+        st.markdown("#### VRS Consumer Retention Analysis")
+        analysis_date = datetime.now().strftime("%b %d, %Y at %I:%M %p")
 
-            # Build a lookup of num -> props from matched_numbers for VRS numbers only
-            num_props_lookup = {}
-            for r in matched_numbers:
-                props = r.get("properties", {})
-                if norm(props.get("service_type") or "") != "vrs":
-                    continue
-                num = str(props.get("number") or "").strip()
-                if num:
-                    num_props_lookup[num] = props
+        seg_counts = {"A": 0, "B": 0, "C": 0, "D": 0}
+        retention_cards = []
 
-            # Analyze per VRS number — iterate num_month_values so no number is missed
-            today_month_key = datetime.now().strftime("%m/01/%Y")
-            for num, vrs_months in num_month_values.items():
-                # Only analyze numbers that belong to this search result
-                if num not in num_props_lookup:
-                    continue
+        # Build a lookup of num -> props from matched_numbers for VRS numbers only
+        num_props_lookup = {}
+        for r in matched_numbers:
+            props = r.get("properties", {})
+            if norm(props.get("service_type") or "") != "vrs":
+                continue
+            num = str(props.get("number") or "").strip()
+            if num:
+                num_props_lookup[num] = props
 
-                props = num_props_lookup[num]
-                if not vrs_months:
-                    continue
+        # Analyze per VRS number — iterate num_month_values so no number is missed
+        today_month_key = datetime.now().strftime("%m/01/%Y")
+        for num, vrs_months in num_month_values.items():
+            # Only analyze numbers that belong to this search result
+            if num not in num_props_lookup:
+                continue
 
-                current_month = today_month_key
-                current_usage = vrs_months.get(current_month, 0.0)
+            props = num_props_lookup[num]
+            if not vrs_months:
+                continue
 
-                # Baseline = all historical months excluding the current month
-                history_pairs = sorted(
-                    [(k, v) for k, v in vrs_months.items() if k != current_month],
-                    key=lambda x: month_sort_key(x[0])
-                )
-                history = [v for _, v in history_pairs]
+            current_month = today_month_key
+            current_usage = vrs_months.get(current_month, 0.0)
 
-                if not history:
-                    continue
+            # Baseline = all historical months excluding the current month
+            history_pairs = sorted(
+                [(k, v) for k, v in vrs_months.items() if k != current_month],
+                key=lambda x: month_sort_key(x[0])
+            )
+            history = [v for _, v in history_pairs]
 
-                baseline = sum(history) / len(history)
-                if baseline <= 0:
-                    continue
+            if not history:
+                continue
 
-                # Last month = most recent historical month
-                last_month_key, last_month_usage = history_pairs[-1] if history_pairs else (None, None)
-                last_month_perf = (last_month_usage / baseline * 100) if (last_month_usage is not None and baseline > 0) else None
-                perf = (current_usage / baseline * 100) if current_usage > 0 else 0.0
+            baseline = sum(history) / len(history)
+            if baseline <= 0:
+                continue
 
-                # Segment based on last month performance (current month is in-progress)
-                seg_perf = last_month_perf if last_month_perf is not None else 0.0
-                if seg_perf >= 100:  seg = "A"  # Growth
-                elif seg_perf >= 75: seg = "B"  # Stable
-                elif seg_perf >= 40: seg = "C"  # Declining
-                else:                seg = "D"  # At Risk
+            # Last month = most recent historical month
+            last_month_key, last_month_usage = history_pairs[-1] if history_pairs else (None, None)
+            last_month_perf = (last_month_usage / baseline * 100) if (last_month_usage is not None and baseline > 0) else None
+            perf = (current_usage / baseline * 100) if current_usage > 0 else 0.0
 
-                seg_counts[seg] += 1
-                meta = SEG_META[seg]
+            # Segment based on last month performance (current month is in-progress)
+            seg_perf = last_month_perf if last_month_perf is not None else 0.0
+            if seg_perf >= 100:  seg = "A"  # Growth
+            elif seg_perf >= 75: seg = "B"  # Stable
+            elif seg_perf >= 40: seg = "C"  # Declining
+            else:                seg = "D"  # At Risk
 
-                name = f"{props.get('first_name') or ''} {props.get('last_name') or ''}".strip() or "—"
-                email = props.get("email") or "—"
-                # Lifetime URSA/CFZ from number object
-                ursa_ios = to_float(props.get("ursa_ios_minutes"))
-                ursa_android = to_float(props.get("ursa_android_minutes"))
-                ursa_web = to_float(props.get("ursa_web_minutes"))
-                ursa_total = sum(x for x in [ursa_ios, ursa_android, ursa_web] if x is not None) or 0.0
-                cfz_min = to_float(props.get("cfz_minutes")) or 0.0
+            seg_counts[seg] += 1
+            meta = SEG_META[seg]
 
-                # Last month CFZ from monthly records
-                lm_detail = num_month_detail.get(num, {}).get(last_month_key, {}) if last_month_key else {}
-                lm_cfz = lm_detail.get("cfz")
+            name = f"{props.get('first_name') or ''} {props.get('last_name') or ''}".strip() or "—"
+            email = props.get("email") or "—"
+            # Lifetime URSA/CFZ from number object
+            ursa_ios = to_float(props.get("ursa_ios_minutes"))
+            ursa_android = to_float(props.get("ursa_android_minutes"))
+            ursa_web = to_float(props.get("ursa_web_minutes"))
+            ursa_total = sum(x for x in [ursa_ios, ursa_android, ursa_web] if x is not None) or 0.0
+            cfz_min = to_float(props.get("cfz_minutes")) or 0.0
 
-                retention_cards.append({
-                    "name": name, "email": email, "number": num,
-                    "seg": seg, "meta": meta,
-                    "vrs_months": vrs_months,
-                    "baseline": baseline, "current_usage": current_usage,
-                    "current_month": current_month, "perf": perf,
-                    "history_months": len(history),
-                    "last_month_key": last_month_key, "last_month_usage": last_month_usage, "last_month_perf": last_month_perf,
-                    "ursa_ios": ursa_ios, "ursa_android": ursa_android, "ursa_web": ursa_web,
-                    "ursa_total": ursa_total, "cfz_min": cfz_min,
-                    "lm_cfz": lm_cfz,
-                })
+            # Last month CFZ from monthly records
+            lm_detail = num_month_detail.get(num, {}).get(last_month_key, {}) if last_month_key else {}
+            lm_cfz = lm_detail.get("cfz")
 
-            # Summary metrics
-            total_analyzed = sum(seg_counts.values())
-            c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Analyzed", total_analyzed)
-            c2.metric(f"📈 A — GROWTH",   seg_counts["A"])
-            c3.metric(f"✅ B — STABLE",   seg_counts["B"])
-            c4.metric(f"⚠️ C — DECLINING", seg_counts["C"])
-            c5.metric(f"🚨 D — AT RISK",  seg_counts["D"])
+            retention_cards.append({
+                "name": name, "email": email, "number": num,
+                "seg": seg, "meta": meta,
+                "vrs_months": vrs_months,
+                "baseline": baseline, "current_usage": current_usage,
+                "current_month": current_month, "perf": perf,
+                "history_months": len(history),
+                "last_month_key": last_month_key, "last_month_usage": last_month_usage, "last_month_perf": last_month_perf,
+                "ursa_ios": ursa_ios, "ursa_android": ursa_android, "ursa_web": ursa_web,
+                "ursa_total": ursa_total, "cfz_min": cfz_min,
+                "lm_cfz": lm_cfz,
+            })
 
-            if not retention_cards:
-                st.info("No retention data available — insufficient historical usage.")
-            else:
-                seg_order = {"D": 0, "C": 1, "B": 2, "A": 3}
-                retention_cards.sort(key=lambda x: seg_order[x["seg"]])
+        # Summary metrics
+        total_analyzed = sum(seg_counts.values())
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Analyzed", total_analyzed)
+        c2.metric(f"📈 A — GROWTH",   seg_counts["A"])
+        c3.metric(f"✅ B — STABLE",   seg_counts["B"])
+        c4.metric(f"⚠️ C — DECLINING", seg_counts["C"])
+        c5.metric(f"🚨 D — AT RISK",  seg_counts["D"])
 
-                for rc in retention_cards:
-                    meta = rc["meta"]
-                    color = meta["color"]
-                    interp = INTERPRETATION[rc["seg"]](rc)
-                    steps_html = "".join(f"<li style='margin-bottom:3px;'>{s}</li>" for s in NEXT_STEPS[rc["seg"]])
-                    st.markdown(f"""
+        if not retention_cards:
+            st.info("No retention data available — insufficient historical usage.")
+        else:
+            seg_order = {"D": 0, "C": 1, "B": 2, "A": 3}
+            retention_cards.sort(key=lambda x: seg_order[x["seg"]])
+
+            for rc in retention_cards:
+                meta = rc["meta"]
+                color = meta["color"]
+                interp = INTERPRETATION[rc["seg"]](rc)
+                steps_html = "".join(f"<li style='margin-bottom:3px;'>{s}</li>" for s in NEXT_STEPS[rc["seg"]])
+                st.markdown(f"""
 <div style="background:#fff;border-radius:14px;box-shadow:0 1px 6px rgba(0,0,0,0.07);
-            padding:1.25rem 1.5rem;margin-bottom:1rem;border-left:4px solid {color};">
+        padding:1.25rem 1.5rem;margin-bottom:1rem;border-left:4px solid {color};">
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
-    <div>
-      <span style="font-size:1rem;font-weight:800;color:#111827;">{rc['name']}</span>
-      <span style="font-size:0.82rem;color:#6B7280;margin-left:0.5rem;">{rc['email']} · #{rc['number']}</span>
-    </div>
-    <span style="background:{color};color:#fff;font-size:0.82rem;font-weight:800;padding:4px 14px;border-radius:99px;">
-      {meta['emoji']} Segment {rc['seg']} — {meta['label']}
-    </span>
+<div>
+  <span style="font-size:1rem;font-weight:800;color:#111827;">{rc['name']}</span>
+  <span style="font-size:0.82rem;color:#6B7280;margin-left:0.5rem;">{rc['email']} · #{rc['number']}</span>
+</div>
+<span style="background:{color};color:#fff;font-size:0.82rem;font-weight:800;padding:4px 14px;border-radius:99px;">
+  {meta['emoji']} Segment {rc['seg']} — {meta['label']}
+</span>
   </div>
   <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.75rem;margin-bottom:1rem;">
-    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Historical Baseline</div>
-      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['baseline']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
-      <div style="font-size:0.72rem;color:#9CA3AF;">avg of {rc['history_months']} month(s)</div>
-    </div>
-    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Month</div>
-      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{f"{rc['last_month_usage']:.1f}" if rc['last_month_usage'] is not None else "—"} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
-      <div style="font-size:0.72rem;color:#9CA3AF;">{rc['last_month_key'] or "—"}</div>
-    </div>
-    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Month Perf</div>
-      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{f"{rc['last_month_perf']:.1f}%" if rc['last_month_perf'] is not None else "—"}</div>
-      <div style="font-size:0.72rem;color:#9CA3AF;">vs baseline</div>
-    </div>
-    <div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Current Month</div>
-      <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['current_usage']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
-      <div style="font-size:0.72rem;color:#9CA3AF;">{rc['current_month']}</div>
-    </div>
-    <div style="background:{color}11;border-radius:10px;padding:0.75rem 1rem;">
-      <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Performance</div>
-      <div style="font-size:1.3rem;font-weight:800;color:{color};">{rc['perf']:.1f}%</div>
-      <div style="font-size:0.72rem;color:#9CA3AF;">vs baseline</div>
-    </div>
+<div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
+  <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Historical Baseline</div>
+  <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['baseline']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
+  <div style="font-size:0.72rem;color:#9CA3AF;">avg of {rc['history_months']} month(s)</div>
+</div>
+<div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
+  <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Month</div>
+  <div style="font-size:1.3rem;font-weight:800;color:#111827;">{f"{rc['last_month_usage']:.1f}" if rc['last_month_usage'] is not None else "—"} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
+  <div style="font-size:0.72rem;color:#9CA3AF;">{rc['last_month_key'] or "—"}</div>
+</div>
+<div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
+  <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Last Month Perf</div>
+  <div style="font-size:1.3rem;font-weight:800;color:#111827;">{f"{rc['last_month_perf']:.1f}%" if rc['last_month_perf'] is not None else "—"}</div>
+  <div style="font-size:0.72rem;color:#9CA3AF;">vs baseline</div>
+</div>
+<div style="background:#F9FAFB;border-radius:10px;padding:0.75rem 1rem;">
+  <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Current Month</div>
+  <div style="font-size:1.3rem;font-weight:800;color:#111827;">{rc['current_usage']:.1f} <span style="font-size:0.75rem;font-weight:500;">min</span></div>
+  <div style="font-size:0.72rem;color:#9CA3AF;">{rc['current_month']}</div>
+</div>
+<div style="background:{color}11;border-radius:10px;padding:0.75rem 1rem;">
+  <div style="font-size:0.7rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Performance</div>
+  <div style="font-size:1.3rem;font-weight:800;color:{color};">{rc['perf']:.1f}%</div>
+  <div style="font-size:0.72rem;color:#9CA3AF;">vs baseline</div>
+</div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-    <div style="background:#F9FAFB;border-radius:8px;padding:0.75rem 1rem;">
-      <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;">📝 Interpretation</div>
-      <div style="font-size:0.83rem;color:#374151;">{interp}</div>
-    </div>
-    <div style="background:#F9FAFB;border-radius:8px;padding:0.75rem 1rem;">
-      <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;">⚡ Next Steps</div>
-      <ul style="margin:0;padding-left:1.1rem;font-size:0.83rem;color:#374151;">{steps_html}</ul>
-    </div>
+<div style="background:#F9FAFB;border-radius:8px;padding:0.75rem 1rem;">
+  <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;">📝 Interpretation</div>
+  <div style="font-size:0.83rem;color:#374151;">{interp}</div>
+</div>
+<div style="background:#F9FAFB;border-radius:8px;padding:0.75rem 1rem;">
+  <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.4rem;">⚡ Next Steps</div>
+  <ul style="margin:0;padding-left:1.1rem;font-size:0.83rem;color:#374151;">{steps_html}</ul>
+</div>
   </div>
   <div style="font-size:0.72rem;color:#9CA3AF;margin-top:0.75rem;">Analysis Date: {analysis_date}</div>
 </div>""", unsafe_allow_html=True)
 
-                    # Monthly usage history chart with per-month segment coloring
-                    vrs_months = rc["vrs_months"]
-                    baseline_val = rc["baseline"]
-                    all_months_sorted = sorted(vrs_months.keys(), key=month_sort_key)
+                # Monthly usage history chart with per-month segment coloring
+                vrs_months = rc["vrs_months"]
+                baseline_val = rc["baseline"]
+                all_months_sorted = sorted(vrs_months.keys(), key=month_sort_key)
 
-                    def month_seg(m, usage):
-                        if m == rc["current_month"]:
-                            return "Current Month"
-                        p = (usage / baseline_val * 100) if baseline_val > 0 else 0
-                        if p >= 100: return "📈 Growth"
-                        elif p >= 75: return "✅ Stable"
-                        elif p >= 40: return "⚠️ Declining"
-                        else: return "🚨 At Risk"
+                def month_seg(m, usage):
+                    if m == rc["current_month"]:
+                        return "Current Month"
+                    p = (usage / baseline_val * 100) if baseline_val > 0 else 0
+                    if p >= 100: return "📈 Growth"
+                    elif p >= 75: return "✅ Stable"
+                    elif p >= 40: return "⚠️ Declining"
+                    else: return "🚨 At Risk"
 
-                    chart_rows = []
-                    for m in all_months_sorted:
-                        usage = vrs_months[m]
-                        seg_label = month_seg(m, usage)
-                        perf_val = (usage / baseline_val * 100) if baseline_val > 0 and m != rc["current_month"] else None
-                        chart_rows.append({
-                            "Month": m,
-                            "VRS Minutes": usage,
-                            "Segment": seg_label,
-                            "Performance": f"{perf_val:.1f}%" if perf_val is not None else "—",
-                        })
-
-                    chart_data = pd.DataFrame(chart_rows)
-                    seg_domain = ["📈 Growth", "✅ Stable", "⚠️ Declining", "🚨 At Risk", "Current Month"]
-                    seg_colors = ["#2DB84B", "#3B82F6", "#F59E0B", "#EF4444", "#D1D5DB"]
-
-                    baseline_line = pd.DataFrame({
-                        "Month": all_months_sorted,
-                        "Baseline": [baseline_val] * len(all_months_sorted),
+                chart_rows = []
+                for m in all_months_sorted:
+                    usage = vrs_months[m]
+                    seg_label = month_seg(m, usage)
+                    perf_val = (usage / baseline_val * 100) if baseline_val > 0 and m != rc["current_month"] else None
+                    chart_rows.append({
+                        "Month": m,
+                        "VRS Minutes": usage,
+                        "Segment": seg_label,
+                        "Performance": f"{perf_val:.1f}%" if perf_val is not None else "—",
                     })
-                    bars = alt.Chart(chart_data).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-                        x=alt.X("Month:N", sort=all_months_sorted, axis=alt.Axis(labelAngle=-35, title=None)),
-                        y=alt.Y("VRS Minutes:Q", title="VRS Minutes"),
-                        color=alt.Color("Segment:N", scale=alt.Scale(domain=seg_domain, range=seg_colors),
-                                        legend=alt.Legend(title=None, orient="top")),
-                        tooltip=["Month", "VRS Minutes", "Segment", "Performance"],
-                    )
-                    baseline_rule = alt.Chart(baseline_line).mark_rule(
-                        color="#6B7280", strokeDash=[6, 3], strokeWidth=1.5
-                    ).encode(
-                        y="Baseline:Q",
-                        tooltip=[alt.Tooltip("Baseline:Q", title="Baseline avg", format=".1f")],
-                    )
-                    st.altair_chart((bars + baseline_rule).properties(height=220), use_container_width=True)
 
-        with contact_tab:
-            def fmt(v):
-                return v if v else "—"
+                chart_data = pd.DataFrame(chart_rows)
+                seg_domain = ["📈 Growth", "✅ Stable", "⚠️ Declining", "🚨 At Risk", "Current Month"]
+                seg_colors = ["#2DB84B", "#3B82F6", "#F59E0B", "#EF4444", "#D1D5DB"]
 
-            def status_badge(status):
-                s = norm(status)
-                color = "#2DB84B" if s == "live" else "#EF4444" if s == "suspended" else "#F59E0B" if s in ("inactive", "cancelled") else "#6B7280"
-                return f'<span style="background:{color};color:#fff;padding:2px 10px;border-radius:999px;font-size:0.75rem;font-weight:700;">{status or "—"}</span>'
+                baseline_line = pd.DataFrame({
+                    "Month": all_months_sorted,
+                    "Baseline": [baseline_val] * len(all_months_sorted),
+                })
+                bars = alt.Chart(chart_data).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+                    x=alt.X("Month:N", sort=all_months_sorted, axis=alt.Axis(labelAngle=-35, title=None)),
+                    y=alt.Y("VRS Minutes:Q", title="VRS Minutes"),
+                    color=alt.Color("Segment:N", scale=alt.Scale(domain=seg_domain, range=seg_colors),
+                                    legend=alt.Legend(title=None, orient="top")),
+                    tooltip=["Month", "VRS Minutes", "Segment", "Performance"],
+                )
+                baseline_rule = alt.Chart(baseline_line).mark_rule(
+                    color="#6B7280", strokeDash=[6, 3], strokeWidth=1.5
+                ).encode(
+                    y="Baseline:Q",
+                    tooltip=[alt.Tooltip("Baseline:Q", title="Baseline avg", format=".1f")],
+                )
+                st.altair_chart((bars + baseline_rule).properties(height=220), use_container_width=True)
 
-            def ursa_badge(v):
-                if v:
-                    return f'<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:999px;font-size:0.75rem;font-weight:600;">✓ {v}</span>'
-                return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 10px;border-radius:999px;font-size:0.75rem;">Not yet</span>'
+    with contact_tab:
+        def fmt(v):
+            return v if v else "—"
 
-            def row(label, value):
-                return f"""
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;
-                            padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
-                  <span style="color:#6B7280;font-size:0.82rem;font-weight:500;min-width:160px;">{label}</span>
-                  <span style="color:#111827;font-size:0.85rem;font-weight:500;text-align:right;">{value}</span>
-                </div>"""
+        def status_badge(status):
+            s = norm(status)
+            color = "#2DB84B" if s == "live" else "#EF4444" if s == "suspended" else "#F59E0B" if s in ("inactive", "cancelled") else "#6B7280"
+            return f'<span style="background:{color};color:#fff;padding:2px 10px;border-radius:999px;font-size:0.75rem;font-weight:700;">{status or "—"}</span>'
 
-            sorted_numbers = sorted(
-                matched_numbers,
-                key=lambda r: 0 if norm(r.get("properties", {}).get("service_type") or "") == "vrs" else 1
+        def ursa_badge(v):
+            if v:
+                return f'<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:999px;font-size:0.75rem;font-weight:600;">✓ {v}</span>'
+            return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 10px;border-radius:999px;font-size:0.75rem;">Not yet</span>'
+
+        def row(label, value):
+            return f"""
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;
+                        padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
+              <span style="color:#6B7280;font-size:0.82rem;font-weight:500;min-width:160px;">{label}</span>
+              <span style="color:#111827;font-size:0.85rem;font-weight:500;text-align:right;">{value}</span>
+            </div>"""
+
+        sorted_numbers = sorted(
+            matched_numbers,
+            key=lambda r: 0 if norm(r.get("properties", {}).get("service_type") or "") == "vrs" else 1
+        )
+        last_label = None
+        for r in sorted_numbers:
+            p = r.get("properties", {})
+            svc = norm(p.get("service_type") or "")
+            section_label = "VRS" if svc == "vrs" else "Convo Now"
+            if section_label != last_label:
+                color = "#2DB84B" if svc == "vrs" else "#3B82F6"
+                mt = "0" if last_label is None else "1.5rem"
+                st.markdown(
+                    f'<div style="display:inline-flex;align-items:center;gap:0.5rem;'
+                    f'background:{color};color:#fff;'
+                    f'font-size:0.8rem;font-weight:800;letter-spacing:1.5px;'
+                    f'text-transform:uppercase;padding:0.35rem 1rem;'
+                    f'border-radius:999px;margin-top:{mt};margin-bottom:0.75rem;">'
+                    f'{section_label}</div>',
+                    unsafe_allow_html=True
+                )
+                last_label = section_label
+            name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
+            addr_street = " ".join(a for a in [p.get("street1"), p.get("street2")] if a)
+            addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip_code")] if a)
+            address = "<br>".join(a for a in [addr_street, addr_csz] if a) or "—"
+
+            emerg_street = " ".join(a for a in [p.get("emerg_street1"), p.get("emerg_street2")] if a)
+            emerg_csz = ", ".join(a for a in [p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")] if a)
+            emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
+            initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
+
+            # Build convo now monthly usage for this record's person key
+            email_key = norm(p.get("email") or "") or f"num:{p.get('number') or ''}"
+            convo_monthly = person_month_values.get(email_key, {})
+
+            html_card = (
+                '<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.07);'
+                'padding:1.5rem;margin-bottom:1.25rem;border:1px solid #F0F0EA;">'
+                '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;'
+                'padding-bottom:1rem;border-bottom:2px solid #F0F0EA;">'
+                f'<div style="width:52px;height:52px;border-radius:50%;background:#2DB84B;'
+                f'display:flex;align-items:center;justify-content:center;'
+                f'font-size:1.2rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
+                f'<div><div style="font-size:1.15rem;font-weight:800;color:#111827;">{name}</div>'
+                f'<div style="font-size:0.85rem;color:#6B7280;">{fmt(p.get("email"))}</div></div>'
+                f'<div style="margin-left:auto;">{status_badge(p.get("number_status"))}</div>'
+                '</div>'
             )
-            last_label = None
-            for r in sorted_numbers:
-                p = r.get("properties", {})
-                svc = norm(p.get("service_type") or "")
-                section_label = "VRS" if svc == "vrs" else "Convo Now"
-                if section_label != last_label:
-                    color = "#2DB84B" if svc == "vrs" else "#3B82F6"
-                    mt = "0" if last_label is None else "1.5rem"
-                    st.markdown(
-                        f'<div style="display:inline-flex;align-items:center;gap:0.5rem;'
-                        f'background:{color};color:#fff;'
-                        f'font-size:0.8rem;font-weight:800;letter-spacing:1.5px;'
-                        f'text-transform:uppercase;padding:0.35rem 1rem;'
-                        f'border-radius:999px;margin-top:{mt};margin-bottom:0.75rem;">'
-                        f'{section_label}</div>',
-                        unsafe_allow_html=True
-                    )
-                    last_label = section_label
-                name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
-                addr_street = " ".join(a for a in [p.get("street1"), p.get("street2")] if a)
-                addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip_code")] if a)
-                address = "<br>".join(a for a in [addr_street, addr_csz] if a) or "—"
-
-                emerg_street = " ".join(a for a in [p.get("emerg_street1"), p.get("emerg_street2")] if a)
-                emerg_csz = ", ".join(a for a in [p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")] if a)
-                emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
-                initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
-
-                # Build convo now monthly usage for this record's person key
-                email_key = norm(p.get("email") or "") or f"num:{p.get('number') or ''}"
-                convo_monthly = person_month_values.get(email_key, {})
-
-                html_card = (
-                    '<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.07);'
-                    'padding:1.5rem;margin-bottom:1.25rem;border:1px solid #F0F0EA;">'
-                    '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;'
-                    'padding-bottom:1rem;border-bottom:2px solid #F0F0EA;">'
-                    f'<div style="width:52px;height:52px;border-radius:50%;background:#2DB84B;'
-                    f'display:flex;align-items:center;justify-content:center;'
-                    f'font-size:1.2rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
-                    f'<div><div style="font-size:1.15rem;font-weight:800;color:#111827;">{name}</div>'
-                    f'<div style="font-size:0.85rem;color:#6B7280;">{fmt(p.get("email"))}</div></div>'
-                    f'<div style="margin-left:auto;">{status_badge(p.get("number_status"))}</div>'
+            is_vrs = norm(p.get("service_type") or "") == "vrs"
+            is_suspended = norm(p.get("number_status") or "") == "suspended"
+            show_monthly = not is_vrs and not is_suspended
+            grid_cols = "1fr 1fr 1fr" if (is_vrs or show_monthly) else "1fr 1fr"
+            col1 = (
+                '<div>'
+                '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Contact</div>'
+                + row("📞 Phone", fmt(p.get("phone")))
+                + row("✉️ Email", fmt(p.get("email")))
+                + (row("🏠 Address", address) + row("🚨 Emergency", emergency) if is_vrs else "")
+                + '</div>'
+            )
+            col2 = (
+                '<div>'
+                '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Number Details</div>'
+                + row("📱 Number", fmt(p.get("number")))
+                + row("📅 Created At", fmt(p.get("number_created_at")))
+                + row("🔧 Service Type", fmt(p.get("service_type")))
+                + row("👤 Usage Type", fmt(p.get("usage_type")))
+                + '</div>'
+            )
+            if is_vrs:
+                col3 = (
+                    '<div>'
+                    '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">URSA Activity</div>'
+                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">First Login</div>'
+                    + ursa_badge(p.get("ursa_first_login"))
+                    + '</div>'
+                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">1st Outbound Call</div>'
+                    + ursa_badge(p.get("ursa_first_outbound_call"))
+                    + '</div>'
+                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">2nd Outbound Call</div>'
+                    + ursa_badge(p.get("ursa_second_outbound_call"))
+                    + '</div>'
+                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Outbound Call</div>'
+                    + ursa_badge(p.get("ursa_last_outbound_call"))
+                    + '</div>'
+                    '<div style="padding:0.55rem 0;">'
+                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Inbound Call</div>'
+                    + ursa_badge(p.get("ursa_last_inbound_call"))
+                    + '</div>'
                     '</div>'
                 )
-                is_vrs = norm(p.get("service_type") or "") == "vrs"
-                is_suspended = norm(p.get("number_status") or "") == "suspended"
-                show_monthly = not is_vrs and not is_suspended
-                grid_cols = "1fr 1fr 1fr" if (is_vrs or show_monthly) else "1fr 1fr"
-                col1 = (
+            elif show_monthly:
+                convo_rows = "".join(
+                    row(f"📆 {mk}", f"{sum(vals['convo']):.1f} min")
+                    for mk, vals in sorted(convo_monthly.items(), reverse=True)
+                    if vals.get("convo") and sum(vals["convo"]) > 0
+                ) or row("No data", "—")
+                col3 = (
                     '<div>'
-                    '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Contact</div>'
-                    + row("📞 Phone", fmt(p.get("phone")))
-                    + row("✉️ Email", fmt(p.get("email")))
-                    + (row("🏠 Address", address) + row("🚨 Emergency", emergency) if is_vrs else "")
+                    '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Monthly Usage (Convo Now)</div>'
+                    + convo_rows
                     + '</div>'
                 )
-                col2 = (
-                    '<div>'
-                    '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Number Details</div>'
-                    + row("📱 Number", fmt(p.get("number")))
-                    + row("📅 Created At", fmt(p.get("number_created_at")))
-                    + row("🔧 Service Type", fmt(p.get("service_type")))
-                    + row("👤 Usage Type", fmt(p.get("usage_type")))
-                    + '</div>'
-                )
-                if is_vrs:
-                    col3 = (
-                        '<div>'
-                        '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">URSA Activity</div>'
-                        '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
-                        '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">First Login</div>'
-                        + ursa_badge(p.get("ursa_first_login"))
-                        + '</div>'
-                        '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
-                        '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">1st Outbound Call</div>'
-                        + ursa_badge(p.get("ursa_first_outbound_call"))
-                        + '</div>'
-                        '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
-                        '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">2nd Outbound Call</div>'
-                        + ursa_badge(p.get("ursa_second_outbound_call"))
-                        + '</div>'
-                        '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
-                        '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Outbound Call</div>'
-                        + ursa_badge(p.get("ursa_last_outbound_call"))
-                        + '</div>'
-                        '<div style="padding:0.55rem 0;">'
-                        '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Inbound Call</div>'
-                        + ursa_badge(p.get("ursa_last_inbound_call"))
-                        + '</div>'
-                        '</div>'
-                    )
-                elif show_monthly:
-                    convo_rows = "".join(
-                        row(f"📆 {mk}", f"{sum(vals['convo']):.1f} min")
-                        for mk, vals in sorted(convo_monthly.items(), reverse=True)
-                        if vals.get("convo") and sum(vals["convo"]) > 0
-                    ) or row("No data", "—")
-                    col3 = (
-                        '<div>'
-                        '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Monthly Usage (Convo Now)</div>'
-                        + convo_rows
-                        + '</div>'
-                    )
-                else:
-                    col3 = ""
-
-                html_card += (
-                    f'<div style="display:grid;grid-template-columns:{grid_cols};gap:1.25rem;">'
-                    + col1 + col2 + col3
-                    + '</div></div>'
-                )
-                st.markdown(html_card, unsafe_allow_html=True)
-
-        with tickets_tab:
-            # Collect unique emails from matched numbers
-            emails = list({
-                (r.get("properties", {}).get("email") or "").strip().lower()
-                for r in matched_numbers
-                if (r.get("properties", {}).get("email") or "").strip()
-            })
-
-            if not emails:
-                st.info("No email addresses found to look up tickets.")
             else:
-                with st.spinner("Looking up contacts and tickets..."):
-                    # Step 1: find HubSpot contact IDs by email
-                    contact_ids = []
-                    contact_errors = []
-                    for email in emails:
-                        resp = requests.post(
-                            f"{BASE_URL}/crm/v3/objects/contacts/search",
-                            headers=headers,
-                            json={"filterGroups": [{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}],
-                                  "properties": ["email"], "limit": 10},
-                            timeout=30,
-                        )
-                        if resp.status_code == 200:
-                            for c in resp.json().get("results", []):
-                                contact_ids.append(c["id"])
-                        else:
-                            contact_errors.append(f"Contact search error {resp.status_code}: {resp.text[:200]}")
-                        time.sleep(0.26)
+                col3 = ""
 
-                    # Collect phone numbers from matched numbers
-                    phones = list({
-                        (r.get("properties", {}).get("phone") or "").strip()
-                        for r in matched_numbers
-                        if (r.get("properties", {}).get("phone") or "").strip()
-                    })
-                    vrs_numbers = list({
-                        (r.get("properties", {}).get("number") or "").strip()
-                        for r in matched_numbers
-                        if (r.get("properties", {}).get("number") or "").strip()
-                    })
+            html_card += (
+                f'<div style="display:grid;grid-template-columns:{grid_cols};gap:1.25rem;">'
+                + col1 + col2 + col3
+                + '</div></div>'
+            )
+            st.markdown(html_card, unsafe_allow_html=True)
 
-                    # Fetch pipeline names and stage labels
-                    stage_labels = {}
-                    pipeline_names = {}  # pipeline_id -> pipeline label
-                    try:
-                        pr = requests.get(f"{BASE_URL}/crm/v3/pipelines/tickets",
-                                          headers=headers, timeout=15)
-                        if pr.status_code == 200:
-                            for pipeline in pr.json().get("results", []):
-                                pid = pipeline["id"]
-                                pipeline_names[pid] = pipeline.get("label", pid)
-                                for stage in pipeline.get("stages", []):
-                                    stage_labels[stage["id"]] = stage.get("label", stage["id"])
-                    except Exception:
-                        pass
+    with tickets_tab:
+        # Collect unique emails from matched numbers
+        emails = list({
+            (r.get("properties", {}).get("email") or "").strip().lower()
+            for r in matched_numbers
+            if (r.get("properties", {}).get("email") or "").strip()
+        })
 
-                    ticket_rows = []
-                    ticket_errors = []
-                    seen_ids = set()
+        if not emails:
+            st.info("No email addresses found to look up tickets.")
+        else:
+            with st.spinner("Looking up contacts and tickets..."):
+                # Step 1: find HubSpot contact IDs by email
+                contact_ids = []
+                contact_errors = []
+                for email in emails:
+                    resp = requests.post(
+                        f"{BASE_URL}/crm/v3/objects/contacts/search",
+                        headers=headers,
+                        json={"filterGroups": [{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}],
+                              "properties": ["email"], "limit": 10},
+                        timeout=30,
+                    )
+                    if resp.status_code == 200:
+                        for c in resp.json().get("results", []):
+                            contact_ids.append(c["id"])
+                    else:
+                        contact_errors.append(f"Contact search error {resp.status_code}: {resp.text[:200]}")
+                    time.sleep(0.26)
 
-                    # Fetch owner name map
-                    owner_names = {}
-                    try:
-                        or_ = requests.get(f"{BASE_URL}/crm/v3/owners",
-                                           headers=headers, timeout=15)
-                        if or_.status_code == 200:
-                            for o in or_.json().get("results", []):
-                                fn = o.get("firstName") or ""
-                                ln = o.get("lastName") or ""
-                                owner_names[str(o["id"])] = f"{fn} {ln}".strip() or o.get("email", str(o["id"]))
-                    except Exception:
-                        pass
+                # Collect phone numbers from matched numbers
+                phones = list({
+                    (r.get("properties", {}).get("phone") or "").strip()
+                    for r in matched_numbers
+                    if (r.get("properties", {}).get("phone") or "").strip()
+                })
+                vrs_numbers = list({
+                    (r.get("properties", {}).get("number") or "").strip()
+                    for r in matched_numbers
+                    if (r.get("properties", {}).get("number") or "").strip()
+                })
 
-                    TICKET_PROPS = ["subject", "hs_pipeline", "hs_pipeline_stage", "hs_ticket_priority",
-                                    "createdate", "hs_lastmodifieddate", "closed_date", "content",
-                                    "hs_ticket_category", "hs_ticket_subcategory",
-                                    "hubspot_owner_id", "email", "phone"]
+                # Fetch pipeline names and stage labels
+                stage_labels = {}
+                pipeline_names = {}  # pipeline_id -> pipeline label
+                try:
+                    pr = requests.get(f"{BASE_URL}/crm/v3/pipelines/tickets",
+                                      headers=headers, timeout=15)
+                    if pr.status_code == 200:
+                        for pipeline in pr.json().get("results", []):
+                            pid = pipeline["id"]
+                            pipeline_names[pid] = pipeline.get("label", pid)
+                            for stage in pipeline.get("stages", []):
+                                stage_labels[stage["id"]] = stage.get("label", stage["id"])
+                except Exception:
+                    pass
 
-                    def _collect_tickets(filter_groups):
-                        after = None
-                        while True:
-                            body = {"filterGroups": filter_groups, "properties": TICKET_PROPS, "limit": 100}
-                            if after:
-                                body["after"] = after
-                            r = requests.post(f"{BASE_URL}/crm/v3/objects/tickets/search",
-                                              headers=headers, json=body, timeout=30)
-                            if r.status_code == 200:
-                                data = r.json()
-                                for t in data.get("results", []):
-                                    if t["id"] not in seen_ids:
-                                        seen_ids.add(t["id"])
-                                        tp = t.get("properties", {})
-                                        raw_stage = tp.get("hs_pipeline_stage") or ""
-                                        raw_pipeline = tp.get("hs_pipeline") or ""
-                                        ticket_rows.append({
-                                            "ID": t["id"],
-                                            "Subject": tp.get("subject") or "—",
-                                            "Pipeline": pipeline_names.get(raw_pipeline, raw_pipeline) or "—",
-                                            "Status": stage_labels.get(raw_stage, raw_stage) or "—",
-                                            "Priority": tp.get("hs_ticket_priority") or "—",
-                                            "Category": tp.get("hs_ticket_category") or "—",
-                                            "Subcategory": tp.get("hs_ticket_subcategory") or "—",
-                                            "Owner": owner_names.get(tp.get("hubspot_owner_id") or "", "—"),
-                                            "Created": (tp.get("createdate") or "")[:10],
-                                            "Closed": (tp.get("closed_date") or "")[:10],
-                                            "Description": tp.get("content") or "—",
-                                        })
-                                after = data.get("paging", {}).get("next", {}).get("after")
-                                if not after:
-                                    break
-                            else:
-                                ticket_errors.append(f"Ticket search error {r.status_code}: {r.text[:300]}")
+                ticket_rows = []
+                ticket_errors = []
+                seen_ids = set()
+
+                # Fetch owner name map
+                owner_names = {}
+                try:
+                    or_ = requests.get(f"{BASE_URL}/crm/v3/owners",
+                                       headers=headers, timeout=15)
+                    if or_.status_code == 200:
+                        for o in or_.json().get("results", []):
+                            fn = o.get("firstName") or ""
+                            ln = o.get("lastName") or ""
+                            owner_names[str(o["id"])] = f"{fn} {ln}".strip() or o.get("email", str(o["id"]))
+                except Exception:
+                    pass
+
+                TICKET_PROPS = ["subject", "hs_pipeline", "hs_pipeline_stage", "hs_ticket_priority",
+                                "createdate", "hs_lastmodifieddate", "closed_date", "content",
+                                "hs_ticket_category", "hs_ticket_subcategory",
+                                "hubspot_owner_id", "email", "phone"]
+
+                def _collect_tickets(filter_groups):
+                    after = None
+                    while True:
+                        body = {"filterGroups": filter_groups, "properties": TICKET_PROPS, "limit": 100}
+                        if after:
+                            body["after"] = after
+                        r = requests.post(f"{BASE_URL}/crm/v3/objects/tickets/search",
+                                          headers=headers, json=body, timeout=30)
+                        if r.status_code == 200:
+                            data = r.json()
+                            for t in data.get("results", []):
+                                if t["id"] not in seen_ids:
+                                    seen_ids.add(t["id"])
+                                    tp = t.get("properties", {})
+                                    raw_stage = tp.get("hs_pipeline_stage") or ""
+                                    raw_pipeline = tp.get("hs_pipeline") or ""
+                                    ticket_rows.append({
+                                        "ID": t["id"],
+                                        "Subject": tp.get("subject") or "—",
+                                        "Pipeline": pipeline_names.get(raw_pipeline, raw_pipeline) or "—",
+                                        "Status": stage_labels.get(raw_stage, raw_stage) or "—",
+                                        "Priority": tp.get("hs_ticket_priority") or "—",
+                                        "Category": tp.get("hs_ticket_category") or "—",
+                                        "Subcategory": tp.get("hs_ticket_subcategory") or "—",
+                                        "Owner": owner_names.get(tp.get("hubspot_owner_id") or "", "—"),
+                                        "Created": (tp.get("createdate") or "")[:10],
+                                        "Closed": (tp.get("closed_date") or "")[:10],
+                                        "Description": tp.get("content") or "—",
+                                    })
+                            after = data.get("paging", {}).get("next", {}).get("after")
+                            if not after:
                                 break
-                            time.sleep(0.26)
-
-                    # Search by contact association
-                    for cid in contact_ids:
-                        _collect_tickets([{"filters": [{"propertyName": "associations.contact", "operator": "EQ", "value": cid}]}])
+                        else:
+                            ticket_errors.append(f"Ticket search error {r.status_code}: {r.text[:300]}")
+                            break
                         time.sleep(0.26)
 
-                    # Search by email property on ticket
-                    for email in emails:
-                        _collect_tickets([{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}])
-                        time.sleep(0.26)
+                # Search by contact association
+                for cid in contact_ids:
+                    _collect_tickets([{"filters": [{"propertyName": "associations.contact", "operator": "EQ", "value": cid}]}])
+                    time.sleep(0.26)
 
-                    # Search by phone property on ticket
-                    for phone in phones:
-                        _collect_tickets([{"filters": [{"propertyName": "phone", "operator": "EQ", "value": phone}]}])
-                        time.sleep(0.26)
+                # Search by email property on ticket
+                for email in emails:
+                    _collect_tickets([{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}])
+                    time.sleep(0.26)
 
-                    # Search by VRS number in subject
-                    for num in vrs_numbers:
-                        _collect_tickets([{"filters": [{"propertyName": "subject", "operator": "CONTAINS_TOKEN", "value": num}]}])
-                        time.sleep(0.26)
+                # Search by phone property on ticket
+                for phone in phones:
+                    _collect_tickets([{"filters": [{"propertyName": "phone", "operator": "EQ", "value": phone}]}])
+                    time.sleep(0.26)
 
-                for e in contact_errors + ticket_errors:
-                    st.error(e)
+                # Search by VRS number in subject
+                for num in vrs_numbers:
+                    _collect_tickets([{"filters": [{"propertyName": "subject", "operator": "CONTAINS_TOKEN", "value": num}]}])
+                    time.sleep(0.26)
 
-                if not ticket_rows:
-                    st.markdown("""
+            for e in contact_errors + ticket_errors:
+                st.error(e)
+
+            if not ticket_rows:
+                st.markdown("""
 <div style="text-align:center;padding:3rem 1rem;">
   <div style="font-size:2.5rem;margin-bottom:0.5rem;">🎫</div>
   <div style="font-size:1.1rem;font-weight:600;color:#374151;margin-bottom:0.25rem;">No tickets found</div>
   <div style="font-size:0.85rem;color:#9CA3AF;">No support tickets are linked to this contact.</div>
 </div>""", unsafe_allow_html=True)
+            else:
+                tickets_df = pd.DataFrame(ticket_rows)
+
+                # Pipeline dropdown filter — exclude internal/irrelevant pipelines
+                EXCLUDED_PIPELINES = {"HubSpot Requests", "Convo Greeting", "Sponsorship"}
+                ticket_rows = [r for r in ticket_rows if r["Pipeline"] not in EXCLUDED_PIPELINES]
+                tickets_df = pd.DataFrame(ticket_rows) if ticket_rows else tickets_df.iloc[0:0]
+
+                all_pipelines = sorted(set(r["Pipeline"] for r in ticket_rows))
+                pipeline_options = ["All Pipelines"] + all_pipelines
+                selected_pipeline = st.selectbox("Filter by Pipeline", pipeline_options, key="ticket_pipeline_filter")
+                if selected_pipeline != "All Pipelines":
+                    filtered_tickets = [r for r in ticket_rows if r["Pipeline"] == selected_pipeline]
                 else:
-                    tickets_df = pd.DataFrame(ticket_rows)
+                    filtered_tickets = ticket_rows
 
-                    # Pipeline dropdown filter — exclude internal/irrelevant pipelines
-                    EXCLUDED_PIPELINES = {"HubSpot Requests", "Convo Greeting", "Sponsorship"}
-                    ticket_rows = [r for r in ticket_rows if r["Pipeline"] not in EXCLUDED_PIPELINES]
-                    tickets_df = pd.DataFrame(ticket_rows) if ticket_rows else tickets_df.iloc[0:0]
+                PRIORITY_COLOR = {"high": "#EF4444", "medium": "#F59E0B", "low": "#3B82F6", "—": "#9CA3AF"}
+                CLOSED_KEYWORDS = {"closed", "resolved", "done", "completed"}
 
-                    all_pipelines = sorted(set(r["Pipeline"] for r in ticket_rows))
-                    pipeline_options = ["All Pipelines"] + all_pipelines
-                    selected_pipeline = st.selectbox("Filter by Pipeline", pipeline_options, key="ticket_pipeline_filter")
-                    if selected_pipeline != "All Pipelines":
-                        filtered_tickets = [r for r in ticket_rows if r["Pipeline"] == selected_pipeline]
-                    else:
-                        filtered_tickets = ticket_rows
+                def _status_color(label):
+                    l = (label or "").lower()
+                    if any(k in l for k in CLOSED_KEYWORDS):
+                        return "#9CA3AF"
+                    if "wait" in l or "hold" in l or "pending" in l:
+                        return "#F59E0B"
+                    if "new" in l or "open" in l:
+                        return "#3B82F6"
+                    return "#6B7280"
 
-                    PRIORITY_COLOR = {"high": "#EF4444", "medium": "#F59E0B", "low": "#3B82F6", "—": "#9CA3AF"}
-                    CLOSED_KEYWORDS = {"closed", "resolved", "done", "completed"}
+                def pri_badge(p):
+                    c = PRIORITY_COLOR.get((p or "").lower(), "#9CA3AF")
+                    label = (p or "—").upper()
+                    return f'<span style="background:{c};color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:99px;letter-spacing:0.5px;">{label}</span>'
 
-                    def _status_color(label):
-                        l = (label or "").lower()
-                        if any(k in l for k in CLOSED_KEYWORDS):
-                            return "#9CA3AF"
-                        if "wait" in l or "hold" in l or "pending" in l:
-                            return "#F59E0B"
-                        if "new" in l or "open" in l:
-                            return "#3B82F6"
-                        return "#6B7280"
+                def status_badge(s):
+                    c = _status_color(s)
+                    label = (s or "—").upper()
+                    return f'<span style="background:{c}22;color:{c};border:1px solid {c}55;font-size:0.7rem;font-weight:700;padding:2px 9px;border-radius:99px;">{label}</span>'
 
-                    def pri_badge(p):
-                        c = PRIORITY_COLOR.get((p or "").lower(), "#9CA3AF")
-                        label = (p or "—").upper()
-                        return f'<span style="background:{c};color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:99px;letter-spacing:0.5px;">{label}</span>'
+                total = len(filtered_tickets)
+                high  = sum(1 for r in filtered_tickets if (r["Priority"] or "").lower() == "high")
+                open_ = sum(1 for r in filtered_tickets if not any(k in (r["Status"] or "").lower() for k in CLOSED_KEYWORDS))
 
-                    def status_badge(s):
-                        c = _status_color(s)
-                        label = (s or "—").upper()
-                        return f'<span style="background:{c}22;color:{c};border:1px solid {c}55;font-size:0.7rem;font-weight:700;padding:2px 9px;border-radius:99px;">{label}</span>'
-
-                    total = len(filtered_tickets)
-                    high  = sum(1 for r in filtered_tickets if (r["Priority"] or "").lower() == "high")
-                    open_ = sum(1 for r in filtered_tickets if not any(k in (r["Status"] or "").lower() for k in CLOSED_KEYWORDS))
-
-                    st.markdown(f"""
+                st.markdown(f"""
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
   <div style="background:linear-gradient(135deg,#2DB84B,#22a040);border-radius:14px;padding:1.25rem 1.5rem;color:#fff;">
-    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">Total Tickets</div>
-    <div style="font-size:2rem;font-weight:900;">{total}</div>
+<div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">Total Tickets</div>
+<div style="font-size:2rem;font-weight:900;">{total}</div>
   </div>
   <div style="background:linear-gradient(135deg,#EF4444,#dc2626);border-radius:14px;padding:1.25rem 1.5rem;color:#fff;">
-    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">High Priority</div>
-    <div style="font-size:2rem;font-weight:900;">{high}</div>
+<div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">High Priority</div>
+<div style="font-size:2rem;font-weight:900;">{high}</div>
   </div>
   <div style="background:linear-gradient(135deg,#3B82F6,#2563eb);border-radius:14px;padding:1.25rem 1.5rem;color:#fff;">
-    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">Open</div>
-    <div style="font-size:2rem;font-weight:900;">{open_}</div>
+<div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">Open</div>
+<div style="font-size:2rem;font-weight:900;">{open_}</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
-                    cards_html = '<div style="display:flex;flex-direction:column;gap:0.85rem;">'
-                    for row in filtered_tickets:
-                        desc = row["Description"]
-                        desc_snippet = desc
-                        cards_html += f"""
+                cards_html = '<div style="display:flex;flex-direction:column;gap:0.85rem;">'
+                for row in filtered_tickets:
+                    desc = row["Description"]
+                    desc_snippet = desc
+                    cards_html += f"""
 <div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:1.25rem 1.5rem;
-            box-shadow:0 1px 4px rgba(0,0,0,0.05);transition:box-shadow 0.2s;">
+        box-shadow:0 1px 4px rgba(0,0,0,0.05);transition:box-shadow 0.2s;">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
-    <div style="flex:1;min-width:0;">
-      <div style="font-size:0.72rem;font-weight:600;color:#9CA3AF;letter-spacing:0.5px;margin-bottom:0.2rem;">#{row['ID']}</div>
-      <div style="font-size:1rem;font-weight:700;color:#111827;margin-bottom:0.5rem;word-break:break-word;">{row['Subject']}</div>
-      <div style="font-size:0.83rem;color:#6B7280;line-height:1.5;">{desc_snippet}</div>
-    </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;white-space:nowrap;">
-      {pri_badge(row['Priority'])}
-      {status_badge(row['Status'])}
-    </div>
+<div style="flex:1;min-width:0;">
+  <div style="font-size:0.72rem;font-weight:600;color:#9CA3AF;letter-spacing:0.5px;margin-bottom:0.2rem;">#{row['ID']}</div>
+  <div style="font-size:1rem;font-weight:700;color:#111827;margin-bottom:0.5rem;word-break:break-word;">{row['Subject']}</div>
+  <div style="font-size:0.83rem;color:#6B7280;line-height:1.5;">{desc_snippet}</div>
+</div>
+<div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;white-space:nowrap;">
+  {pri_badge(row['Priority'])}
+  {status_badge(row['Status'])}
+</div>
   </div>
   <div style="display:flex;gap:1.5rem;margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid #F3F4F6;flex-wrap:wrap;">
-    <span style="font-size:0.78rem;color:#6B7280;">🗂️ <b>{row['Pipeline']}</b></span>
-    <span style="font-size:0.78rem;color:#6B7280;">👤 <b>{row['Owner']}</b></span>
-    <span style="font-size:0.78rem;color:#6B7280;">📂 <b>{row['Category']}</b></span>
-    <span style="font-size:0.78rem;color:#6B7280;">🔖 <b>{row['Subcategory']}</b></span>
-    <span style="font-size:0.78rem;color:#6B7280;">📅 Created: <b>{row['Created']}</b></span>
-    <span style="font-size:0.78rem;color:#6B7280;">🔒 Closed: <b>{row['Closed'] or '—'}</b></span>
+<span style="font-size:0.78rem;color:#6B7280;">🗂️ <b>{row['Pipeline']}</b></span>
+<span style="font-size:0.78rem;color:#6B7280;">👤 <b>{row['Owner']}</b></span>
+<span style="font-size:0.78rem;color:#6B7280;">📂 <b>{row['Category']}</b></span>
+<span style="font-size:0.78rem;color:#6B7280;">🔖 <b>{row['Subcategory']}</b></span>
+<span style="font-size:0.78rem;color:#6B7280;">📅 Created: <b>{row['Created']}</b></span>
+<span style="font-size:0.78rem;color:#6B7280;">🔒 Closed: <b>{row['Closed'] or '—'}</b></span>
   </div>
 </div>"""
-                    cards_html += "</div>"
-                    st.markdown(cards_html, unsafe_allow_html=True)
+                cards_html += "</div>"
+                st.markdown(cards_html, unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)  # close content-card
