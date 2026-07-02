@@ -1159,8 +1159,65 @@ if "search_results" in st.session_state:
         if ursa_col_html: cols.append(ursa_col_html)
         if monthly_col_html: cols.append(monthly_col_html)
         grid_css = f"grid-template-columns:repeat({len(cols)},1fr)"
-        grid_html = f'<div style="display:grid;{grid_css};gap:1rem;margin-bottom:1.25rem;">{"".join(cols)}</div>'
+        grid_html = f'<div style="display:grid;{grid_css};gap:1rem;margin-bottom:1rem;">{"".join(cols)}</div>'
         st.markdown(grid_html, unsafe_allow_html=True)
+
+        # ── Address map (VRS only) ──
+        if is_vrs:
+            def geocode(address_str):
+                if not address_str.strip():
+                    return None
+                try:
+                    resp = requests.get(
+                        "https://nominatim.openstreetmap.org/search",
+                        params={"q": address_str, "format": "json", "limit": 1},
+                        headers={"User-Agent": "vrs-roi-app/1.0"},
+                        timeout=5
+                    )
+                    results = resp.json()
+                    if results:
+                        return float(results[0]["lat"]), float(results[0]["lon"])
+                except Exception:
+                    pass
+                return None
+
+            primary_addr = " ".join(filter(None, [
+                p.get("street1"), p.get("street2"),
+                p.get("city"), p.get("state"), p.get("zip_code")
+            ]))
+            emerg_addr = " ".join(filter(None, [
+                p.get("emerg_street1"), p.get("emerg_street2"),
+                p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")
+            ]))
+
+            map_points = []
+            if primary_addr.strip():
+                coords = geocode(primary_addr)
+                if coords:
+                    map_points.append({"lat": coords[0], "lon": coords[1], "label": "Primary Address", "addr": primary_addr, "color": "#00A651"})
+            if emerg_addr.strip() and emerg_addr != primary_addr:
+                coords = geocode(emerg_addr)
+                if coords:
+                    map_points.append({"lat": coords[0], "lon": coords[1], "label": "Emergency Address", "addr": emerg_addr, "color": "#EF4444"})
+
+            if map_points:
+                map_df = pd.DataFrame(map_points)
+                st.markdown('<div style="font-size:0.65rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin:0.25rem 0 0.5rem;">Address Map</div>', unsafe_allow_html=True)
+                fig = px.scatter_mapbox(
+                    map_df, lat="lat", lon="lon",
+                    hover_name="label", hover_data={"addr": True, "lat": False, "lon": False, "color": False},
+                    color="label",
+                    color_discrete_map={"Primary Address": "#00A651", "Emergency Address": "#EF4444"},
+                    zoom=11, height=280,
+                )
+                fig.update_traces(marker=dict(size=14))
+                fig.update_layout(
+                    mapbox_style="carto-positron",
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0, font=dict(size=11)),
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
     # ── Registration cards ──
     if matched_registrations:
