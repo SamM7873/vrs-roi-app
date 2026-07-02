@@ -22,52 +22,49 @@ if APP_PASSWORD:
     if not st.session_state.authenticated:
         st.markdown("""
         <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
             html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-            .stApp { background-color: #F2F2EE; }
-            .login-hero {
-                background-color: #2DB84B;
-                border-radius: 0 0 32px 32px;
-                padding: 3rem 2rem 3.5rem;
-                text-align: center;
-                margin-bottom: 0;
+            .stApp { background-color: #F6F8FA; }
+            .login-wrap { max-width:400px;margin:5vh auto 0;padding:0 1rem; }
+            .login-logo-area { text-align:center;margin-bottom:2rem; }
+            .login-logo-area .logo-mark {
+                display:inline-flex;align-items:center;justify-content:center;
+                width:56px;height:56px;background:#00A651;border-radius:14px;
+                font-size:1.4rem;font-weight:900;color:#fff;letter-spacing:-1px;
+                margin-bottom:1rem;
             }
-            .login-logo {
-                font-size: 1.6rem; font-weight: 900; color: #fff;
-                letter-spacing: -1px; margin-bottom: 1.5rem;
-            }
-            .login-hero h2 {
-                color: #fff; font-size: 2rem; font-weight: 900;
-                letter-spacing: -0.5px; margin-bottom: 0.5rem;
-            }
-            .login-hero p { color: rgba(255,255,255,0.85); font-size: 0.97rem; margin: 0; }
+            .login-logo-area h2 { font-size:1.4rem;font-weight:800;color:#1F2937;margin:0 0 0.3rem; }
+            .login-logo-area p { color:#6B7280;font-size:0.88rem;margin:0; }
             .login-card {
-                background: #fff; border-radius: 24px; padding: 2rem 1.75rem;
-                margin-top: -1.5rem; box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+                background:#fff;border-radius:14px;padding:2rem 1.75rem;
+                border:1px solid #E5E7EB;box-shadow:0 4px 16px rgba(0,0,0,0.06);
             }
             .stTextInput > div > div > input {
-                border-radius: 999px !important;
-                border: 1.5px solid #D8D8D2 !important;
-                padding: 0.6rem 1.1rem !important;
+                border-radius: 8px !important;
+                border: 1.5px solid #E5E7EB !important;
+                padding: 0.6rem 1rem !important;
                 font-size: 0.93rem !important;
+                color: #1F2937 !important;
             }
             .stTextInput > div > div > input:focus {
-                border-color: #2DB84B !important;
-                box-shadow: 0 0 0 3px rgba(45,184,75,0.15) !important;
+                border-color: #00A651 !important;
+                box-shadow: 0 0 0 3px rgba(0,166,81,0.12) !important;
             }
             div.stButton > button {
-                background-color: #2DB84B; color: #fff;
-                border-radius: 999px; border: none;
+                background-color: #00A651; color: #fff;
+                border-radius: 8px; border: none;
                 padding: 0.6rem 2.2rem; font-weight: 700;
                 font-size: 0.95rem; width: 100%;
-                box-shadow: 0 2px 8px rgba(45,184,75,0.25);
+                box-shadow: 0 1px 4px rgba(0,166,81,0.3);
             }
-            div.stButton > button:hover { background-color: #25A340; color: #fff; }
+            div.stButton > button:hover { background-color: #008F46; color: #fff; }
         </style>
-        <div class="login-hero">
-            <div class="login-logo">convo</div>
+        <div class="login-wrap">
+          <div class="login-logo-area">
+            <div class="logo-mark">c</div>
             <h2>VRS / Convo Now Lookup</h2>
-            <p>Please enter the password to continue</p>
-        </div>
+            <p>Please enter your password to continue</p>
+          </div>
         <div class="login-card">
         """, unsafe_allow_html=True)
         entered_password = st.text_input("Password", type="password", placeholder="Enter password")
@@ -747,37 +744,69 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
 
 # ── Search card ──
 st.markdown("""
-
 <style>
-/* Style the middle search column as a card */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: #1F2937; }
+.stApp { background-color: #F6F8FA; }
+section[data-testid="stSidebar"] { background-color: #0D3B26; border-right: none; }
+section[data-testid="stSidebar"] * { color: rgba(255,255,255,0.85) !important; }
+section[data-testid="stSidebar"] [aria-selected="true"] {
+    background-color: rgba(0,166,81,0.25) !important;
+    color: #fff !important; border-radius: 8px;
+}
 [data-testid="stHorizontalBlock"]:has([data-testid="stColumn"]) [data-testid="stColumn"]:nth-child(2) {
     background: #fff;
-    border-radius: 0 0 20px 20px;
-    padding: 1.25rem 1.5rem 1.75rem !important;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+    border-radius: 0 0 12px 12px;
+    padding: 1.5rem 1.75rem 2rem !important;
+    border: 1px solid #E5E7EB;
+    border-top: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
 }
+.stTextInput > div > div > input {
+    border-radius: 8px !important;
+    border: 1.5px solid #E5E7EB !important;
+    padding: 0.6rem 1rem !important;
+    font-size: 0.93rem !important;
+    color: #1F2937 !important;
+    background: #F6F8FA !important;
+}
+.stTextInput > div > div > input:focus {
+    border-color: #00A651 !important;
+    box-shadow: 0 0 0 3px rgba(0,166,81,0.12) !important;
+    background: #fff !important;
+}
+div.stButton > button {
+    background-color: #00A651; color: #fff;
+    border-radius: 8px; border: none;
+    padding: 0.6rem 1.4rem; font-weight: 700;
+    font-size: 0.95rem; width: 100%;
+    box-shadow: 0 1px 4px rgba(0,166,81,0.3);
+}
+div.stButton > button:hover { background-color: #008F46; }
 </style>
 """, unsafe_allow_html=True)
 
 _, mid, _ = st.columns([1, 2, 1])
 
-# Green logo header — sits above the column card
+# Logo header above card
 st.markdown("""
 <div style="max-width:480px;margin:3rem auto 0;">
-  <div style="background:#2DB84B;border-radius:20px 20px 0 0;padding:2rem;text-align:center;">
-    <div style="font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1.5px;">convo</div>
-    <div style="color:rgba(255,255,255,0.8);font-size:0.85rem;margin-top:0.3rem;">VRS Consumer Lookup</div>
+  <div style="background:linear-gradient(135deg,#00A651 0%,#008F46 100%);
+              border-radius:12px 12px 0 0;padding:1.75rem 2rem;text-align:center;">
+    <div style="font-size:1.9rem;font-weight:900;color:#fff;letter-spacing:-1.5px;line-height:1;">convo</div>
+    <div style="color:rgba(255,255,255,0.75);font-size:0.82rem;margin-top:0.35rem;
+                letter-spacing:0.5px;text-transform:uppercase;font-weight:500;">VRS Consumer Lookup</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
 with mid:
-    search_input = st.text_input("search", placeholder="🔍  Phone number or email address...", label_visibility="collapsed")
+    search_input = st.text_input("search", placeholder="Search by phone number or email...", label_visibility="collapsed")
     c1, c2 = st.columns(2)
     with c1:
-        first_name_input = st.text_input("first", placeholder="👤  First name", label_visibility="collapsed")
+        first_name_input = st.text_input("first", placeholder="First name", label_visibility="collapsed")
     with c2:
-        last_name_input = st.text_input("last", placeholder="👤  Last name", label_visibility="collapsed")
+        last_name_input = st.text_input("last", placeholder="Last name", label_visibility="collapsed")
     search_clicked = st.button("Search", use_container_width=True)
 
 # ── Results ──
