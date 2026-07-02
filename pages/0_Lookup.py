@@ -878,10 +878,174 @@ if "search_results" in st.session_state:
     num_to_status = _r["num_to_status"]
     num_month_detail = _r["num_month_detail"]
 
-    st.write(f"Merged into {len(person_numbers)} person(s) by email")
+    # ── Dashboard stat tiles ──
+    total_nums = len(matched_numbers)
+    live_vrs = sum(1 for r in matched_numbers if norm(r.get("properties",{}).get("number_status") or "") == "live" and norm(r.get("properties",{}).get("service_type") or "") == "vrs")
+    month_rows = df[df["Month"] != "-"] if not df.empty else df
+    total_vrs_min = pd.to_numeric(month_rows["VRS Minutes"], errors="coerce").sum() if not month_rows.empty else 0
+    total_convo_min = pd.to_numeric(month_rows["Convo Now Minutes"], errors="coerce").sum() if not month_rows.empty else 0
 
-    contact_tab, tickets_tab, retention_tab, summary_tab, vrs_zero_tab, report_tab = st.tabs([
-        "Contact Card", "Tickets", "Retention", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Detailed Report"
+    st.markdown("""
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
+""", unsafe_allow_html=True)
+    sc1, sc2, sc3, sc4 = st.columns(4)
+    sc1.metric("Numbers Found", total_nums)
+    sc2.metric("Live VRS", live_vrs)
+    sc3.metric("Total VRS Minutes", f"{total_vrs_min:,.1f}")
+    sc4.metric("Total Convo Now Minutes", f"{total_convo_min:,.1f}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Contact dashboard cards ──
+    def fmt(v):
+        return v if v else "—"
+
+    def status_badge(status):
+        s = norm(status)
+        color = "#00A651" if s == "live" else "#EF4444" if s == "suspended" else "#F59E0B" if s in ("inactive", "cancelled") else "#6B7280"
+        return f'<span style="background:{color};color:#fff;padding:3px 12px;border-radius:6px;font-size:0.75rem;font-weight:700;">{status or "—"}</span>'
+
+    def ursa_badge(v):
+        if v:
+            return f'<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:6px;font-size:0.75rem;font-weight:600;">✓ {v}</span>'
+        return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 8px;border-radius:6px;font-size:0.75rem;">Not yet</span>'
+
+    def info_row(label, value):
+        return f"""<div style="display:flex;justify-content:space-between;align-items:flex-start;
+                    padding:0.5rem 0;border-bottom:1px solid #F3F4F6;">
+          <span style="color:#6B7280;font-size:0.8rem;font-weight:500;min-width:130px;">{label}</span>
+          <span style="color:#1F2937;font-size:0.82rem;font-weight:500;text-align:right;">{value}</span>
+        </div>"""
+
+    def card_header(title):
+        return f'<div style="font-size:0.65rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#00A651;margin-bottom:0.6rem;">{title}</div>'
+
+    sorted_numbers = sorted(
+        matched_numbers,
+        key=lambda r: 0 if norm(r.get("properties", {}).get("service_type") or "") == "vrs" else 1
+    )
+    last_label = None
+    for r in sorted_numbers:
+        p = r.get("properties", {})
+        svc = norm(p.get("service_type") or "")
+        section_label = "VRS" if svc == "vrs" else "Convo Now"
+        if section_label != last_label:
+            color = "#00A651" if svc == "vrs" else "#3B82F6"
+            mt = "0" if last_label is None else "1.5rem"
+            st.markdown(
+                f'<div style="display:inline-flex;align-items:center;gap:0.5rem;'
+                f'background:{color};color:#fff;'
+                f'font-size:0.75rem;font-weight:800;letter-spacing:1.5px;'
+                f'text-transform:uppercase;padding:0.3rem 1rem;'
+                f'border-radius:6px;margin-top:{mt};margin-bottom:0.75rem;">'
+                f'{section_label}</div>',
+                unsafe_allow_html=True
+            )
+            last_label = section_label
+
+        name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
+        initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
+        addr_street = " ".join(a for a in [p.get("street1"), p.get("street2")] if a)
+        addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip_code")] if a)
+        address = "<br>".join(a for a in [addr_street, addr_csz] if a) or "—"
+        emerg_street = " ".join(a for a in [p.get("emerg_street1"), p.get("emerg_street2")] if a)
+        emerg_csz = ", ".join(a for a in [p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")] if a)
+        emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
+        email_key = norm(p.get("email") or "") or f"num:{p.get('number') or ''}"
+        convo_monthly = person_month_values.get(email_key, {})
+        is_vrs = svc == "vrs"
+        is_suspended = norm(p.get("number_status") or "") == "suspended"
+        show_monthly = not is_vrs and not is_suspended
+
+        # ── Contact Summary card ──
+        contact_col_html = (
+            '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
+            + card_header("Contact Summary")
+            + f'<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:1px solid #F3F4F6;">'
+            + f'<div style="width:44px;height:44px;border-radius:50%;background:#00A651;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
+            + f'<div><div style="font-size:0.97rem;font-weight:700;color:#1F2937;">{name}</div>'
+            + f'<div style="font-size:0.78rem;color:#6B7280;">{fmt(p.get("email"))}</div></div>'
+            + f'<div style="margin-left:auto;">{status_badge(p.get("number_status"))}</div>'
+            + '</div>'
+            + info_row("Phone", fmt(p.get("phone")))
+            + info_row("Email", fmt(p.get("email")))
+            + (info_row("Address", address) + info_row("Emergency", emergency) if is_vrs else "")
+            + '</div>'
+        )
+
+        # ── Number Details card ──
+        number_col_html = (
+            '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
+            + card_header("Number")
+            + f'<div style="font-size:1.4rem;font-weight:800;color:#1F2937;margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #F3F4F6;">{fmt(p.get("number"))}</div>'
+            + info_row("Status", status_badge(p.get("number_status")))
+            + info_row("Service Type", fmt(p.get("service_type")))
+            + info_row("Usage Type", fmt(p.get("usage_type")))
+            + info_row("Credit Type", fmt(p.get("credit_type")))
+            + info_row("Created", fmt(p.get("number_created_at")))
+            + '</div>'
+        )
+
+        # ── URSA / Monthly card ──
+        if is_vrs:
+            ursa_col_html = (
+                '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
+                + card_header("URSA Activity")
+                + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">First Login</div>' + ursa_badge(p.get("ursa_first_login")) + '</div>'
+                + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">1st Outbound Call</div>' + ursa_badge(p.get("ursa_first_outbound_call")) + '</div>'
+                + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">2nd Outbound Call</div>' + ursa_badge(p.get("ursa_second_outbound_call")) + '</div>'
+                + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">Last Outbound Call</div>' + ursa_badge(p.get("ursa_last_outbound_call")) + '</div>'
+                + '<div style="padding:0.45rem 0;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">Last Inbound Call</div>' + ursa_badge(p.get("ursa_last_inbound_call")) + '</div>'
+                + '</div>'
+            )
+        elif show_monthly:
+            convo_rows_html = "".join(
+                info_row(mk, f"{sum(vals['convo']):.1f} min")
+                for mk, vals in sorted(convo_monthly.items(), reverse=True)
+                if vals.get("convo") and sum(vals["convo"]) > 0
+            ) or info_row("No data", "—")
+            ursa_col_html = (
+                '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
+                + card_header("Monthly Usage (Convo Now)")
+                + convo_rows_html
+                + '</div>'
+            )
+        else:
+            ursa_col_html = ""
+
+        # ── Monthly Value card (VRS only) ──
+        if is_vrs:
+            vrs_months_data = {mk: sum(vals["vrs"]) for mk, vals in (person_month_values.get(email_key) or {}).items() if vals.get("vrs")}
+            sorted_mv = sorted(vrs_months_data.items(), key=lambda x: month_sort_key(x[0]), reverse=True)
+            recent = sorted_mv[:6] if sorted_mv else []
+            mv_rows = "".join(info_row(mk, f"{v:,.1f} min") for mk, v in recent) or info_row("No data", "—")
+            current_m = recent[0][1] if recent else 0
+            prev_m = recent[1][1] if len(recent) > 1 else 0
+            diff_m = current_m - prev_m
+            diff_color = "#00A651" if diff_m >= 0 else "#EF4444"
+            diff_sign = "+" if diff_m >= 0 else ""
+            monthly_col_html = (
+                '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
+                + card_header("Monthly Value (VRS)")
+                + f'<div style="font-size:1.3rem;font-weight:800;color:#00A651;margin-bottom:0.3rem;">{current_m:,.1f} min</div>'
+                + f'<div style="font-size:0.75rem;color:{diff_color};margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #F3F4F6;">{diff_sign}{diff_m:,.1f} vs prev month</div>'
+                + mv_rows
+                + '</div>'
+            )
+        else:
+            monthly_col_html = ""
+
+        cols = [contact_col_html, number_col_html]
+        if ursa_col_html: cols.append(ursa_col_html)
+        if monthly_col_html: cols.append(monthly_col_html)
+        grid_css = f"grid-template-columns:repeat({len(cols)},1fr)"
+        grid_html = f'<div style="display:grid;{grid_css};gap:1rem;margin-bottom:1.25rem;">{"".join(cols)}</div>'
+        st.markdown(grid_html, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Analysis tabs ──
+    tickets_tab, retention_tab, summary_tab, vrs_zero_tab, report_tab = st.tabs([
+        "Tickets", "Retention", "Profit/Loss Summary", "VRS ≤0 & Convo Now >1", "Detailed Report"
     ])
     with report_tab:
         render_table_and_summary(df)
@@ -1118,145 +1282,6 @@ if "search_results" in st.session_state:
                 )
                 st.altair_chart((bars + baseline_rule).properties(height=220), use_container_width=True)
 
-    with contact_tab:
-        def fmt(v):
-            return v if v else "—"
-
-        def status_badge(status):
-            s = norm(status)
-            color = "#2DB84B" if s == "live" else "#EF4444" if s == "suspended" else "#F59E0B" if s in ("inactive", "cancelled") else "#6B7280"
-            return f'<span style="background:{color};color:#fff;padding:2px 10px;border-radius:999px;font-size:0.75rem;font-weight:700;">{status or "—"}</span>'
-
-        def ursa_badge(v):
-            if v:
-                return f'<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:999px;font-size:0.75rem;font-weight:600;">✓ {v}</span>'
-            return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 10px;border-radius:999px;font-size:0.75rem;">Not yet</span>'
-
-        def row(label, value):
-            return f"""
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;
-                        padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">
-              <span style="color:#6B7280;font-size:0.82rem;font-weight:500;min-width:160px;">{label}</span>
-              <span style="color:#111827;font-size:0.85rem;font-weight:500;text-align:right;">{value}</span>
-            </div>"""
-
-        sorted_numbers = sorted(
-            matched_numbers,
-            key=lambda r: 0 if norm(r.get("properties", {}).get("service_type") or "") == "vrs" else 1
-        )
-        last_label = None
-        for r in sorted_numbers:
-            p = r.get("properties", {})
-            svc = norm(p.get("service_type") or "")
-            section_label = "VRS" if svc == "vrs" else "Convo Now"
-            if section_label != last_label:
-                color = "#2DB84B" if svc == "vrs" else "#3B82F6"
-                mt = "0" if last_label is None else "1.5rem"
-                st.markdown(
-                    f'<div style="display:inline-flex;align-items:center;gap:0.5rem;'
-                    f'background:{color};color:#fff;'
-                    f'font-size:0.8rem;font-weight:800;letter-spacing:1.5px;'
-                    f'text-transform:uppercase;padding:0.35rem 1rem;'
-                    f'border-radius:999px;margin-top:{mt};margin-bottom:0.75rem;">'
-                    f'{section_label}</div>',
-                    unsafe_allow_html=True
-                )
-                last_label = section_label
-            name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
-            addr_street = " ".join(a for a in [p.get("street1"), p.get("street2")] if a)
-            addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip_code")] if a)
-            address = "<br>".join(a for a in [addr_street, addr_csz] if a) or "—"
-
-            emerg_street = " ".join(a for a in [p.get("emerg_street1"), p.get("emerg_street2")] if a)
-            emerg_csz = ", ".join(a for a in [p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")] if a)
-            emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
-            initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
-
-            # Build convo now monthly usage for this record's person key
-            email_key = norm(p.get("email") or "") or f"num:{p.get('number') or ''}"
-            convo_monthly = person_month_values.get(email_key, {})
-
-            html_card = (
-                '<div style="background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.07);'
-                'padding:1.5rem;margin-bottom:1.25rem;border:1px solid #F0F0EA;">'
-                '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;'
-                'padding-bottom:1rem;border-bottom:2px solid #F0F0EA;">'
-                f'<div style="width:52px;height:52px;border-radius:50%;background:#2DB84B;'
-                f'display:flex;align-items:center;justify-content:center;'
-                f'font-size:1.2rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
-                f'<div><div style="font-size:1.15rem;font-weight:800;color:#111827;">{name}</div>'
-                f'<div style="font-size:0.85rem;color:#6B7280;">{fmt(p.get("email"))}</div></div>'
-                f'<div style="margin-left:auto;">{status_badge(p.get("number_status"))}</div>'
-                '</div>'
-            )
-            is_vrs = norm(p.get("service_type") or "") == "vrs"
-            is_suspended = norm(p.get("number_status") or "") == "suspended"
-            show_monthly = not is_vrs and not is_suspended
-            grid_cols = "1fr 1fr 1fr" if (is_vrs or show_monthly) else "1fr 1fr"
-            col1 = (
-                '<div>'
-                '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Contact</div>'
-                + row("📞 Phone", fmt(p.get("phone")))
-                + row("✉️ Email", fmt(p.get("email")))
-                + (row("🏠 Address", address) + row("🚨 Emergency", emergency) if is_vrs else "")
-                + '</div>'
-            )
-            col2 = (
-                '<div>'
-                '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Number Details</div>'
-                + row("📱 Number", fmt(p.get("number")))
-                + row("📅 Created At", fmt(p.get("number_created_at")))
-                + row("🔧 Service Type", fmt(p.get("service_type")))
-                + row("👤 Usage Type", fmt(p.get("usage_type")))
-                + '</div>'
-            )
-            if is_vrs:
-                col3 = (
-                    '<div>'
-                    '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">URSA Activity</div>'
-                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
-                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">First Login</div>'
-                    + ursa_badge(p.get("ursa_first_login"))
-                    + '</div>'
-                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
-                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">1st Outbound Call</div>'
-                    + ursa_badge(p.get("ursa_first_outbound_call"))
-                    + '</div>'
-                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
-                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">2nd Outbound Call</div>'
-                    + ursa_badge(p.get("ursa_second_outbound_call"))
-                    + '</div>'
-                    '<div style="padding:0.55rem 0;border-bottom:1px solid #F3F4F6;">'
-                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Outbound Call</div>'
-                    + ursa_badge(p.get("ursa_last_outbound_call"))
-                    + '</div>'
-                    '<div style="padding:0.55rem 0;">'
-                    '<div style="color:#6B7280;font-size:0.78rem;margin-bottom:3px;">Last Inbound Call</div>'
-                    + ursa_badge(p.get("ursa_last_inbound_call"))
-                    + '</div>'
-                    '</div>'
-                )
-            elif show_monthly:
-                convo_rows = "".join(
-                    row(f"📆 {mk}", f"{sum(vals['convo']):.1f} min")
-                    for mk, vals in sorted(convo_monthly.items(), reverse=True)
-                    if vals.get("convo") and sum(vals["convo"]) > 0
-                ) or row("No data", "—")
-                col3 = (
-                    '<div>'
-                    '<div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#2DB84B;margin-bottom:0.6rem;">Monthly Usage (Convo Now)</div>'
-                    + convo_rows
-                    + '</div>'
-                )
-            else:
-                col3 = ""
-
-            html_card += (
-                f'<div style="display:grid;grid-template-columns:{grid_cols};gap:1.25rem;">'
-                + col1 + col2 + col3
-                + '</div></div>'
-            )
-            st.markdown(html_card, unsafe_allow_html=True)
 
     with tickets_tab:
         # Collect unique emails from matched numbers
