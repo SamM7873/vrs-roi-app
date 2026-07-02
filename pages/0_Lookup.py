@@ -1249,13 +1249,16 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
                         if (r.get("properties", {}).get("number") or "").strip()
                     })
 
-                    # Fetch pipeline stage labels
+                    # Fetch pipeline names and stage labels
                     stage_labels = {}
+                    pipeline_names = {}  # pipeline_id -> pipeline label
                     try:
                         pr = requests.get(f"{BASE_URL}/crm/v3/pipelines/tickets",
                                           headers=headers, timeout=15)
                         if pr.status_code == 200:
                             for pipeline in pr.json().get("results", []):
+                                pid = pipeline["id"]
+                                pipeline_names[pid] = pipeline.get("label", pid)
                                 for stage in pipeline.get("stages", []):
                                     stage_labels[stage["id"]] = stage.get("label", stage["id"])
                     except Exception:
@@ -1278,7 +1281,7 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
                     except Exception:
                         pass
 
-                    TICKET_PROPS = ["subject", "hs_pipeline_stage", "hs_ticket_priority",
+                    TICKET_PROPS = ["subject", "hs_pipeline", "hs_pipeline_stage", "hs_ticket_priority",
                                     "createdate", "hs_lastmodifieddate", "closed_date", "content",
                                     "hs_ticket_category", "hs_ticket_subcategory",
                                     "hubspot_owner_id", "email", "phone"]
@@ -1298,9 +1301,11 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
                                         seen_ids.add(t["id"])
                                         tp = t.get("properties", {})
                                         raw_stage = tp.get("hs_pipeline_stage") or ""
+                                        raw_pipeline = tp.get("hs_pipeline") or ""
                                         ticket_rows.append({
                                             "ID": t["id"],
                                             "Subject": tp.get("subject") or "—",
+                                            "Pipeline": pipeline_names.get(raw_pipeline, raw_pipeline) or "—",
                                             "Status": stage_labels.get(raw_stage, raw_stage) or "—",
                                             "Priority": tp.get("hs_ticket_priority") or "—",
                                             "Category": tp.get("hs_ticket_category") or "—",
@@ -1351,6 +1356,15 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
                 else:
                     tickets_df = pd.DataFrame(ticket_rows)
 
+                    # Pipeline dropdown filter
+                    all_pipelines = sorted(tickets_df["Pipeline"].unique().tolist())
+                    pipeline_options = ["All Pipelines"] + all_pipelines
+                    selected_pipeline = st.selectbox("Filter by Pipeline", pipeline_options, key="ticket_pipeline_filter")
+                    if selected_pipeline != "All Pipelines":
+                        filtered_tickets = [r for r in ticket_rows if r["Pipeline"] == selected_pipeline]
+                    else:
+                        filtered_tickets = ticket_rows
+
                     PRIORITY_COLOR = {"high": "#EF4444", "medium": "#F59E0B", "low": "#3B82F6", "—": "#9CA3AF"}
                     CLOSED_KEYWORDS = {"closed", "resolved", "done", "completed"}
 
@@ -1374,9 +1388,9 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
                         label = (s or "—").upper()
                         return f'<span style="background:{c}22;color:{c};border:1px solid {c}55;font-size:0.7rem;font-weight:700;padding:2px 9px;border-radius:99px;">{label}</span>'
 
-                    total = len(tickets_df)
-                    high  = (tickets_df["Priority"].str.lower() == "high").sum()
-                    open_ = (~tickets_df["Status"].str.lower().apply(lambda x: any(k in x for k in CLOSED_KEYWORDS))).sum()
+                    total = len(filtered_tickets)
+                    high  = sum(1 for r in filtered_tickets if (r["Priority"] or "").lower() == "high")
+                    open_ = sum(1 for r in filtered_tickets if not any(k in (r["Status"] or "").lower() for k in CLOSED_KEYWORDS))
 
                     st.markdown(f"""
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
@@ -1395,7 +1409,7 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
 </div>""", unsafe_allow_html=True)
 
                     cards_html = '<div style="display:flex;flex-direction:column;gap:0.85rem;">'
-                    for row in ticket_rows:
+                    for row in filtered_tickets:
                         desc = row["Description"]
                         desc_snippet = desc
                         cards_html += f"""
@@ -1413,6 +1427,7 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
     </div>
   </div>
   <div style="display:flex;gap:1.5rem;margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid #F3F4F6;flex-wrap:wrap;">
+    <span style="font-size:0.78rem;color:#6B7280;">🗂️ <b>{row['Pipeline']}</b></span>
     <span style="font-size:0.78rem;color:#6B7280;">👤 <b>{row['Owner']}</b></span>
     <span style="font-size:0.78rem;color:#6B7280;">📂 <b>{row['Category']}</b></span>
     <span style="font-size:0.78rem;color:#6B7280;">🔖 <b>{row['Subcategory']}</b></span>
