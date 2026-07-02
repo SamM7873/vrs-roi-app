@@ -1358,10 +1358,34 @@ if "search_results" in st.session_state:
                     _collect_tickets([{"filters": [{"propertyName": "phone", "operator": "EQ", "value": phone}]}])
                     time.sleep(0.26)
 
-                # Search by VRS number in subject
+                # Search by VRS number in subject or number property
                 for num in vrs_numbers:
                     _collect_tickets([{"filters": [{"propertyName": "subject", "operator": "CONTAINS_TOKEN", "value": num}]}])
                     time.sleep(0.26)
+                    _collect_tickets([{"filters": [{"propertyName": "number", "operator": "EQ", "value": num}]}])
+                    time.sleep(0.26)
+                    _collect_tickets([{"filters": [{"propertyName": "content", "operator": "CONTAINS_TOKEN", "value": num}]}])
+                    time.sleep(0.26)
+
+                # Search by pipeline + email for pipelines that may not use standard associations
+                pipeline_ids_by_name = {v: k for k, v in pipeline_names.items()}
+                target_pipelines = ["Consumer Success", "VRS Registration", "Sales", "T1 Support", "T2 Support"]
+                for pl_name in target_pipelines:
+                    pl_id = pipeline_ids_by_name.get(pl_name)
+                    if not pl_id:
+                        continue
+                    for email in emails:
+                        _collect_tickets([{"filters": [
+                            {"propertyName": "hs_pipeline", "operator": "EQ", "value": pl_id},
+                            {"propertyName": "email", "operator": "EQ", "value": email},
+                        ]}])
+                        time.sleep(0.26)
+                    for num in vrs_numbers:
+                        _collect_tickets([{"filters": [
+                            {"propertyName": "hs_pipeline", "operator": "EQ", "value": pl_id},
+                            {"propertyName": "subject", "operator": "CONTAINS_TOKEN", "value": num},
+                        ]}])
+                        time.sleep(0.26)
 
             for e in contact_errors + ticket_errors:
                 st.error(e)
