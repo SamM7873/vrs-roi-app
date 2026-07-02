@@ -748,18 +748,29 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
 # ── Search card ──
 st.markdown("""
 
-<div style="max-width:560px;margin:3rem auto 2rem;background:#fff;border-radius:24px;
-            box-shadow:0 4px 24px rgba(0,0,0,0.09);overflow:hidden;">
-  <!-- logo bar -->
-  <div style="background:#2DB84B;padding:2rem;text-align:center;">
-    <span style="font-size:2.2rem;font-weight:900;color:#fff;letter-spacing:-1.5px;">convo</span>
-    <div style="color:rgba(255,255,255,0.8);font-size:0.88rem;margin-top:0.4rem;">VRS Consumer Lookup</div>
-  </div>
-  <!-- search body -->
-  <div style="padding:1.75rem 2rem 2rem;">
+<style>
+/* Style the middle search column as a card */
+[data-testid="stHorizontalBlock"]:has([data-testid="stColumn"]) [data-testid="stColumn"]:nth-child(2) {
+    background: #fff;
+    border-radius: 0 0 20px 20px;
+    padding: 1.25rem 1.5rem 1.75rem !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+}
+</style>
 """, unsafe_allow_html=True)
 
-_, mid, _ = st.columns([1, 6, 1])
+_, mid, _ = st.columns([1, 2, 1])
+
+# Green logo header — sits above the column card
+st.markdown("""
+<div style="max-width:480px;margin:3rem auto 0;">
+  <div style="background:#2DB84B;border-radius:20px 20px 0 0;padding:2rem;text-align:center;">
+    <div style="font-size:2rem;font-weight:900;color:#fff;letter-spacing:-1.5px;">convo</div>
+    <div style="color:rgba(255,255,255,0.8);font-size:0.85rem;margin-top:0.3rem;">VRS Consumer Lookup</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
 with mid:
     search_input = st.text_input("search", placeholder="🔍  Phone number or email address...", label_visibility="collapsed")
     c1, c2 = st.columns(2)
@@ -768,8 +779,6 @@ with mid:
     with c2:
         last_name_input = st.text_input("last", placeholder="👤  Last name", label_visibility="collapsed")
     search_clicked = st.button("Search", use_container_width=True)
-
-st.markdown("</div></div>", unsafe_allow_html=True)
 
 # ── Results ──
 if search_clicked and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
