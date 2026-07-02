@@ -119,7 +119,7 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
 
         if not after:
             break
-        time.sleep(0.26)
+        time.sleep(0.15)
 
     bar.progress(100, text=f"✅ Done — {len(all_results):,} records loaded")
     status_text.empty()
@@ -149,7 +149,7 @@ def fetch_all(object_type_id, properties, filter_groups=None):
         after = data.get("paging", {}).get("next", {}).get("after")
         if not after:
             break
-        time.sleep(0.26)
+        time.sleep(0.15)
     return all_results
 
 
