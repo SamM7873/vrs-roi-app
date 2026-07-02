@@ -917,32 +917,48 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
         with st.spinner("Fetching monthly value data..."):
             df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail = build_report(matched_numbers)
 
-        # Fetch registrations by email
+        # Fetch registrations by email OR number (covers port-out/port-in with different email)
         reg_emails = list({
             (r.get("properties", {}).get("email") or "").strip().lower()
             for r in matched_numbers
             if (r.get("properties", {}).get("email") or "").strip()
         })
+        reg_numbers = list({
+            (r.get("properties", {}).get("number") or "").strip()
+            for r in matched_numbers
+            if (r.get("properties", {}).get("number") or "").strip()
+        })
+        reg_props = [
+            "registration_id", "registration_uuid", "registration_type",
+            "email", "first_name", "last_name", "number",
+            "service_type", "usage_type",
+            "lex_verification_status", "lex_verified_at",
+            "urd_status", "urd_registration_created_at",
+            "is_itrs_registered", "is_cancelled", "is_backordered",
+            "submitted_at", "registered_at", "registration_created_at",
+            "vrs_record_status_flags", "portin_status",
+            "city", "state", "zip_code",
+        ]
         matched_registrations = []
-        if reg_emails:
-            with st.spinner("Fetching registration records..."):
-                reg_filter_groups = [
-                    {"filters": [{"propertyName": "email", "operator": "IN", "values": reg_emails}]}
-                ]
-                matched_registrations = fetch_all(
-                    "2-58833629",
-                    [
-                        "registration_id", "registration_uuid", "registration_type",
-                        "email", "first_name", "last_name", "number",
-                        "service_type", "usage_type",
-                        "lex_verification_status", "lex_verified_at",
-                        "urd_status", "urd_registration_created_at",
-                        "is_itrs_registered", "is_cancelled", "is_backordered",
-                        "submitted_at", "registered_at", "registration_created_at",
-                        "vrs_record_status_flags", "portin_status",
-                        "city", "state", "zip_code",
-                    ],
-                    filter_groups=reg_filter_groups
+        with st.spinner("Fetching registration records..."):
+            reg_filter_groups = []
+            if reg_emails:
+                reg_filter_groups.append({"filters": [{"propertyName": "email", "operator": "IN", "values": reg_emails}]})
+            if reg_numbers:
+                reg_filter_groups.append({"filters": [{"propertyName": "number", "operator": "IN", "values": reg_numbers}]})
+            if reg_filter_groups:
+                raw_regs = fetch_all("2-58833629", reg_props, filter_groups=reg_filter_groups)
+                # Deduplicate by registration_id
+                seen_ids = set()
+                for reg in raw_regs:
+                    rid = reg.get("properties", {}).get("registration_id") or reg.get("id")
+                    if rid not in seen_ids:
+                        seen_ids.add(rid)
+                        matched_registrations.append(reg)
+                # Sort newest first
+                matched_registrations.sort(
+                    key=lambda x: x.get("properties", {}).get("registration_created_at") or "",
+                    reverse=True
                 )
 
         # Cache results so tab/dropdown interactions don't lose them
