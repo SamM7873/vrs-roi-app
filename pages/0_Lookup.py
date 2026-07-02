@@ -929,6 +929,7 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
                 "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call",
                 "ursa_last_outbound_call", "ursa_last_inbound_call",
                 "ursa_ios_minutes", "ursa_android_minutes", "ursa_web_minutes", "cfz_minutes",
+                "number_deleted", "deleted_reason",
             ],
             filter_groups=filter_groups
         )
@@ -1150,6 +1151,9 @@ if "search_results" in st.session_state:
         )
 
         # ── Number Details card ──
+        _num_deleted = p.get("number_deleted") or ""
+        _del_reason  = p.get("deleted_reason") or ""
+        _fmt_date = lambda v: datetime.fromisoformat(v.replace("Z","+00:00")).strftime("%b %d, %Y") if v else "—"
         number_col_html = (
             '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
             + card_header("Number")
@@ -1157,8 +1161,10 @@ if "search_results" in st.session_state:
             + info_row("Status", status_badge(p.get("number_status")))
             + info_row("Service Type", fmt(p.get("service_type")))
             + info_row("Usage Type", fmt(p.get("usage_type")))
-            + info_row("Credit Type", fmt(p.get("credit_type")))
-            + info_row("Created", (lambda v: datetime.fromisoformat(v.replace("Z","+00:00")).strftime("%b %d, %Y") if v else "—")(p.get("number_created_at") or ""))
+            + (info_row("Credit Type", fmt(p.get("credit_type"))) if not is_vrs else "")
+            + info_row("Created", _fmt_date(p.get("number_created_at") or ""))
+            + (info_row("Deleted", _fmt_date(_num_deleted)) if _num_deleted else "")
+            + (info_row("Deleted Reason", fmt(_del_reason)) if _del_reason else "")
             + '</div>'
         )
 
