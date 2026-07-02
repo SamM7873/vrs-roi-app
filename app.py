@@ -753,13 +753,17 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
 
 # ── Search card ──
 st.markdown("""
-<div style="background:#fff;border-radius:20px;box-shadow:0 2px 16px rgba(0,0,0,0.07);
-            padding:2rem 2rem 1.5rem;max-width:680px;margin:0 auto 2rem;">
-  <div style="text-align:center;margin-bottom:1.25rem;">
-    <div style="font-size:1.5rem;font-weight:900;color:#111827;letter-spacing:-0.5px;">VRS Lookup</div>
-    <div style="font-size:0.88rem;color:#9CA3AF;margin-top:0.2rem;">Search by number, email, or name</div>
-  </div>
+<div style="margin-top: 2.5rem;">
+<div style="background:#2DB84B;border-radius:20px 20px 0 0;padding:1.5rem 1.75rem 1rem;">
+    <div style="font-size:0.72rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;
+                color:rgba(255,255,255,0.7);margin-bottom:0.4rem;">Lookup</div>
+    <div style="font-size:1.6rem;font-weight:900;color:#fff;letter-spacing:-0.5px;">VRS Consumer Lookup</div>
+    <div style="color:rgba(255,255,255,0.8);font-size:0.93rem;margin-top:0.3rem;">
+        Search by phone number, email, or name
+    </div>
 </div>
+<div style="background:#fff;border-radius:0 0 20px 20px;padding:1.75rem 2rem 2rem;
+            box-shadow:0 2px 16px rgba(0,0,0,0.06);margin-bottom:2rem;">
 """, unsafe_allow_html=True)
 
 _, mid, _ = st.columns([1, 4, 1])
@@ -772,9 +776,10 @@ with mid:
         last_name_input = st.text_input("last", placeholder="👤  Last name", label_visibility="collapsed")
     search_clicked = st.button("Search", use_container_width=True)
 
-# ── Results card ──
+st.markdown("</div></div>", unsafe_allow_html=True)
+
+# ── Results ──
 if search_clicked and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
-    st.markdown('<div style="background:#fff;border-radius:20px;box-shadow:0 2px 16px rgba(0,0,0,0.07);padding:1.5rem 2rem;margin-top:0.5rem;">', unsafe_allow_html=True)
     search_terms = [t.strip() for t in search_input.split(",") if t.strip()]
     first_name_input = first_name_input.strip()
     last_name_input = last_name_input.strip()
@@ -1619,8 +1624,6 @@ if st.button("Load URSA Report", key="load_ursa_report"):
         st.markdown("#### Full URSA Detail")
         st.dataframe(ursa_df, use_container_width=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
-
 # ── Geographic Report ──────────────────────────────────────────────────────────
 US_STATE_ABBR = {
     "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA",
@@ -1748,5 +1751,3 @@ if st.button("Load Geographic Report", key="load_geo_report"):
 
         st.markdown("#### City Detail")
         st.dataframe(city_counts.reset_index(drop=True), use_container_width=True)
-
-st.markdown("</div>", unsafe_allow_html=True)
