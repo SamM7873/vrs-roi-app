@@ -1357,6 +1357,13 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
 
         _render_person_detail(_profile_records)
 
+        # Narrow matched_numbers to this person so all tabs (tickets, retention, etc.) are scoped correctly
+        matched_numbers = _profile_records
+        df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail = (
+            build_report(matched_numbers) if matched_numbers
+            else (pd.DataFrame(), {}, {}, {}, {}, {}, {}, {})
+        )
+
         _display_regs = [
             reg for reg in matched_registrations
             if norm(reg.get("properties", {}).get("email") or "") == _profile_email_norm
