@@ -1012,11 +1012,13 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
     if not matched_numbers and not matched_registrations:
         st.warning("No records found for that search.")
         st.session_state.pop("search_results", None)
+        st.session_state.pop("profile_person_key", None)
     else:
         df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail = (
             build_report(matched_numbers) if matched_numbers
             else (pd.DataFrame(), {}, {}, {}, {}, {}, {}, {})
         )
+        st.session_state.pop("profile_person_key", None)
         st.session_state["search_results"] = dict(
             matched_numbers=matched_numbers, df=df, person_numbers=person_numbers,
             person_month_values=person_month_values, person_email_display=person_email_display,
@@ -1126,172 +1128,230 @@ if "search_results" in st.session_state:
         _pk = norm(_r.get("properties", {}).get("email") or "") or f"num:{_r.get('properties', {}).get('number') or ''}"
         _person_groups[_pk].append(_r)
 
-    _auto_expand = len(_person_groups) == 1
+    _profile_key = st.session_state.get("profile_person_key")
+    if _profile_key and _profile_key not in _person_groups:
+        _profile_key = None
+        st.session_state.pop("profile_person_key", None)
+    if len(_person_groups) == 1 and not _profile_key:
+        _profile_key = list(_person_groups.keys())[0]
 
-    for _person_key, _person_records in _person_groups.items():
-        _fp = _person_records[0].get("properties", {})
-        _exp_name  = f"{_fp.get('first_name') or ''} {_fp.get('last_name') or ''}".strip() or "Unknown"
-        _exp_email = _fp.get("email") or _person_key
-        _exp_nums  = "  ·  ".join(str(_r.get("properties", {}).get("number") or "") for _r in _person_records if _r.get("properties", {}).get("number"))
-        _exp_status = (_fp.get("number_status") or "").title()
-        _exp_svc = norm(_fp.get("service_type") or "")
-        _svc_tag = "VRS" if _exp_svc == "vrs" else "Convo Now"
+    _display_regs = matched_registrations  # default; overridden in profile mode
 
-        with st.expander(f"**{_exp_name}** · {_exp_email} · {_exp_nums} · {_svc_tag} · {_exp_status}", expanded=_auto_expand):
-            last_label = None
-            for r in _person_records:
-                p = r.get("properties", {})
-                svc = norm(p.get("service_type") or "")
-                section_label = "VRS" if svc == "vrs" else "Convo Now"
-                if section_label != last_label and len(_person_records) > 1:
-                    color = "#00A651" if svc == "vrs" else "#3B82F6"
-                    mt = "0" if last_label is None else "1rem"
-                    st.markdown(
-                        f'<div style="display:inline-flex;background:{color};color:#fff;'
-                        f'font-size:0.72rem;font-weight:800;letter-spacing:1.5px;'
-                        f'text-transform:uppercase;padding:0.25rem 0.9rem;'
-                        f'border-radius:6px;margin-top:{mt};margin-bottom:0.6rem;">{section_label}</div>',
-                        unsafe_allow_html=True
-                    )
-                    last_label = section_label
+    def _render_person_detail(person_records):
+        _last_lbl = None
+        for r in person_records:
+            p = r.get("properties", {})
+            svc = norm(p.get("service_type") or "")
+            _sec_lbl = "VRS" if svc == "vrs" else "Convo Now"
+            if _sec_lbl != _last_lbl and len(person_records) > 1:
+                _sec_color = "#00A651" if svc == "vrs" else "#3B82F6"
+                _sec_mt = "0" if _last_lbl is None else "1rem"
+                st.markdown(
+                    f'<div style="display:inline-flex;background:{_sec_color};color:#fff;'
+                    f'font-size:0.72rem;font-weight:800;letter-spacing:1.5px;'
+                    f'text-transform:uppercase;padding:0.25rem 0.9rem;'
+                    f'border-radius:6px;margin-top:{_sec_mt};margin-bottom:0.6rem;">{_sec_lbl}</div>',
+                    unsafe_allow_html=True
+                )
+                _last_lbl = _sec_lbl
 
-                name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
-                initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
-                addr_street = " ".join(a for a in [p.get("street1"), p.get("street2")] if a)
-                addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip_code")] if a)
-                address = "<br>".join(a for a in [addr_street, addr_csz] if a) or "—"
-                emerg_street = " ".join(a for a in [p.get("emerg_street1"), p.get("emerg_street2")] if a)
-                emerg_csz = ", ".join(a for a in [p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")] if a)
-                emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
-                email_key = norm(p.get("email") or "") or f"num:{p.get('number') or ''}"
-                convo_monthly = person_month_values.get(email_key, {})
-                is_vrs = svc == "vrs"
-                is_suspended = norm(p.get("number_status") or "") == "suspended"
-                show_monthly = not is_vrs and not is_suspended
+            name = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—"
+            initials = "".join(n[0].upper() for n in name.split() if n)[:2] if name != "—" else "?"
+            addr_street = " ".join(a for a in [p.get("street1"), p.get("street2")] if a)
+            addr_csz = ", ".join(a for a in [p.get("city"), p.get("state"), p.get("zip_code")] if a)
+            address = "<br>".join(a for a in [addr_street, addr_csz] if a) or "—"
+            emerg_street = " ".join(a for a in [p.get("emerg_street1"), p.get("emerg_street2")] if a)
+            emerg_csz = ", ".join(a for a in [p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")] if a)
+            emergency = "<br>".join(a for a in [emerg_street, emerg_csz] if a) or "—"
+            email_key = norm(p.get("email") or "") or f"num:{p.get('number') or ''}"
+            convo_monthly = person_month_values.get(email_key, {})
+            is_vrs = svc == "vrs"
+            is_suspended = norm(p.get("number_status") or "") == "suspended"
+            show_monthly = not is_vrs and not is_suspended
 
-                # ── Contact Summary card ──
-                contact_col_html = (
+            contact_col_html = (
+                '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
+                + card_header("Contact Summary")
+                + f'<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:1px solid #F3F4F6;">'
+                + f'<div style="width:44px;height:44px;border-radius:50%;background:#00A651;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
+                + f'<div><div style="font-size:0.97rem;font-weight:700;color:#1F2937;">{name}</div>'
+                + f'<div style="font-size:0.78rem;color:#6B7280;">{fmt(p.get("email"))}</div></div>'
+                + f'<div style="margin-left:auto;">{status_badge(p.get("number_status"))}</div>'
+                + '</div>'
+                + info_row("Phone", fmt(p.get("phone")))
+                + info_row("Email", fmt(p.get("email")))
+                + (info_row("Address", address) + info_row("Emergency", emergency) if is_vrs else "")
+                + '</div>'
+            )
+
+            _num_deleted = p.get("number_deleted_at") or ""
+            _del_reason  = p.get("deleted_reason") or ""
+            number_col_html = (
+                '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
+                + card_header("Number")
+                + f'<div style="font-size:1.4rem;font-weight:800;color:#1F2937;margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #F3F4F6;">{fmt(p.get("number"))}</div>'
+                + info_row("Status", status_badge(p.get("number_status")))
+                + info_row("Service Type", fmt(p.get("service_type")))
+                + info_row("Usage Type", fmt(p.get("usage_type")))
+                + (info_row("Credit Type", fmt(p.get("credit_type"))) if not is_vrs else "")
+                + info_row("Created", _fmt_date(p.get("number_created_at") or ""))
+                + (info_row("Deleted", _fmt_date(_num_deleted)) if _num_deleted else "")
+                + (info_row("Deleted Reason", fmt(_del_reason)) if _del_reason else "")
+                + '</div>'
+            )
+
+            if is_vrs:
+                ursa_col_html = (
                     '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
-                    + card_header("Contact Summary")
-                    + f'<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:1px solid #F3F4F6;">'
-                    + f'<div style="width:44px;height:44px;border-radius:50%;background:#00A651;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
-                    + f'<div><div style="font-size:0.97rem;font-weight:700;color:#1F2937;">{name}</div>'
-                    + f'<div style="font-size:0.78rem;color:#6B7280;">{fmt(p.get("email"))}</div></div>'
-                    + f'<div style="margin-left:auto;">{status_badge(p.get("number_status"))}</div>'
-                    + '</div>'
-                    + info_row("Phone", fmt(p.get("phone")))
-                    + info_row("Email", fmt(p.get("email")))
-                    + (info_row("Address", address) + info_row("Emergency", emergency) if is_vrs else "")
+                    + card_header("URSA Activity")
+                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">First Login</div>' + ursa_badge(p.get("ursa_first_login")) + '</div>'
+                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">1st Outbound Call</div>' + ursa_badge(p.get("ursa_first_outbound_call")) + '</div>'
+                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">2nd Outbound Call</div>' + ursa_badge(p.get("ursa_second_outbound_call")) + '</div>'
+                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">Last Outbound Call</div>' + ursa_badge(p.get("ursa_last_outbound_call")) + '</div>'
+                    + '<div style="padding:0.45rem 0;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">Last Inbound Call</div>' + ursa_badge(p.get("ursa_last_inbound_call")) + '</div>'
                     + '</div>'
                 )
-
-                # ── Number Details card ──
-                _num_deleted = p.get("number_deleted_at") or ""
-                _del_reason  = p.get("deleted_reason") or ""
-                number_col_html = (
+            elif show_monthly:
+                convo_rows_html = "".join(
+                    info_row(mk, f"{sum(vals['convo']):.1f} min")
+                    for mk, vals in sorted(convo_monthly.items(), reverse=True)
+                    if vals.get("convo") and sum(vals["convo"]) > 0
+                ) or info_row("No data", "—")
+                ursa_col_html = (
                     '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
-                    + card_header("Number")
-                    + f'<div style="font-size:1.4rem;font-weight:800;color:#1F2937;margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #F3F4F6;">{fmt(p.get("number"))}</div>'
-                    + info_row("Status", status_badge(p.get("number_status")))
-                    + info_row("Service Type", fmt(p.get("service_type")))
-                    + info_row("Usage Type", fmt(p.get("usage_type")))
-                    + (info_row("Credit Type", fmt(p.get("credit_type"))) if not is_vrs else "")
-                    + info_row("Created", _fmt_date(p.get("number_created_at") or ""))
-                    + (info_row("Deleted", _fmt_date(_num_deleted)) if _num_deleted else "")
-                    + (info_row("Deleted Reason", fmt(_del_reason)) if _del_reason else "")
+                    + card_header("Monthly Usage (Convo Now)")
+                    + convo_rows_html
                     + '</div>'
                 )
+            else:
+                ursa_col_html = ""
 
-                # ── URSA / Monthly card ──
-                if is_vrs:
-                    ursa_col_html = (
-                        '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
-                        + card_header("URSA Activity")
-                        + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">First Login</div>' + ursa_badge(p.get("ursa_first_login")) + '</div>'
-                        + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">1st Outbound Call</div>' + ursa_badge(p.get("ursa_first_outbound_call")) + '</div>'
-                        + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">2nd Outbound Call</div>' + ursa_badge(p.get("ursa_second_outbound_call")) + '</div>'
-                        + '<div style="padding:0.45rem 0;border-bottom:1px solid #F3F4F6;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">Last Outbound Call</div>' + ursa_badge(p.get("ursa_last_outbound_call")) + '</div>'
-                        + '<div style="padding:0.45rem 0;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">Last Inbound Call</div>' + ursa_badge(p.get("ursa_last_inbound_call")) + '</div>'
-                        + '</div>'
+            if is_vrs:
+                vrs_months_data = {mk: sum(vals["vrs"]) for mk, vals in (person_month_values.get(email_key) or {}).items() if vals.get("vrs")}
+                sorted_mv = sorted(vrs_months_data.items(), key=lambda x: month_sort_key(x[0]), reverse=True)
+                recent = sorted_mv[:6] if sorted_mv else []
+                mv_rows = "".join(info_row(mk, f"{v:,.1f} min") for mk, v in recent) or info_row("No data", "—")
+                current_m = recent[0][1] if recent else 0
+                prev_m = recent[1][1] if len(recent) > 1 else 0
+                diff_m = current_m - prev_m
+                diff_color = "#00A651" if diff_m >= 0 else "#EF4444"
+                diff_sign = "+" if diff_m >= 0 else ""
+                monthly_col_html = (
+                    '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
+                    + card_header("Monthly Value (VRS)")
+                    + f'<div style="font-size:1.3rem;font-weight:800;color:#00A651;margin-bottom:0.3rem;">{current_m:,.1f} min</div>'
+                    + f'<div style="font-size:0.75rem;color:{diff_color};margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #F3F4F6;">{diff_sign}{diff_m:,.1f} vs prev month</div>'
+                    + mv_rows
+                    + '</div>'
+                )
+            else:
+                monthly_col_html = ""
+
+            cols = [contact_col_html, number_col_html]
+            if ursa_col_html: cols.append(ursa_col_html)
+            if monthly_col_html: cols.append(monthly_col_html)
+            grid_css = f"grid-template-columns:repeat({len(cols)},1fr)"
+            grid_html = f'<div style="display:grid;{grid_css};gap:1rem;margin-bottom:1rem;">{"".join(cols)}</div>'
+            st.markdown(grid_html, unsafe_allow_html=True)
+
+            if is_vrs:
+                primary_addr = " ".join(filter(None, [p.get("street1"), p.get("street2"), p.get("city"), p.get("state"), p.get("zip_code")]))
+                emerg_addr   = " ".join(filter(None, [p.get("emerg_street1"), p.get("emerg_street2"), p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")]))
+                map_points = []
+                if primary_addr.strip():
+                    coords = geocode(primary_addr)
+                    if coords:
+                        map_points.append({"lat": coords[0], "lon": coords[1], "label": "Primary Address", "addr": primary_addr, "color": "#00A651"})
+                if emerg_addr.strip() and emerg_addr != primary_addr:
+                    coords = geocode(emerg_addr)
+                    if coords:
+                        map_points.append({"lat": coords[0], "lon": coords[1], "label": "Emergency Address", "addr": emerg_addr, "color": "#EF4444"})
+                if map_points:
+                    map_df = pd.DataFrame(map_points)
+                    st.markdown('<div style="font-size:0.65rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin:0.25rem 0 0.5rem;">Address Map</div>', unsafe_allow_html=True)
+                    fig = px.scatter_mapbox(
+                        map_df, lat="lat", lon="lon",
+                        hover_name="label", hover_data={"addr": True, "lat": False, "lon": False, "color": False},
+                        color="label",
+                        color_discrete_map={"Primary Address": "#00A651", "Emergency Address": "#EF4444"},
+                        zoom=11, height=280,
                     )
-                elif show_monthly:
-                    convo_rows_html = "".join(
-                        info_row(mk, f"{sum(vals['convo']):.1f} min")
-                        for mk, vals in sorted(convo_monthly.items(), reverse=True)
-                        if vals.get("convo") and sum(vals["convo"]) > 0
-                    ) or info_row("No data", "—")
-                    ursa_col_html = (
-                        '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
-                        + card_header("Monthly Usage (Convo Now)")
-                        + convo_rows_html
-                        + '</div>'
+                    fig.update_traces(marker=dict(size=14))
+                    fig.update_layout(
+                        mapbox_style="carto-positron",
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0, font=dict(size=11)),
                     )
-                else:
-                    ursa_col_html = ""
+                    st.plotly_chart(fig, use_container_width=True)
 
-                # ── Monthly Value card (VRS only) ──
-                if is_vrs:
-                    vrs_months_data = {mk: sum(vals["vrs"]) for mk, vals in (person_month_values.get(email_key) or {}).items() if vals.get("vrs")}
-                    sorted_mv = sorted(vrs_months_data.items(), key=lambda x: month_sort_key(x[0]), reverse=True)
-                    recent = sorted_mv[:6] if sorted_mv else []
-                    mv_rows = "".join(info_row(mk, f"{v:,.1f} min") for mk, v in recent) or info_row("No data", "—")
-                    current_m = recent[0][1] if recent else 0
-                    prev_m = recent[1][1] if len(recent) > 1 else 0
-                    diff_m = current_m - prev_m
-                    diff_color = "#00A651" if diff_m >= 0 else "#EF4444"
-                    diff_sign = "+" if diff_m >= 0 else ""
-                    monthly_col_html = (
-                        '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1.1rem;height:100%;">'
-                        + card_header("Monthly Value (VRS)")
-                        + f'<div style="font-size:1.3rem;font-weight:800;color:#00A651;margin-bottom:0.3rem;">{current_m:,.1f} min</div>'
-                        + f'<div style="font-size:0.75rem;color:{diff_color};margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #F3F4F6;">{diff_sign}{diff_m:,.1f} vs prev month</div>'
-                        + mv_rows
-                        + '</div>'
-                    )
-                else:
-                    monthly_col_html = ""
+    if _profile_key:
+        # ── PROFILE MODE: full consumer dashboard ──
+        _profile_records = _person_groups[_profile_key]
+        _pfp = _profile_records[0].get("properties", {})
+        _profile_name = f"{_pfp.get('first_name') or ''} {_pfp.get('last_name') or ''}".strip() or "Unknown"
+        _profile_email_norm = norm(_pfp.get("email") or "")
+        _profile_nums = {str(_r.get("properties", {}).get("number") or "").strip() for _r in _profile_records}
 
-                cols = [contact_col_html, number_col_html]
-                if ursa_col_html: cols.append(ursa_col_html)
-                if monthly_col_html: cols.append(monthly_col_html)
-                grid_css = f"grid-template-columns:repeat({len(cols)},1fr)"
-                grid_html = f'<div style="display:grid;{grid_css};gap:1rem;margin-bottom:1rem;">{"".join(cols)}</div>'
-                st.markdown(grid_html, unsafe_allow_html=True)
+        if len(_person_groups) > 1:
+            _bc, _ = st.columns([1, 5])
+            with _bc:
+                if st.button("← Back"):
+                    st.session_state["profile_person_key"] = None
+                    st.rerun()
+            st.markdown(f"### {_profile_name}")
 
-                # ── Address map (VRS only) ──
-                if is_vrs:
-                    primary_addr = " ".join(filter(None, [p.get("street1"), p.get("street2"), p.get("city"), p.get("state"), p.get("zip_code")]))
-                    emerg_addr   = " ".join(filter(None, [p.get("emerg_street1"), p.get("emerg_street2"), p.get("emerg_city"), p.get("emerg_state"), p.get("emerg_zip_code")]))
-                    map_points = []
-                    if primary_addr.strip():
-                        coords = geocode(primary_addr)
-                        if coords:
-                            map_points.append({"lat": coords[0], "lon": coords[1], "label": "Primary Address", "addr": primary_addr, "color": "#00A651"})
-                    if emerg_addr.strip() and emerg_addr != primary_addr:
-                        coords = geocode(emerg_addr)
-                        if coords:
-                            map_points.append({"lat": coords[0], "lon": coords[1], "label": "Emergency Address", "addr": emerg_addr, "color": "#EF4444"})
-                    if map_points:
-                        map_df = pd.DataFrame(map_points)
-                        st.markdown('<div style="font-size:0.65rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin:0.25rem 0 0.5rem;">Address Map</div>', unsafe_allow_html=True)
-                        fig = px.scatter_mapbox(
-                            map_df, lat="lat", lon="lon",
-                            hover_name="label", hover_data={"addr": True, "lat": False, "lon": False, "color": False},
-                            color="label",
-                            color_discrete_map={"Primary Address": "#00A651", "Emergency Address": "#EF4444"},
-                            zoom=11, height=280,
-                        )
-                        fig.update_traces(marker=dict(size=14))
-                        fig.update_layout(
-                            mapbox_style="carto-positron",
-                            margin=dict(l=0, r=0, t=0, b=0),
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0, font=dict(size=11)),
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
+        _render_person_detail(_profile_records)
+
+        _display_regs = [
+            reg for reg in matched_registrations
+            if norm(reg.get("properties", {}).get("email") or "") == _profile_email_norm
+            or str(reg.get("properties", {}).get("number") or "").strip() in _profile_nums
+        ]
+
+    else:
+        # ── LIST MODE: compact clickable result cards ──
+        for _person_key, _person_records in _person_groups.items():
+            _fp = _person_records[0].get("properties", {})
+            _list_name = f"{_fp.get('first_name') or ''} {_fp.get('last_name') or ''}".strip() or "Unknown"
+            _list_email = _fp.get("email") or _person_key
+            _list_nums = "  ·  ".join(str(_r.get("properties", {}).get("number") or "") for _r in _person_records if _r.get("properties", {}).get("number"))
+            _list_status = (_fp.get("number_status") or "").title()
+            _list_svc = norm(_fp.get("service_type") or "")
+            _svc_tag = "VRS" if _list_svc == "vrs" else "Convo Now"
+            _svc_color = "#00A651" if _list_svc == "vrs" else "#3B82F6"
+            _stat_color = "#00A651" if _list_status.lower() == "live" else "#EF4444" if _list_status.lower() == "suspended" else "#6B7280"
+            _initials_l = "".join(n[0].upper() for n in _list_name.split() if n)[:2] if _list_name != "Unknown" else "?"
+
+            _lc1, _lc2 = st.columns([6, 1])
+            with _lc1:
+                st.markdown(f"""
+<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:1rem 1.25rem;
+            display:flex;align-items:center;gap:1rem;margin-bottom:0.5rem;">
+  <div style="width:44px;height:44px;border-radius:50%;background:{_svc_color};
+              display:flex;align-items:center;justify-content:center;
+              font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;">{_initials_l}</div>
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:0.97rem;font-weight:700;color:#1F2937;">{_list_name}</div>
+    <div style="font-size:0.78rem;color:#6B7280;">{_list_email}</div>
+    <div style="font-size:0.75rem;color:#9CA3AF;margin-top:2px;">{_list_nums}</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+    <span style="background:{_svc_color}22;color:{_svc_color};font-size:0.7rem;font-weight:700;
+                padding:2px 8px;border-radius:6px;">{_svc_tag}</span>
+    <span style="background:{_stat_color}22;color:{_stat_color};font-size:0.7rem;font-weight:700;
+                padding:2px 8px;border-radius:6px;">{_list_status}</span>
+  </div>
+</div>""", unsafe_allow_html=True)
+            with _lc2:
+                if st.button("Open →", key=f"open_{_person_key}"):
+                    st.session_state["profile_person_key"] = _person_key
+                    st.rerun()
+        st.stop()
 
     # ── Registration cards ──
-    if matched_registrations:
+    if _display_regs:
+        matched_registrations = _display_regs
         def fmt_dt(v):
             if not v: return "—"
             try:
