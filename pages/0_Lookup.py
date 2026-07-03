@@ -1497,6 +1497,9 @@ if "search_results" in st.session_state:
                 "lm_cfz": lm_cfz,
             })
 
+        # Cache segment counts for sidebar sync widget
+        st.session_state["_retention_summary"] = dict(seg_counts)
+
         # Summary metrics
         total_analyzed = sum(seg_counts.values())
         c1, c2, c3, c4, c5 = st.columns(5)
