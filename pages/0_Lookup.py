@@ -1401,6 +1401,33 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
 </style>
 """, unsafe_allow_html=True)
 
+        st.markdown("""
+<style>
+/* Make list-item forms invisible containers */
+[data-testid="stForm"] {
+    border: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+    position: relative !important;
+    margin-bottom: 0.35rem !important;
+}
+/* Invisible full-card submit overlay */
+[data-testid="stFormSubmitButton"] > button {
+    position: absolute !important;
+    inset: 0 !important;
+    opacity: 0 !important;
+    height: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+    z-index: 10 !important;
+    border: none !important;
+    background: transparent !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
         for _person_key, _person_records in _person_groups.items():
             _fp = _person_records[0].get("properties", {})
             _list_name = f"{_fp.get('first_name') or ''} {_fp.get('last_name') or ''}".strip() or "Unknown"
@@ -1414,14 +1441,12 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             _initials_l = "".join(n[0].upper() for n in _list_name.split() if n)[:2] if _list_name != "Unknown" else "?"
             _num_count = len(_person_records)
 
-            _lc1, _lc2 = st.columns([9, 1])
-            with _lc1:
+            with st.form(key=f"card_{_person_key}", border=False, clear_on_submit=False):
                 st.markdown(f"""
 <div style="background:#fff;border:1px solid #EAECF0;
     border-left:3px solid {_svc_color};
     border-radius:10px;padding:0.85rem 1.15rem;
-    display:flex;align-items:center;gap:0.9rem;
-    margin-bottom:0.35rem;">
+    display:flex;align-items:center;gap:0.9rem;">
   <div style="width:38px;height:38px;border-radius:50%;
       background:{_svc_color}14;border:1.5px solid {_svc_color}45;
       display:flex;align-items:center;justify-content:center;
@@ -1440,15 +1465,18 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
       <span style="font-size:0.7rem;color:#9CA3AF;">{_num_count} number{'s' if _num_count != 1 else ''}</span>
     </div>
     <div style="font-size:0.76rem;color:#6B7280;white-space:nowrap;overflow:hidden;
-        text-overflow:ellipsis;max-width:480px;margin-bottom:0.1rem;">{_list_email}</div>
+        text-overflow:ellipsis;max-width:540px;margin-bottom:0.1rem;">{_list_email}</div>
     <div style="font-size:0.68rem;color:#B0B7C3;font-variant-numeric:tabular-nums;
         letter-spacing:0.2px;">{_list_nums}</div>
   </div>
+  <div style="width:28px;height:28px;border-radius:50%;background:#F3F4F6;
+      display:flex;align-items:center;justify-content:center;
+      font-size:1rem;color:#9CA3AF;flex-shrink:0;line-height:1;">›</div>
 </div>""", unsafe_allow_html=True)
-            with _lc2:
-                if st.button("›", key=f"open_{_person_key}"):
-                    st.session_state["profile_person_key"] = _person_key
-                    st.rerun()
+                _submitted = st.form_submit_button("open", use_container_width=True)
+            if _submitted:
+                st.session_state["profile_person_key"] = _person_key
+                st.rerun()
         st.stop()
 
     # ── Registration cards ──
