@@ -60,32 +60,6 @@ def render_sync_widget():
     Last sync: {d['last_sync']}
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;margin-bottom:0.6rem;">
-    <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:0.45rem 0.6rem;">
-      <div style="font-size:0.58rem;color:rgba(255,255,255,0.45);text-transform:uppercase;
-                  letter-spacing:0.8px;margin-bottom:2px;">Live VRS</div>
-      <div style="font-size:1.05rem;font-weight:800;color:#2DB84B;">{d['live']:,}</div>
-    </div>
-    <div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:0.45rem 0.6rem;">
-      <div style="font-size:0.58rem;color:rgba(255,255,255,0.45);text-transform:uppercase;
-                  letter-spacing:0.8px;margin-bottom:2px;">Suspended</div>
-      <div style="font-size:1.05rem;font-weight:800;color:#EF4444;">{d['suspended']:,}</div>
-    </div>
-  </div>
-""", unsafe_allow_html=True)
-
-        if seg:
-            st.markdown(f"""
-<div style="background:rgba(255,255,255,0.07);border-radius:7px;padding:0.5rem 0.6rem;margin-bottom:0.6rem;">
-  <div style="font-size:0.58rem;color:rgba(255,255,255,0.45);text-transform:uppercase;
-              letter-spacing:0.8px;margin-bottom:0.4rem;">Retention</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:0.72rem;">
-    <div style="color:#2DB84B;font-weight:700;">📈 A: {seg.get('A',0)}</div>
-    <div style="color:#3B82F6;font-weight:700;">✅ B: {seg.get('B',0)}</div>
-    <div style="color:#F59E0B;font-weight:700;">⚠️ C: {seg.get('C',0)}</div>
-    <div style="color:#EF4444;font-weight:700;">🚨 D: {seg.get('D',0)}</div>
-  </div>
-</div>
 """, unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
@@ -93,16 +67,7 @@ def render_sync_widget():
         with st.expander("View Details"):
             age_mins = int((time.time() - d["ts"]) / 60)
             st.caption(f"Data refreshes every 5 min · {age_mins}m ago")
-            st.markdown(f"**Live VRS:** {d['live']:,}")
-            st.markdown(f"**Suspended:** {d['suspended']:,}")
-            if seg:
-                st.markdown("**Retention (last lookup):**")
-                st.markdown(f"- 📈 Growth (A): {seg.get('A',0)}")
-                st.markdown(f"- ✅ Stable (B): {seg.get('B',0)}")
-                st.markdown(f"- ⚠️ Declining (C): {seg.get('C',0)}")
-                st.markdown(f"- 🚨 At Risk (D): {seg.get('D',0)}")
-            else:
-                st.caption("Run a lookup to see retention segments")
+            st.caption(f"Last sync: {d['last_sync']}")
 
 lookup_page   = st.Page("pages/0_Lookup.py",              title="VRS Lookup",           icon="🔍", default=True)
 numbers_page  = st.Page("pages/1_Numbers_Report.py",      title="Numbers Report",        icon="📊")
