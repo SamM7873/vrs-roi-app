@@ -1053,17 +1053,21 @@ if "search_results" in st.session_state:
     cost_saved = (total_vrs_min * VRS_RATE_PER_MINUTE) - (total_convo_min * CONVO_NOW_RATE_PER_MINUTE)
     saved_color = "#00A651" if cost_saved >= 0 else "#EF4444"
 
-    def _tile(label, value, sub="", color="#1F2937"):
-        return (f'<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:0.85rem 1.1rem;">'
-                f'<div style="font-size:0.6rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">{label}</div>'
-                f'<div style="font-size:1.25rem;font-weight:800;color:{color};line-height:1.1;">{value}</div>'
-                + (f'<div style="font-size:0.68rem;color:#9CA3AF;margin-top:0.15rem;">{sub}</div>' if sub else '')
+    def _tile(label, value, sub="", color="#111827", accent=False):
+        border = "border-top:2px solid #00A651;" if accent else "border-top:2px solid transparent;"
+        return (f'<div style="background:#fff;border:1px solid #EAECF0;border-radius:10px;'
+                f'padding:0.9rem 1.1rem;{border}">'
+                f'<div style="font-size:0.58rem;font-weight:700;letter-spacing:1.3px;'
+                f'text-transform:uppercase;color:#9CA3AF;margin-bottom:0.35rem;">{label}</div>'
+                f'<div style="font-size:1.3rem;font-weight:800;color:{color};line-height:1;'
+                f'font-variant-numeric:tabular-nums;">{value}</div>'
+                + (f'<div style="font-size:0.67rem;color:#B0B7C3;margin-top:0.2rem;">{sub}</div>' if sub else '')
                 + '</div>')
 
-    st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.65rem;margin-bottom:1.5rem;">
-  {_tile("Numbers Found", total_nums)}
+    st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.55rem;margin-bottom:1.25rem;">
+  {_tile("Numbers Found", total_nums, accent=True)}
   {_tile("Registrations", total_regs)}
-  {_tile("Live VRS", live_vrs)}
+  {_tile("Live VRS", live_vrs, color="#00A651")}
   {_tile("Account Age", account_age)}
   {_tile("Total VRS Min", f"{total_vrs_min:,.1f}")}
 </div>""", unsafe_allow_html=True)
@@ -1292,14 +1296,64 @@ if "search_results" in st.session_state:
         _profile_name = f"{_pfp.get('first_name') or ''} {_pfp.get('last_name') or ''}".strip() or "Unknown"
         _profile_email_norm = norm(_pfp.get("email") or "")
         _profile_nums = {str(_r.get("properties", {}).get("number") or "").strip() for _r in _profile_records}
+        _pfp_svc = norm(_pfp.get("service_type") or "")
+        _pfp_svc_color = "#00A651" if _pfp_svc == "vrs" else "#3B82F6"
+        _pfp_svc_tag = "VRS" if _pfp_svc == "vrs" else "Convo Now"
+        _pfp_status = (_pfp.get("number_status") or "").title()
+        _pfp_stat_color = "#00A651" if _pfp_status.lower() == "live" else "#EF4444" if _pfp_status.lower() == "suspended" else "#6B7280"
+        _pfp_initials = "".join(n[0].upper() for n in _profile_name.split() if n)[:2] if _profile_name != "Unknown" else "?"
 
         if len(_person_groups) > 1:
-            _bc, _ = st.columns([1, 5])
+            st.markdown(f"""
+<style>
+div[data-testid="stButton"] button[kind="secondary"] {{
+    background: #fff !important;
+    border: 1.5px solid #E5E7EB !important;
+    border-radius: 8px !important;
+    color: #374151 !important;
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+    padding: 0.35rem 0.9rem !important;
+    box-shadow: none !important;
+}}
+div[data-testid="stButton"] button[kind="secondary"]:hover {{
+    border-color: #D1D5DB !important;
+    background: #F9FAFB !important;
+    color: #111827 !important;
+}}
+</style>
+<div style="margin-bottom:0.5rem;">
+  <button onclick="window.parent.document.querySelectorAll('button').forEach(b=>{{if(b.innerText.trim()==='← Results')b.click()}});"
+    style="display:none;"></button>
+</div>
+""", unsafe_allow_html=True)
+            _bc, _hc = st.columns([1, 7])
             with _bc:
-                if st.button("← Back"):
+                if st.button("← Results"):
                     st.session_state["profile_person_key"] = None
                     st.rerun()
-            st.markdown(f"### {_profile_name}")
+            with _hc:
+                st.markdown(f"""
+<div style="display:flex;align-items:center;gap:0.75rem;padding:0.4rem 0 0.9rem;">
+  <div style="width:40px;height:40px;border-radius:50%;
+      background:{_pfp_svc_color}18;border:2px solid {_pfp_svc_color}60;
+      display:flex;align-items:center;justify-content:center;
+      font-size:0.85rem;font-weight:800;color:{_pfp_svc_color};
+      flex-shrink:0;">{_pfp_initials}</div>
+  <div>
+    <div style="font-size:1.1rem;font-weight:800;color:#111827;line-height:1.2;">{_profile_name}</div>
+    <div style="display:flex;align-items:center;gap:0.4rem;margin-top:0.2rem;flex-wrap:wrap;">
+      <span style="font-size:0.75rem;color:#6B7280;">{_pfp.get('email') or ''}</span>
+      <span style="width:3px;height:3px;border-radius:50%;background:#D1D5DB;display:inline-block;"></span>
+      <span style="background:{_pfp_svc_color}15;color:{_pfp_svc_color};font-size:0.63rem;
+          font-weight:800;letter-spacing:0.8px;padding:1px 7px;border-radius:4px;
+          text-transform:uppercase;">{_pfp_svc_tag}</span>
+      <span style="width:5px;height:5px;border-radius:50%;background:{_pfp_stat_color};
+          display:inline-block;"></span>
+      <span style="font-size:0.72rem;font-weight:600;color:{_pfp_stat_color};">{_pfp_status}</span>
+    </div>
+  </div>
+</div>""", unsafe_allow_html=True)
 
         _render_person_detail(_profile_records)
 
@@ -1310,7 +1364,43 @@ if "search_results" in st.session_state:
         ]
 
     else:
-        # ── LIST MODE: compact clickable result cards ──
+        # ── LIST MODE: polished result cards ──
+        _n_people = len(_person_groups)
+        st.markdown(f"""
+<div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;
+    text-transform:uppercase;color:#9CA3AF;margin-bottom:0.6rem;">
+  {_n_people} consumer{'s' if _n_people != 1 else ''} found — click to open profile
+</div>
+<style>
+/* Arrow buttons in the result list's narrow second column */
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child .stButton > button {{
+    background: #F9FAFB !important;
+    border: 1.5px solid #E5E7EB !important;
+    border-radius: 50% !important;
+    width: 36px !important;
+    min-height: 36px !important;
+    height: 36px !important;
+    padding: 0 !important;
+    font-size: 1rem !important;
+    line-height: 1 !important;
+    color: #9CA3AF !important;
+    box-shadow: none !important;
+    font-weight: 500 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: auto !important;
+    transition: background 0.15s, border-color 0.15s, color 0.15s !important;
+}}
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child .stButton > button:hover {{
+    background: #00A651 !important;
+    border-color: #00A651 !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(0,166,81,0.25) !important;
+}}
+</style>
+""", unsafe_allow_html=True)
+
         for _person_key, _person_records in _person_groups.items():
             _fp = _person_records[0].get("properties", {})
             _list_name = f"{_fp.get('first_name') or ''} {_fp.get('last_name') or ''}".strip() or "Unknown"
@@ -1322,29 +1412,41 @@ if "search_results" in st.session_state:
             _svc_color = "#00A651" if _list_svc == "vrs" else "#3B82F6"
             _stat_color = "#00A651" if _list_status.lower() == "live" else "#EF4444" if _list_status.lower() == "suspended" else "#6B7280"
             _initials_l = "".join(n[0].upper() for n in _list_name.split() if n)[:2] if _list_name != "Unknown" else "?"
+            _num_count = len(_person_records)
 
-            _lc1, _lc2 = st.columns([6, 1])
+            _lc1, _lc2 = st.columns([9, 1])
             with _lc1:
                 st.markdown(f"""
-<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:1rem 1.25rem;
-            display:flex;align-items:center;gap:1rem;margin-bottom:0.5rem;">
-  <div style="width:44px;height:44px;border-radius:50%;background:{_svc_color};
-              display:flex;align-items:center;justify-content:center;
-              font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;">{_initials_l}</div>
+<div style="background:#fff;border:1px solid #EAECF0;
+    border-left:3px solid {_svc_color};
+    border-radius:10px;padding:0.85rem 1.15rem;
+    display:flex;align-items:center;gap:0.9rem;
+    margin-bottom:0.35rem;">
+  <div style="width:38px;height:38px;border-radius:50%;
+      background:{_svc_color}14;border:1.5px solid {_svc_color}45;
+      display:flex;align-items:center;justify-content:center;
+      font-size:0.8rem;font-weight:800;color:{_svc_color};
+      flex-shrink:0;letter-spacing:-0.5px;">{_initials_l}</div>
   <div style="flex:1;min-width:0;">
-    <div style="font-size:0.97rem;font-weight:700;color:#1F2937;">{_list_name}</div>
-    <div style="font-size:0.78rem;color:#6B7280;">{_list_email}</div>
-    <div style="font-size:0.75rem;color:#9CA3AF;margin-top:2px;">{_list_nums}</div>
-  </div>
-  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-    <span style="background:{_svc_color}22;color:{_svc_color};font-size:0.7rem;font-weight:700;
-                padding:2px 8px;border-radius:6px;">{_svc_tag}</span>
-    <span style="background:{_stat_color}22;color:{_stat_color};font-size:0.7rem;font-weight:700;
-                padding:2px 8px;border-radius:6px;">{_list_status}</span>
+    <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.18rem;flex-wrap:wrap;">
+      <span style="font-size:0.9rem;font-weight:700;color:#111827;">{_list_name}</span>
+      <span style="background:{_svc_color}12;color:{_svc_color};font-size:0.6rem;
+          font-weight:800;letter-spacing:0.9px;padding:1px 6px;border-radius:4px;
+          text-transform:uppercase;">{_svc_tag}</span>
+      <span style="width:5px;height:5px;border-radius:50%;background:{_stat_color};
+          display:inline-block;"></span>
+      <span style="font-size:0.7rem;font-weight:600;color:{_stat_color};">{_list_status}</span>
+      <span style="font-size:0.7rem;color:#D1D5DB;">·</span>
+      <span style="font-size:0.7rem;color:#9CA3AF;">{_num_count} number{'s' if _num_count != 1 else ''}</span>
+    </div>
+    <div style="font-size:0.76rem;color:#6B7280;white-space:nowrap;overflow:hidden;
+        text-overflow:ellipsis;max-width:480px;margin-bottom:0.1rem;">{_list_email}</div>
+    <div style="font-size:0.68rem;color:#B0B7C3;font-variant-numeric:tabular-nums;
+        letter-spacing:0.2px;">{_list_nums}</div>
   </div>
 </div>""", unsafe_allow_html=True)
             with _lc2:
-                if st.button("Open →", key=f"open_{_person_key}"):
+                if st.button("›", key=f"open_{_person_key}"):
                     st.session_state["profile_person_key"] = _person_key
                     st.rerun()
         st.stop()
