@@ -918,7 +918,7 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
     if last_name_input:
         reg_filter_groups_direct.append({"filters": [{"propertyName": "last_name", "operator": "CONTAINS_TOKEN", "value": last_name_input}]})
 
-    with st.spinner("Searching..."):
+    with st.spinner("Searching HubSpot..."):
         matched_numbers = fetch_all(
             "2-40974683",
             [
@@ -936,48 +936,48 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
         # Always search registration object directly from search terms
         direct_regs = fetch_all("2-58833629", reg_props, filter_groups=reg_filter_groups_direct) if reg_filter_groups_direct else []
 
-    # Also expand registration search using emails/numbers from matched_numbers
-    extra_regs = []
-    if matched_numbers:
-        reg_emails = list({(r.get("properties", {}).get("email") or "").strip().lower() for r in matched_numbers if (r.get("properties", {}).get("email") or "").strip()})
-        reg_numbers = list({(r.get("properties", {}).get("number") or "").strip() for r in matched_numbers if (r.get("properties", {}).get("number") or "").strip()})
-        expand_groups = []
-        if reg_emails:
-            expand_groups.append({"filters": [{"propertyName": "email", "operator": "IN", "values": reg_emails}]})
-        if reg_numbers:
-            expand_groups.append({"filters": [{"propertyName": "number", "operator": "IN", "values": reg_numbers}]})
-        if expand_groups:
-            extra_regs = fetch_all("2-58833629", reg_props, filter_groups=expand_groups)
+        # Also expand registration search using emails/numbers from matched_numbers
+        extra_regs = []
+        if matched_numbers:
+            reg_emails = list({(r.get("properties", {}).get("email") or "").strip().lower() for r in matched_numbers if (r.get("properties", {}).get("email") or "").strip()})
+            reg_numbers = list({(r.get("properties", {}).get("number") or "").strip() for r in matched_numbers if (r.get("properties", {}).get("number") or "").strip()})
+            expand_groups = []
+            if reg_emails:
+                expand_groups.append({"filters": [{"propertyName": "email", "operator": "IN", "values": reg_emails}]})
+            if reg_numbers:
+                expand_groups.append({"filters": [{"propertyName": "number", "operator": "IN", "values": reg_numbers}]})
+            if expand_groups:
+                extra_regs = fetch_all("2-58833629", reg_props, filter_groups=expand_groups)
 
-    # Merge and deduplicate registrations
-    seen_ids = set()
-    matched_registrations = []
-    for reg in direct_regs + extra_regs:
-        rid = reg.get("properties", {}).get("registration_id") or reg.get("id")
-        if rid not in seen_ids:
-            seen_ids.add(rid)
-            matched_registrations.append(reg)
-    matched_registrations.sort(
-        key=lambda x: x.get("properties", {}).get("registration_created_at") or "",
-        reverse=True
-    )
-
-    # Quick ticket count (total only)
-    ticket_count = 0
-    quick_emails = list({(r.get("properties", {}).get("email") or "").strip().lower()
-                         for r in matched_numbers
-                         if (r.get("properties", {}).get("email") or "").strip()})[:8]
-    for qe in quick_emails:
-        tr = requests.post(
-            f"{BASE_URL}/crm/v3/objects/tickets/search",
-            headers=headers,
-            json={"filterGroups": [{"filters": [{"propertyName": "email", "operator": "EQ", "value": qe}]}],
-                  "properties": ["hs_pipeline_stage"], "limit": 1},
-            timeout=10,
+        # Merge and deduplicate registrations
+        seen_ids = set()
+        matched_registrations = []
+        for reg in direct_regs + extra_regs:
+            rid = reg.get("properties", {}).get("registration_id") or reg.get("id")
+            if rid not in seen_ids:
+                seen_ids.add(rid)
+                matched_registrations.append(reg)
+        matched_registrations.sort(
+            key=lambda x: x.get("properties", {}).get("registration_created_at") or "",
+            reverse=True
         )
-        if tr.status_code == 200:
-            ticket_count += tr.json().get("total", 0)
-        time.sleep(0.2)
+
+        # Quick ticket count (total only)
+        ticket_count = 0
+        quick_emails = list({(r.get("properties", {}).get("email") or "").strip().lower()
+                             for r in matched_numbers
+                             if (r.get("properties", {}).get("email") or "").strip()})[:8]
+        for qe in quick_emails:
+            tr = requests.post(
+                f"{BASE_URL}/crm/v3/objects/tickets/search",
+                headers=headers,
+                json={"filterGroups": [{"filters": [{"propertyName": "email", "operator": "EQ", "value": qe}]}],
+                      "properties": ["hs_pipeline_stage"], "limit": 1},
+                timeout=10,
+            )
+            if tr.status_code == 200:
+                ticket_count += tr.json().get("total", 0)
+            time.sleep(0.2)
 
     # Account age from earliest registration or number creation date
     earliest_date = None
