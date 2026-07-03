@@ -1403,27 +1403,35 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
 
         st.markdown("""
 <style>
-/* Make list-item forms invisible containers */
-[data-testid="stForm"] {
+/* Strip all styling from the narrow arrow-button column so it doesn't appear as a box */
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child,
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child > div {
+    background: transparent !important;
+    box-shadow: none !important;
     border: none !important;
     padding: 0 !important;
-    background: transparent !important;
-    position: relative !important;
-    margin-bottom: 0.35rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
-/* Invisible full-card submit overlay */
-[data-testid="stFormSubmitButton"] > button {
-    position: absolute !important;
-    inset: 0 !important;
-    opacity: 0 !important;
-    height: 100% !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    cursor: pointer !important;
-    z-index: 10 !important;
-    border: none !important;
+/* Arrow button: plain text, no pill, no background */
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child button {
     background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #C4C9D4 !important;
+    font-size: 1.4rem !important;
+    font-weight: 300 !important;
+    padding: 0 0.25rem !important;
+    width: auto !important;
+    min-height: unset !important;
+    line-height: 1 !important;
+    transition: color 0.15s !important;
+}
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child button:hover {
+    background: transparent !important;
+    color: #00A651 !important;
+    transform: translateX(2px) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -1441,7 +1449,8 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             _initials_l = "".join(n[0].upper() for n in _list_name.split() if n)[:2] if _list_name != "Unknown" else "?"
             _num_count = len(_person_records)
 
-            with st.form(key=f"card_{_person_key}", border=False, clear_on_submit=False):
+            _lc1, _lc2 = st.columns([9, 1])
+            with _lc1:
                 st.markdown(f"""
 <div style="background:#fff;border:1px solid #EAECF0;
     border-left:3px solid {_svc_color};
@@ -1469,14 +1478,11 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
     <div style="font-size:0.68rem;color:#B0B7C3;font-variant-numeric:tabular-nums;
         letter-spacing:0.2px;">{_list_nums}</div>
   </div>
-  <div style="width:28px;height:28px;border-radius:50%;background:#F3F4F6;
-      display:flex;align-items:center;justify-content:center;
-      font-size:1rem;color:#9CA3AF;flex-shrink:0;line-height:1;">›</div>
 </div>""", unsafe_allow_html=True)
-                _submitted = st.form_submit_button("open", use_container_width=True)
-            if _submitted:
-                st.session_state["profile_person_key"] = _person_key
-                st.rerun()
+            with _lc2:
+                if st.button("›", key=f"open_{_person_key}"):
+                    st.session_state["profile_person_key"] = _person_key
+                    st.rerun()
         st.stop()
 
     # ── Registration cards ──
