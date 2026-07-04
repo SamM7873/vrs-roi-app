@@ -4,6 +4,8 @@ import os
 import time
 from datetime import datetime
 
+st.set_page_config(page_title="VRS Lookup", layout="wide", page_icon="🔍")
+
 HUBSPOT_TOKEN = st.secrets.get("HUBSPOT_TOKEN", os.environ.get("HUBSPOT_TOKEN", ""))
 _headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 BASE_URL = "https://api.hubapi.com"
