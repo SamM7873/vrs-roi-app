@@ -1333,17 +1333,19 @@ if "search_results" in st.session_state:
 <div style="font-size:0.7rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;
     color:#9dc8b0;margin:0.75rem 0 0.5rem;">Address Map</div>
 """, unsafe_allow_html=True)
-                    # Custom HTML legend
+                    # Custom HTML legend — pill badges matching VRS/Convo Now style
                     legend_items = "".join(
                         f'<div style="display:flex;align-items:center;gap:0.5rem;">'
-                        f'<span style="width:11px;height:11px;border-radius:50%;background:{pt["color"]};flex-shrink:0;"></span>'
-                        f'<span style="font-size:0.82rem;font-weight:700;color:#F4F1E8;">{pt["label"]}</span>'
-                        f'<span style="font-size:0.75rem;color:#9dc8b0;margin-left:0.2rem;">{pt["addr"]}</span>'
+                        f'<span style="display:inline-flex;background:{pt["color"]};color:#fff;'
+                        f'font-size:0.72rem;font-weight:800;letter-spacing:1.5px;'
+                        f'text-transform:uppercase;padding:0.25rem 0.9rem;'
+                        f'border-radius:6px;">{pt["label"]}</span>'
+                        f'<span style="font-size:0.78rem;color:#9dc8b0;">{pt["addr"]}</span>'
                         f'</div>'
                         for pt in map_points
                     )
                     st.markdown(f"""
-<div style="display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:0.5rem;">
+<div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-bottom:0.6rem;">
   {legend_items}
 </div>""", unsafe_allow_html=True)
                     fig = px.scatter_mapbox(
