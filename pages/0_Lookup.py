@@ -837,10 +837,10 @@ section.main > div { background-color: #113a25 !important; }
 [data-testid="stMainBlockContainer"],
 div[data-testid="stAppViewBlockContainer"],
 section.main .block-container {
-    max-width: 98% !important;
+    max-width: 1080px !important;
     padding-left: 2rem !important;
     padding-right: 2rem !important;
-    width: 98% !important;
+    width: 100% !important;
 }
 /* Sidebar */
 section[data-testid="stSidebar"] { background-color: #0b2a1b !important; border-right: 1px solid #1e5438 !important; }
