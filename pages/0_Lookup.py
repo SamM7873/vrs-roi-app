@@ -29,35 +29,40 @@ if APP_PASSWORD:
                 font-size: 15px;
                 line-height: 1.6;
             }
-            .stApp, section.main > div { background-color: #113a25 !important; }
+            .stApp, section.main > div, [data-testid="stAppViewContainer"] { background-color: #113a25 !important; }
+            /* Sidebar dark green */
+            section[data-testid="stSidebar"] { background-color: #0b2a1b !important; border-right: 1px solid #1e5438 !important; }
+            section[data-testid="stSidebar"] * { color: rgba(255,255,255,0.85) !important; }
+            section[data-testid="stSidebar"] [aria-selected="true"] { background-color: rgba(0,166,81,0.25) !important; border-radius: 8px; }
+            /* Center the login content */
             .login-wrap { max-width:420px;margin:6vh auto 0;padding:0 1rem; }
-            .login-logo-area { text-align:center;margin-bottom:2rem; }
-            .login-logo-area .logo-mark { display:inline-block;margin-bottom:1.2rem; }
-            .login-logo-area h2 { font-size:1.3rem;font-weight:700;color:#E6F2EC;margin:0 0 0.4rem; }
-            .login-logo-area p { color:#6aab85;font-size:0.88rem;margin:0; }
-            .login-card {
-                background:#F4F1E8;border-radius:16px;padding:2rem 1.75rem;
-                border:1px solid #DDD9CC;box-shadow:0 8px 32px rgba(0,0,0,0.4);
-            }
-            .login-card label { color:#374151 !important; font-weight:600 !important; }
+            .login-logo-area { text-align:center;margin-bottom:2.5rem; }
+            .login-logo-area .logo-mark { display:inline-block;margin-bottom:1.4rem; }
+            .login-logo-area h2 { font-size:1.4rem;font-weight:700;color:#E6F2EC;margin:0 0 0.5rem;letter-spacing:-0.02em; }
+            .login-logo-area p { color:#6aab85;font-size:0.9rem;margin:0; }
+            /* Style the form area - target Streamlit's rendered column */
+            .stTextInput label { color:#9dc8b0 !important; font-weight:600 !important; font-size:0.85rem !important; }
             .stTextInput > div > div > input {
-                border-radius: 8px !important;
-                border: 1.5px solid #DDD9CC !important;
-                padding: 0.6rem 1rem !important;
-                font-size: 0.93rem !important;
-                color: #1F2937 !important;
-                background: #fff !important;
+                border-radius: 10px !important;
+                border: 1.5px solid #2d6b47 !important;
+                padding: 0.7rem 1rem !important;
+                font-size: 0.95rem !important;
+                color: #E6F2EC !important;
+                background: #1a4d32 !important;
             }
+            .stTextInput > div > div > input::placeholder { color: #6aab85 !important; }
             .stTextInput > div > div > input:focus {
                 border-color: #00A651 !important;
-                box-shadow: 0 0 0 3px rgba(0,166,81,0.15) !important;
+                box-shadow: 0 0 0 3px rgba(0,166,81,0.2) !important;
+                background: #1a4d32 !important;
             }
             div.stButton > button {
                 background-color: #00A651; color: #fff;
-                border-radius: 8px; border: none;
-                padding: 0.6rem 2.2rem; font-weight: 700;
+                border-radius: 10px; border: none;
+                padding: 0.7rem 2.2rem; font-weight: 700;
                 font-size: 0.95rem; width: 100%;
-                box-shadow: 0 1px 4px rgba(0,166,81,0.3);
+                box-shadow: 0 2px 8px rgba(0,166,81,0.4);
+                margin-top: 0.5rem;
             }
             div.stButton > button:hover { background-color: #008F46; color: #fff; }
         </style>
@@ -75,7 +80,6 @@ if APP_PASSWORD:
             <h2>VRS / Convo Now Lookup</h2>
             <p>Please enter your password to continue</p>
           </div>
-        <div class="login-card">
         """, unsafe_allow_html=True)
         entered_password = st.text_input("Password", type="password", placeholder="Enter password")
         if st.button("Login"):
