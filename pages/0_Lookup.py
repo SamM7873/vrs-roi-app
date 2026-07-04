@@ -895,7 +895,7 @@ div.stButton > button:hover { background-color: #008F46; }
 """, unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top:2.5rem;'></div>", unsafe_allow_html=True)
-_, mid, _ = st.columns([1, 2, 1])
+_, mid, _ = st.columns([1, 6, 1])
 
 with mid:
     # Green banner header inside the card column
