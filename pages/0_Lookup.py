@@ -894,7 +894,7 @@ div.stButton > button:hover { background-color: #008F46; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div style='margin-top:2.5rem;max-width:760px;margin-left:auto;margin-right:auto;'>", unsafe_allow_html=True)
+st.markdown("<div style='margin-top:2.5rem;'>", unsafe_allow_html=True)
 
 if True:
     mid = st.container()
