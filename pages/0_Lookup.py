@@ -27,17 +27,12 @@ if APP_PASSWORD:
             .stApp { background-color: #F6F8FA; }
             .login-wrap { max-width:400px;margin:5vh auto 0;padding:0 1rem; }
             .login-logo-area { text-align:center;margin-bottom:2rem; }
-            .login-logo-area .logo-mark {
-                display:inline-flex;align-items:center;justify-content:center;
-                width:56px;height:56px;background:#00A651;border-radius:14px;
-                font-size:1.4rem;font-weight:900;color:#fff;letter-spacing:-1px;
-                margin-bottom:1rem;
-            }
-            .login-logo-area h2 { font-size:1.4rem;font-weight:800;color:#1F2937;margin:0 0 0.3rem; }
-            .login-logo-area p { color:#6B7280;font-size:0.88rem;margin:0; }
+            .login-logo-area .logo-mark { display:inline-block;margin-bottom:1rem; }
+            .login-logo-area h2 { font-size:1.4rem;font-weight:800;color:#E6F2EC;margin:0 0 0.3rem; }
+            .login-logo-area p { color:#6aab85;font-size:0.88rem;margin:0; }
             .login-card {
-                background:#fff;border-radius:14px;padding:2rem 1.75rem;
-                border:1px solid #E5E7EB;box-shadow:0 4px 16px rgba(0,0,0,0.06);
+                background:#1a4d32;border-radius:14px;padding:2rem 1.75rem;
+                border:1px solid #2d6b47;box-shadow:0 4px 24px rgba(0,0,0,0.35);
             }
             .stTextInput > div > div > input {
                 border-radius: 8px !important;
@@ -61,7 +56,15 @@ if APP_PASSWORD:
         </style>
         <div class="login-wrap">
           <div class="login-logo-area">
-            <div class="logo-mark">c</div>
+            <div class="logo-mark">
+              <svg width="64" height="64" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g transform="rotate(-35,60,60)">
+                  <ellipse cx="60" cy="38" rx="52" ry="18" fill="#00A651" opacity="0.9"/>
+                  <ellipse cx="60" cy="82" rx="52" ry="18" fill="#00A651" opacity="0.9"/>
+                  <ellipse cx="60" cy="60" rx="8" ry="52" fill="#113a25"/>
+                </g>
+              </svg>
+            </div>
             <h2>VRS / Convo Now Lookup</h2>
             <p>Please enter your password to continue</p>
           </div>
@@ -864,10 +867,19 @@ with mid:
     # Green banner header inside the card column
     st.markdown("""
 <div style="background:linear-gradient(135deg,#00A651 0%,#008F46 100%);
-            padding:1.6rem 2rem;text-align:center;margin:-1px -1px 0;">
-  <div style="font-size:1.75rem;font-weight:900;color:#fff;letter-spacing:-1.5px;line-height:1;">convo</div>
-  <div style="color:rgba(255,255,255,0.75);font-size:0.78rem;margin-top:0.3rem;
-              letter-spacing:0.6px;text-transform:uppercase;font-weight:500;">VRS Consumer Lookup</div>
+            padding:1.4rem 2rem;text-align:center;margin:-1px -1px 0;">
+  <div style="display:flex;align-items:center;justify-content:center;gap:0.6rem;">
+    <svg width="32" height="32" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g transform="rotate(-35,60,60)">
+        <ellipse cx="60" cy="38" rx="52" ry="18" fill="white" opacity="0.95"/>
+        <ellipse cx="60" cy="82" rx="52" ry="18" fill="white" opacity="0.95"/>
+        <ellipse cx="60" cy="60" rx="8" ry="52" fill="#00A651"/>
+      </g>
+    </svg>
+    <span style="font-size:1.6rem;font-weight:900;color:#fff;letter-spacing:-1px;line-height:1;">convo</span>
+  </div>
+  <div style="color:rgba(255,255,255,0.75);font-size:0.72rem;margin-top:0.35rem;
+              letter-spacing:1px;text-transform:uppercase;font-weight:500;">VRS Consumer Lookup</div>
 </div>
 <div style="padding:1.5rem 1.75rem 1.75rem;">
 """, unsafe_allow_html=True)
