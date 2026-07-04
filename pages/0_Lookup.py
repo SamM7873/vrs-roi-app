@@ -386,7 +386,7 @@ def build_report(matched_numbers):
     df = pd.DataFrame(rows)
     return df, person_numbers, person_month_values, person_email_display, num_month_values, num_to_person, num_to_status, num_month_detail
 
-st.set_page_config(page_title="VRS Lookup", layout="wide", page_icon="🔍")
+
 
 
 st.markdown("""
