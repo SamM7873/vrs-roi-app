@@ -1340,7 +1340,7 @@ if "search_results" in st.session_state:
                         f'font-size:0.72rem;font-weight:800;letter-spacing:1.5px;'
                         f'text-transform:uppercase;padding:0.25rem 0.9rem;'
                         f'border-radius:6px;">{pt["label"]}</span>'
-                        f'<span style="font-size:0.78rem;color:#9dc8b0;">{pt["addr"]}</span>'
+                        f'<span style="font-size:0.78rem;color:#F4F1E8;font-weight:500;">{pt["addr"]}</span>'
                         f'</div>'
                         for pt in map_points
                     )
