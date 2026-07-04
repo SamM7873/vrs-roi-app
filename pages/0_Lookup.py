@@ -23,7 +23,12 @@ if APP_PASSWORD:
         st.markdown("""
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-            html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+            html, body, [class*="css"] {
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+                -webkit-font-smoothing: antialiased;
+                font-size: 15px;
+                line-height: 1.6;
+            }
             .stApp, section.main > div { background-color: #113a25 !important; }
             .login-wrap { max-width:420px;margin:6vh auto 0;padding:0 1rem; }
             .login-logo-area { text-align:center;margin-bottom:2rem; }
@@ -633,10 +638,10 @@ def render_table_and_summary(df):
 
     # ── Summary stat tiles ──
     def stat_tile(label, value, sub="", color="#1F2937"):
-        return f"""<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1rem 1.25rem;">
-  <div style="font-size:0.65rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.3rem;">{label}</div>
-  <div style="font-size:1.5rem;font-weight:800;color:{color};line-height:1.1;">{value}</div>
-  {f'<div style="font-size:0.75rem;color:#8A907A;margin-top:0.2rem;">{sub}</div>' if sub else ''}
+        return f"""<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:12px;padding:1rem 1.25rem;">
+  <div style="font-size:0.68rem;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.4rem;">{label}</div>
+  <div style="font-size:1.5rem;font-weight:800;color:{color};line-height:1.1;letter-spacing:-0.02em;">{value}</div>
+  {f'<div style="font-size:0.78rem;color:#8A907A;margin-top:0.25rem;font-weight:500;">{sub}</div>' if sub else ''}
 </div>"""
 
     tiles_html = f"""<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.85rem;margin-bottom:1.5rem;">
@@ -801,7 +806,27 @@ def render_vrs_zero_convo_active(df, person_numbers, person_month_values, person
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: #E6F2EC; }
+html, body, [class*="css"] {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: #E6F2EC;
+    letter-spacing: -0.01em;
+}
+/* Streamlit global text overrides */
+p, span, div, label { line-height: 1.6; }
+h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.2; }
+/* Tabs typography */
+.stTabs [data-baseweb="tab"] { font-size: 0.875rem !important; font-weight: 600 !important; letter-spacing: 0.01em !important; }
+/* Metric/label text */
+[data-testid="stMetricLabel"] { font-size: 0.72rem !important; font-weight: 700 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
+[data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 800 !important; }
+/* Info/warning boxes */
+[data-testid="stAlert"] { font-size: 0.9rem !important; line-height: 1.5 !important; }
+/* Dataframe text */
+[data-testid="stDataFrame"] { font-size: 0.85rem !important; }
 .stApp { background-color: #113a25 !important; }
 /* Main content area */
 section.main > div { background-color: #113a25 !important; }
@@ -1078,14 +1103,14 @@ if "search_results" in st.session_state:
     saved_color = "#00A651" if cost_saved >= 0 else "#EF4444"
 
     def _tile(label, value, sub="", color="#1F2937", accent=False):
-        border = "border-top:2px solid #00A651;" if accent else "border-top:2px solid transparent;"
-        return (f'<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;'
-                f'padding:0.9rem 1.1rem;{border}">'
-                f'<div style="font-size:0.58rem;font-weight:700;letter-spacing:1.3px;'
-                f'text-transform:uppercase;color:#7A8A7A;margin-bottom:0.35rem;">{label}</div>'
-                f'<div style="font-size:1.3rem;font-weight:800;color:{color};line-height:1;'
-                f'font-variant-numeric:tabular-nums;">{value}</div>'
-                + (f'<div style="font-size:0.67rem;color:#8A907A;margin-top:0.2rem;">{sub}</div>' if sub else '')
+        border = "border-top:3px solid #00A651;" if accent else "border-top:3px solid transparent;"
+        return (f'<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:12px;'
+                f'padding:1rem 1.2rem;{border}">'
+                f'<div style="font-size:0.68rem;font-weight:700;letter-spacing:0.09em;'
+                f'text-transform:uppercase;color:#7A8A7A;margin-bottom:0.4rem;">{label}</div>'
+                f'<div style="font-size:1.45rem;font-weight:800;color:{color};line-height:1.1;'
+                f'letter-spacing:-0.02em;font-variant-numeric:tabular-nums;">{value}</div>'
+                + (f'<div style="font-size:0.75rem;color:#8A907A;margin-top:0.25rem;font-weight:500;">{sub}</div>' if sub else '')
                 + '</div>')
 
     st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.55rem;margin-bottom:1.25rem;">
@@ -1117,12 +1142,12 @@ if "search_results" in st.session_state:
     def info_row(label, value):
         return f"""<div style="display:flex;justify-content:space-between;align-items:flex-start;
                     padding:0.5rem 0;border-bottom:1px solid #DDD9CC;">
-          <span style="color:#6B7280;font-size:0.8rem;font-weight:500;min-width:130px;">{label}</span>
-          <span style="color:#1F2937;font-size:0.82rem;font-weight:500;text-align:right;">{value}</span>
+          <span style="color:#6B7280;font-size:0.8rem;font-weight:600;min-width:140px;">{label}</span>
+          <span style="color:#1F2937;font-size:0.9rem;font-weight:600;text-align:right;">{value}</span>
         </div>"""
 
     def card_header(title):
-        return f'<div style="font-size:0.65rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#00A651;margin-bottom:0.6rem;">{title}</div>'
+        return f'<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#00A651;margin-bottom:0.75rem;">{title}</div>'
 
     if not matched_numbers:
         st.info("No number object records found — showing registration records only.")
@@ -1494,7 +1519,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
       flex-shrink:0;letter-spacing:-0.5px;">{_initials_l}</div>
   <div style="flex:1;min-width:0;">
     <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.18rem;flex-wrap:wrap;">
-      <span style="font-size:0.9rem;font-weight:700;color:#1F2937;">{_list_name}</span>
+      <span style="font-size:0.95rem;font-weight:700;color:#1F2937;letter-spacing:-0.01em;">{_list_name}</span>
       <span style="background:{_svc_color}15;color:{_svc_color};font-size:0.6rem;
           font-weight:800;letter-spacing:0.9px;padding:1px 6px;border-radius:4px;
           text-transform:uppercase;">{_svc_tag}</span>
