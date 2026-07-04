@@ -1331,7 +1331,7 @@ if "search_results" in st.session_state:
                     # Section header
                     st.markdown("""
 <div style="font-size:0.85rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;
-    color:#9dc8b0;margin:0.75rem 0 0.5rem;">Address Map</div>
+    color:#F4F1E8;margin:0.75rem 0 0.5rem;">Address Map</div>
 """, unsafe_allow_html=True)
                     # Custom HTML legend — pill badges matching VRS/Convo Now style
                     legend_items = "".join(
