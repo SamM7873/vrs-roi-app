@@ -528,30 +528,28 @@ st.markdown("""
 
     /* ── Tabs ── */
     .stTabs [data-baseweb="tab-list"] {
-        background-color: #F0F0EB;
-        border-radius: 999px;
-        padding: 4px 6px;
-        gap: 4px;
-        border: 1px solid #E0E0DA;
+        background-color: #1a4d32 !important;
+        border-radius: 999px !important;
+        padding: 4px 6px !important;
+        gap: 4px !important;
+        border: 1px solid #2d6b47 !important;
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 999px;
-        color: #666660;
-        font-weight: 500;
-        font-size: 0.87rem;
-        padding: 0.4rem 1.1rem;
+        border-radius: 999px !important;
+        color: #9dc8b0 !important;
+        font-weight: 600 !important;
+        font-size: 0.88rem !important;
+        padding: 0.4rem 1.2rem !important;
+        background: transparent !important;
+        letter-spacing: 0.01em !important;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #2DB84B !important;
+        background-color: #00A651 !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
     }
-    .stTabs [data-baseweb="tab-border"] {
-        display: none;
-    }
-    .stTabs [data-baseweb="tab-panel"] {
-        padding-top: 1.25rem;
-    }
+    .stTabs [data-baseweb="tab-border"] { display: none !important; }
+    .stTabs [data-baseweb="tab-panel"] { padding-top: 1.25rem; }
 
     /* ── Dataframe ── */
     div[data-testid="stDataFrame"] {
@@ -870,9 +868,14 @@ section[data-testid="stSidebar"] [aria-selected="true"] {
     background: #fff !important;
 }
 /* Tabs */
-.stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 1px solid #2d6b47 !important; }
-.stTabs [data-baseweb="tab"] { color: #6aab85 !important; background: transparent !important; }
-.stTabs [aria-selected="true"] { color: #00A651 !important; border-bottom: 2px solid #00A651 !important; }
+/* tabs styled in the main CSS block above */
+/* Streamlit widget labels on dark background */
+.stSelectbox label, .stMultiSelect label, .stTextInput label,
+.stSlider label, .stRadio label, .stCheckbox label,
+[data-testid="stWidgetLabel"] { color: #9dc8b0 !important; font-weight: 600 !important; font-size: 0.85rem !important; }
+/* Selectbox/dropdown on dark background */
+.stSelectbox [data-baseweb="select"] > div { background: #1a4d32 !important; border-color: #2d6b47 !important; color: #E6F2EC !important; }
+.stSelectbox [data-baseweb="select"] span { color: #E6F2EC !important; }
 /* Dividers */
 hr { border-color: #2d6b47 !important; }
 /* Search button */
@@ -1321,7 +1324,7 @@ if "search_results" in st.session_state:
                         map_points.append({"lat": coords[0], "lon": coords[1], "label": "Emergency Address", "addr": emerg_addr, "color": "#EF4444"})
                 if map_points:
                     map_df = pd.DataFrame(map_points)
-                    st.markdown('<div style="font-size:0.65rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin:0.25rem 0 0.5rem;">Address Map</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#9dc8b0;margin:0.25rem 0 0.5rem;">Address Map</div>', unsafe_allow_html=True)
                     fig = px.scatter_mapbox(
                         map_df, lat="lat", lon="lon",
                         hover_name="label", hover_data={"addr": True, "lat": False, "lon": False, "color": False},
@@ -1424,7 +1427,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
         _n_people = len(_person_groups)
         st.markdown(f"""
 <div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;
-    text-transform:uppercase;color:#9CA3AF;margin-bottom:0.6rem;">
+    text-transform:uppercase;color:#9dc8b0;margin-bottom:0.6rem;">
   {_n_people} consumer{'s' if _n_people != 1 else ''} found — click to open profile
 </div>
 <style>
@@ -1589,7 +1592,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             bg = "#00A651" if done else "#E5E7EB"
             return f'<div style="flex:1;height:2px;background:{bg};margin-top:14px;"></div>'
 
-        st.markdown('<div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin:0.5rem 0 0.75rem;">Registrations</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#9dc8b0;margin:0.5rem 0 0.75rem;">Registrations</div>', unsafe_allow_html=True)
 
         for reg in matched_registrations:
             p = reg.get("properties", {})
