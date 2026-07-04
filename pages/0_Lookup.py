@@ -1205,12 +1205,14 @@ if "search_results" in st.session_state:
             _sec_lbl = "VRS" if svc == "vrs" else "Convo Now"
             if _sec_lbl != _last_lbl and len(person_records) > 1:
                 _sec_color = "#00A651" if svc == "vrs" else "#3B82F6"
-                _sec_mt = "0" if _last_lbl is None else "1rem"
+                _sec_mt = "0" if _last_lbl is None else "1.25rem"
                 st.markdown(
-                    f'<div style="display:inline-flex;background:{_sec_color};color:#fff;'
-                    f'font-size:0.72rem;font-weight:800;letter-spacing:1.5px;'
-                    f'text-transform:uppercase;padding:0.25rem 0.9rem;'
-                    f'border-radius:6px;margin-top:{_sec_mt};margin-bottom:0.6rem;">{_sec_lbl}</div>',
+                    f'<div style="display:inline-flex;align-items:center;gap:0.4rem;'
+                    f'margin-top:{_sec_mt};margin-bottom:0.6rem;">'
+                    f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{_sec_color};"></span>'
+                    f'<span style="font-size:0.7rem;font-weight:800;letter-spacing:0.1em;'
+                    f'text-transform:uppercase;color:#9dc8b0;">{_sec_lbl}</span>'
+                    f'</div>',
                     unsafe_allow_html=True
                 )
                 _last_lbl = _sec_lbl
@@ -1328,7 +1330,7 @@ if "search_results" in st.session_state:
                         map_points.append({"lat": coords[0], "lon": coords[1], "label": "Emergency Address", "addr": emerg_addr, "color": "#EF4444"})
                 if map_points:
                     map_df = pd.DataFrame(map_points)
-                    st.markdown('<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#9dc8b0;margin:0.25rem 0 0.5rem;">Address Map</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="display:inline-flex;align-items:center;gap:0.4rem;margin:0.5rem 0 0.6rem;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#00A651;"></span><span style="font-size:0.7rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#9dc8b0;">Address Map</span></div>', unsafe_allow_html=True)
                     fig = px.scatter_mapbox(
                         map_df, lat="lat", lon="lon",
                         hover_name="label", hover_data={"addr": True, "lat": False, "lon": False, "color": False},
