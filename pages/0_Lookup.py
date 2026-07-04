@@ -1341,7 +1341,14 @@ if "search_results" in st.session_state:
                         mapbox_style="carto-positron",
                         margin=dict(l=0, r=0, t=0, b=0),
                         paper_bgcolor="rgba(0,0,0,0)",
-                        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0, font=dict(size=11)),
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        legend=dict(
+                            orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+                            font=dict(size=12, color="#E6F2EC", family="Inter, system-ui, sans-serif"),
+                            bgcolor="rgba(17,58,37,0.85)",
+                            bordercolor="#2d6b47",
+                            borderwidth=1,
+                        ),
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
