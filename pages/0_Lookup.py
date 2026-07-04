@@ -1205,14 +1205,12 @@ if "search_results" in st.session_state:
             _sec_lbl = "VRS" if svc == "vrs" else "Convo Now"
             if _sec_lbl != _last_lbl and len(person_records) > 1:
                 _sec_color = "#00A651" if svc == "vrs" else "#3B82F6"
-                _sec_mt = "0" if _last_lbl is None else "1.25rem"
+                _sec_mt = "0" if _last_lbl is None else "1rem"
                 st.markdown(
-                    f'<div style="display:inline-flex;align-items:center;gap:0.4rem;'
-                    f'margin-top:{_sec_mt};margin-bottom:0.6rem;">'
-                    f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{_sec_color};"></span>'
-                    f'<span style="font-size:0.7rem;font-weight:800;letter-spacing:0.1em;'
-                    f'text-transform:uppercase;color:#9dc8b0;">{_sec_lbl}</span>'
-                    f'</div>',
+                    f'<div style="display:inline-flex;background:{_sec_color};color:#fff;'
+                    f'font-size:0.72rem;font-weight:800;letter-spacing:1.5px;'
+                    f'text-transform:uppercase;padding:0.25rem 0.9rem;'
+                    f'border-radius:6px;margin-top:{_sec_mt};margin-bottom:0.6rem;">{_sec_lbl}</div>',
                     unsafe_allow_html=True
                 )
                 _last_lbl = _sec_lbl
@@ -1330,13 +1328,30 @@ if "search_results" in st.session_state:
                         map_points.append({"lat": coords[0], "lon": coords[1], "label": "Emergency Address", "addr": emerg_addr, "color": "#EF4444"})
                 if map_points:
                     map_df = pd.DataFrame(map_points)
-                    st.markdown('<div style="display:inline-flex;align-items:center;gap:0.4rem;margin:0.5rem 0 0.6rem;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#00A651;"></span><span style="font-size:0.7rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#9dc8b0;">Address Map</span></div>', unsafe_allow_html=True)
+                    # Section header
+                    st.markdown("""
+<div style="font-size:0.7rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;
+    color:#9dc8b0;margin:0.75rem 0 0.5rem;">Address Map</div>
+""", unsafe_allow_html=True)
+                    # Custom HTML legend
+                    legend_items = "".join(
+                        f'<div style="display:flex;align-items:center;gap:0.5rem;">'
+                        f'<span style="width:11px;height:11px;border-radius:50%;background:{pt["color"]};flex-shrink:0;"></span>'
+                        f'<span style="font-size:0.82rem;font-weight:700;color:#F4F1E8;">{pt["label"]}</span>'
+                        f'<span style="font-size:0.75rem;color:#9dc8b0;margin-left:0.2rem;">{pt["addr"]}</span>'
+                        f'</div>'
+                        for pt in map_points
+                    )
+                    st.markdown(f"""
+<div style="display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:0.5rem;">
+  {legend_items}
+</div>""", unsafe_allow_html=True)
                     fig = px.scatter_mapbox(
                         map_df, lat="lat", lon="lon",
                         hover_name="label", hover_data={"addr": True, "lat": False, "lon": False, "color": False},
                         color="label",
                         color_discrete_map={"Primary Address": "#00A651", "Emergency Address": "#EF4444"},
-                        zoom=11, height=280,
+                        zoom=11, height=260,
                     )
                     fig.update_traces(marker=dict(size=14))
                     fig.update_layout(
@@ -1344,15 +1359,7 @@ if "search_results" in st.session_state:
                         margin=dict(l=0, r=0, t=0, b=0),
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
-                        legend=dict(
-                            orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
-                            font=dict(size=13, color="#1F2937", family="Inter, system-ui, sans-serif"),
-                            bgcolor="#F4F1E8",
-                            bordercolor="#DDD9CC",
-                            borderwidth=1.5,
-                            itemsizing="constant",
-                        ),
-                        font=dict(color="#1F2937", size=13, family="Inter, system-ui, sans-serif"),
+                        showlegend=False,
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
