@@ -894,8 +894,10 @@ div.stButton > button:hover { background-color: #008F46; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div style='margin-top:2.5rem;'></div>", unsafe_allow_html=True)
-_, mid, _ = st.columns([1, 6, 1])
+st.markdown("<div style='margin-top:2.5rem;max-width:760px;margin-left:auto;margin-right:auto;'>", unsafe_allow_html=True)
+
+if True:
+    mid = st.container()
 
 with mid:
     # Green banner header inside the card column
@@ -921,7 +923,7 @@ with mid:
     with c2:
         last_name_input = st.text_input("last", placeholder="Last name", label_visibility="collapsed")
     search_clicked = st.button("Search", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 # ── Results ──
 if search_clicked and (search_input.strip() or first_name_input.strip() or last_name_input.strip()):
