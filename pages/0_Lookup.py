@@ -832,6 +832,8 @@ h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.2; }
 .stApp { background-color: #113a25 !important; }
 /* Main content area */
 section.main > div { background-color: #113a25 !important; }
+/* Widen the main block container */
+.block-container { max-width: 98% !important; padding-left: 2rem !important; padding-right: 2rem !important; }
 /* Sidebar */
 section[data-testid="stSidebar"] { background-color: #0b2a1b !important; border-right: 1px solid #1e5438 !important; }
 section[data-testid="stSidebar"] * { color: rgba(255,255,255,0.85) !important; }
