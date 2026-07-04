@@ -1344,14 +1344,13 @@ if "search_results" in st.session_state:
                         plot_bgcolor="rgba(0,0,0,0)",
                         legend=dict(
                             orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
-                            font=dict(size=13, color="#F4F1E8", family="Inter, system-ui, sans-serif"),
-                            title=dict(text="", font=dict(size=1)),
-                            bgcolor="rgba(244,241,232,0.18)",
+                            font=dict(size=13, color="#1F2937", family="Inter, system-ui, sans-serif"),
+                            bgcolor="#F4F1E8",
                             bordercolor="#DDD9CC",
                             borderwidth=1.5,
                             itemsizing="constant",
                         ),
-                        font=dict(color="#F4F1E8", size=13, family="Inter, system-ui, sans-serif"),
+                        font=dict(color="#1F2937", size=13, family="Inter, system-ui, sans-serif"),
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
