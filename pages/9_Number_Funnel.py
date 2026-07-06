@@ -125,9 +125,6 @@ if st.button("Run Number Funnel", use_container_width=False):
             continue
         if usage_filter != "All" and norm(p.get("usage_type") or "") != norm(usage_filter):
             continue
-        # Use HubSpot top-level createdAt as fallback when number_created_at is missing
-        if not p.get("number_created_at"):
-            p["number_created_at"] = r.get("createdAt") or ""
         records.append(p)
 
     if not records:
