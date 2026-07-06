@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime, timezone, timedelta, date
-from utils import require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -124,41 +124,7 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 
 if st.button("Run Sign-Up Journey Report", use_container_width=False):
 
-    # 1. Pull registrations (join key: email)
-    with st.spinner("Loading registration records..."):
-        reg_records = list_all(
-            "2-58833629",
-            ["email", "first_name", "last_name", "number",
-             "registration_type", "usage_type",
-             "lex_verification_status", "lex_verified_at",
-             "registration_created_at", "registered_at"],
-            progress_label="Fetching registrations",
-        )
-
-    if not reg_records:
-        st.warning("No registration records found.")
-        st.stop()
-
-    # Build email → registration lookup (keep most recent if multiple)
-    reg_by_email = {}
-    for r in reg_records:
-        p = r.get("properties", {})
-        email = (p.get("email") or "").strip().lower()
-        if not email:
-            continue
-        existing = reg_by_email.get(email)
-        if existing is None or (p.get("registration_created_at") or "") > (existing.get("registration_created_at") or ""):
-            reg_by_email[email] = p
-
-    # Also build number → registration lookup
-    reg_by_number = {}
-    for r in reg_records:
-        p = r.get("properties", {})
-        num = (p.get("number") or "").strip()
-        if num:
-            reg_by_number[num] = p
-
-    # 2. Pull number objects (join key: email or number)
+    # 1. Pull number objects (VRS live only)
     with st.spinner("Loading number objects..."):
         num_records = list_all(
             "2-40974683",
@@ -169,12 +135,15 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
             progress_label="Fetching number objects",
         )
 
-    # Filter to live VRS
     num_records = [
         r for r in num_records
         if norm(r.get("properties", {}).get("service_type") or "") == "vrs"
         and norm(r.get("properties", {}).get("number_status") or "") == "live"
     ]
+
+    if not num_records:
+        st.warning("No live VRS number records found.")
+        st.stop()
 
     num_by_email = {}
     for r in num_records:
@@ -183,7 +152,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         if email:
             num_by_email[email] = p
 
-    # 3. Pull contacts (join key: email)
+    # 2. Pull contacts (join key: email)
     with st.spinner("Loading contacts..."):
         contact_records = list_all(
             "contacts",
@@ -198,79 +167,65 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         if email:
             contact_by_email[email] = p
 
-    # 4. Join all three on email
+    # 3. Join Contact + Number on email
     rows = []
-    all_emails = set(num_by_email.keys()) | set(reg_by_email.keys())
-
-    for email in all_emails:
-        np = num_by_email.get(email, {})
-        rp = reg_by_email.get(email, {})
+    for email, np in num_by_email.items():
         cp = contact_by_email.get(email, {})
 
-        number = np.get("number") or rp.get("number") or "—"
-        first = np.get("first_name") or rp.get("first_name") or cp.get("firstname") or ""
-        last = np.get("last_name") or rp.get("last_name") or cp.get("lastname") or ""
-        name = f"{first} {last}".strip() or "—"
+        first = np.get("first_name") or cp.get("firstname") or ""
+        last  = np.get("last_name")  or cp.get("lastname")  or ""
+        name  = f"{first} {last}".strip() or "—"
 
         contact_created  = cp.get("createdate")
-        reg_created      = rp.get("registration_created_at")
-        registered_at    = np.get("registered_at") or rp.get("registered_at")
+        registered_at    = np.get("registered_at")
+        reg_created      = np.get("registration_created_at")
         reg_updated      = np.get("registration_updated_at")
-        lex_verified_at  = rp.get("lex_verified_at")
         first_login      = np.get("ursa_first_login")
         first_outbound   = np.get("ursa_first_outbound_call")
         second_outbound  = np.get("ursa_second_outbound_call")
 
-        # Time calculations
-        d_signup_to_reg      = _days(contact_created, reg_created)
-        d_reg_to_number      = _days(reg_created, registered_at)
         d_signup_to_number   = _days(contact_created, registered_at)
         d_number_to_login    = _days(registered_at, first_login)
         d_login_to_outbound  = _days(first_login, first_outbound)
+        d_outbound_to_second = _days(first_outbound, second_outbound)
         d_signup_to_outbound = _days(contact_created, first_outbound)
 
         rows.append({
             "Email": email,
             "Name": name,
-            "Number": number,
-            "Registration Type": (rp.get("registration_type") or "").replace("_", " ").title(),
-            "Usage Type": (rp.get("usage_type") or "").title(),
-            "LEX Status": rp.get("lex_verification_status") or "—",
-            # Raw timestamps for sorting
-            "_contact_created":  contact_created,
-            "_reg_created":      reg_created,
-            "_registered_at":    registered_at,
-            "_lex_verified_at":  lex_verified_at,
-            "_first_login":      first_login,
-            "_first_outbound":   first_outbound,
-            "_second_outbound":  second_outbound,
+            "Number": np.get("number") or "—",
+            # Raw timestamps
+            "_contact_created": contact_created,
+            "_registered_at":   registered_at,
+            "_first_login":     first_login,
+            "_first_outbound":  first_outbound,
+            "_second_outbound": second_outbound,
             # Formatted dates
-            "Contact Created":   _fmt(contact_created),
-            "Registration Created": _fmt(reg_created),
-            "Number Registered": _fmt(registered_at),
-            "LEX Verified At":   _fmt(lex_verified_at),
-            "First Login":       _fmt(first_login),
-            "First Outbound":    _fmt(first_outbound),
-            "Second Outbound":   _fmt(second_outbound),
-            # Durations
-            "Signup → Reg (days)":      d_signup_to_reg,
-            "Reg → Number (days)":      d_reg_to_number,
-            "Signup → Number (days)":   d_signup_to_number,
-            "Number → Login (days)":    d_number_to_login,
-            "Login → Outbound (days)":  d_login_to_outbound,
-            "Signup → Outbound (days)": d_signup_to_outbound,
+            "Contact Created":    _fmt(contact_created),
+            "Number Registered":  _fmt(registered_at),
+            "Reg Created":        _fmt(reg_created),
+            "Reg Updated":        _fmt(reg_updated),
+            "First Login":        _fmt(first_login),
+            "First Outbound":     _fmt(first_outbound),
+            "Second Outbound":    _fmt(second_outbound),
+            # Durations (raw for avg calc)
+            "Signup → Number (days)":    d_signup_to_number,
+            "Number → Login (days)":     d_number_to_login,
+            "Login → Outbound (days)":   d_login_to_outbound,
+            "Outbound → 2nd (days)":     d_outbound_to_second,
+            "Signup → Outbound (days)":  d_signup_to_outbound,
             # Formatted durations
-            "Signup→Reg":      _days_fmt(d_signup_to_reg),
-            "Reg→Number":      _days_fmt(d_reg_to_number),
-            "Signup→Number":   _days_fmt(d_signup_to_number),
-            "Number→Login":    _days_fmt(d_number_to_login),
-            "Login→Outbound":  _days_fmt(d_login_to_outbound),
-            "Signup→Outbound": _days_fmt(d_signup_to_outbound),
+            "Signup→Number":    _days_fmt(d_signup_to_number),
+            "Number→Login":     _days_fmt(d_number_to_login),
+            "Login→Outbound":   _days_fmt(d_login_to_outbound),
+            "Outbound→2nd":     _days_fmt(d_outbound_to_second),
+            "Signup→Outbound":  _days_fmt(d_signup_to_outbound),
             # Stage flags
-            "Has Registration": bool(rp),
-            "Has Number":       bool(np),
-            "Has Login":        bool(first_login),
-            "Has Outbound":     bool(first_outbound),
+            "Has Contact":   bool(cp),
+            "Has Number":    True,
+            "Has Login":     bool(first_login),
+            "Has Outbound":  bool(first_outbound),
+            "Has 2nd Outbound": bool(second_outbound),
         })
 
     if not rows:
@@ -298,12 +253,12 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         st.warning("No records match the selected date range.")
         st.stop()
 
-    total = len(df)
-
-    has_reg      = df["Has Registration"].sum()
+    total        = len(df)
+    has_contact  = df["Has Contact"].sum()
     has_number   = df["Has Number"].sum()
     has_login    = df["Has Login"].sum()
     has_outbound = df["Has Outbound"].sum()
+    has_2nd      = df["Has 2nd Outbound"].sum()
 
     def pct(n):
         return f"{n / total * 100:.1f}%" if total else "—"
@@ -316,19 +271,14 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     st.markdown(f"""
 <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin:1rem 0 0.5rem;">
   <div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1rem 1.25rem;">
-    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.25rem;">Contacts</div>
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.25rem;">Numbers (Live VRS)</div>
     <div style="font-size:1.4rem;font-weight:800;color:#1F2937;">{total:,}</div>
     <div style="font-size:0.7rem;color:#9CA3AF;">100% — baseline</div>
   </div>
   <div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1rem 1.25rem;">
-    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.25rem;">Registered</div>
-    <div style="font-size:1.4rem;font-weight:800;color:#3B82F6;">{int(has_reg):,}</div>
-    <div style="font-size:0.7rem;color:#9CA3AF;">{pct(has_reg)} · avg {avg_days("Signup → Reg (days)")}</div>
-  </div>
-  <div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1rem 1.25rem;">
-    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.25rem;">Number Assigned</div>
-    <div style="font-size:1.4rem;font-weight:800;color:#8B5CF6;">{int(has_number):,}</div>
-    <div style="font-size:0.7rem;color:#9CA3AF;">{pct(has_number)} · avg {avg_days("Signup → Number (days)")}</div>
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.25rem;">Has Contact Record</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#3B82F6;">{int(has_contact):,}</div>
+    <div style="font-size:0.7rem;color:#9CA3AF;">{pct(has_contact)}</div>
   </div>
   <div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.25rem;">First Login</div>
@@ -339,6 +289,11 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.25rem;">First Outbound</div>
     <div style="font-size:1.4rem;font-weight:800;color:#F59E0B;">{int(has_outbound):,}</div>
     <div style="font-size:0.7rem;color:#9CA3AF;">{pct(has_outbound)} · avg {avg_days("Login → Outbound (days)")}</div>
+  </div>
+  <div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1rem 1.25rem;">
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.25rem;">Second Outbound</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#8B5CF6;">{int(has_2nd):,}</div>
+    <div style="font-size:0.7rem;color:#9CA3AF;">{pct(has_2nd)} · avg {avg_days("Outbound → 2nd (days)")}</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -351,12 +306,8 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     st.markdown(f"""
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.75rem;margin-bottom:1.5rem;">
   <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:10px;padding:0.85rem 1rem;">
-    <div style="font-size:0.6rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.2rem;">Signup → Registration</div>
-    <div style="font-size:1.3rem;font-weight:800;color:#E6F2EC;">{avg_days("Signup → Reg (days)")}</div>
-  </div>
-  <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:10px;padding:0.85rem 1rem;">
-    <div style="font-size:0.6rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.2rem;">Registration → Number</div>
-    <div style="font-size:1.3rem;font-weight:800;color:#E6F2EC;">{avg_days("Reg → Number (days)")}</div>
+    <div style="font-size:0.6rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.2rem;">Signup → Number</div>
+    <div style="font-size:1.3rem;font-weight:800;color:#E6F2EC;">{avg_days("Signup → Number (days)")}</div>
   </div>
   <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:10px;padding:0.85rem 1rem;">
     <div style="font-size:0.6rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.2rem;">Number → First Login</div>
@@ -366,14 +317,18 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     <div style="font-size:0.6rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.2rem;">Login → First Outbound</div>
     <div style="font-size:1.3rem;font-weight:800;color:#E6F2EC;">{avg_days("Login → Outbound (days)")}</div>
   </div>
+  <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:10px;padding:0.85rem 1rem;">
+    <div style="font-size:0.6rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.2rem;">1st → 2nd Outbound</div>
+    <div style="font-size:1.3rem;font-weight:800;color:#E6F2EC;">{avg_days("Outbound → 2nd (days)")}</div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
     # ── Funnel bar chart ──────────────────────────────────────────────────────
     funnel_df = pd.DataFrame({
-        "Stage": ["Contact Created", "Registration", "Number Assigned", "First Login", "First Outbound"],
-        "Count": [total, int(has_reg), int(has_number), int(has_login), int(has_outbound)],
-        "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#00A651", "#F59E0B"],
+        "Stage": ["Live Numbers", "Has Contact", "First Login", "First Outbound", "Second Outbound"],
+        "Count": [total, int(has_contact), int(has_login), int(has_outbound), int(has_2nd)],
+        "Color": ["#6B7280", "#3B82F6", "#00A651", "#F59E0B", "#8B5CF6"],
     })
     chart = alt.Chart(funnel_df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
         x=alt.X("Stage:N", sort=list(funnel_df["Stage"]), axis=alt.Axis(title=None)),
@@ -386,49 +341,43 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     # ── Tabs ──────────────────────────────────────────────────────────────────
     tab_journey, tab_dropped, tab_full = st.tabs(["Journey Timeline", "Drop-Off Analysis", "Full Table"])
 
-    def _fmt_row(v):
-        return _fmt(v) if v else "—"
-
     with tab_journey:
         journey_cols = ["Name", "Email", "Number",
-                        "Contact Created", "Registration Created", "Number Registered",
-                        "LEX Verified At", "First Login", "First Outbound", "Second Outbound",
-                        "Signup→Reg", "Reg→Number", "Number→Login", "Login→Outbound", "Signup→Outbound"]
+                        "Contact Created", "Number Registered", "Reg Created", "Reg Updated",
+                        "First Login", "First Outbound", "Second Outbound",
+                        "Signup→Number", "Number→Login", "Login→Outbound", "Outbound→2nd", "Signup→Outbound"]
         st.dataframe(df[journey_cols].reset_index(drop=True), use_container_width=True, hide_index=True)
 
     with tab_dropped:
-        # People who signed up but never reached outbound call
         never_outbound = df[~df["Has Outbound"]].copy()
-        st.markdown(f"**{len(never_outbound):,}** contacts have not made a first outbound call yet.")
+        st.markdown(f"**{len(never_outbound):,}** numbers have not made a first outbound call yet.")
 
         drop_df = pd.DataFrame({
             "Dropped at Stage": [
-                "No Registration",
-                "No Number (has reg)",
                 "No Login (has number)",
                 "No Outbound (has login)",
+                "No 2nd Outbound (has 1st)",
             ],
             "Count": [
-                int((~df["Has Registration"]).sum()),
-                int((df["Has Registration"] & ~df["Has Number"]).sum()),
-                int((df["Has Number"] & ~df["Has Login"]).sum()),
+                int((~df["Has Login"]).sum()),
                 int((df["Has Login"] & ~df["Has Outbound"]).sum()),
+                int((df["Has Outbound"] & ~df["Has 2nd Outbound"]).sum()),
             ],
         })
         bar_drop = alt.Chart(drop_df).mark_bar(color="#EF4444", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
             x=alt.X("Count:Q"),
             y=alt.Y("Dropped at Stage:N", sort="-x"),
             tooltip=["Dropped at Stage", "Count"],
-        ).properties(height=200)
+        ).properties(height=180)
         st.altair_chart(bar_drop, use_container_width=True)
         st.dataframe(drop_df, use_container_width=True, hide_index=True)
 
     with tab_full:
-        full_cols = ["Name", "Email", "Number", "Registration Type", "Usage Type", "LEX Status",
-                     "Contact Created", "Registration Created", "Number Registered",
+        full_cols = ["Name", "Email", "Number",
+                     "Contact Created", "Number Registered", "Reg Created", "Reg Updated",
                      "First Login", "First Outbound", "Second Outbound",
-                     "Signup→Reg", "Reg→Number", "Number→Login", "Login→Outbound", "Signup→Outbound",
-                     "Has Registration", "Has Number", "Has Login", "Has Outbound"]
+                     "Signup→Number", "Number→Login", "Login→Outbound", "Outbound→2nd", "Signup→Outbound",
+                     "Has Contact", "Has Login", "Has Outbound", "Has 2nd Outbound"]
         st.dataframe(df[full_cols].reset_index(drop=True), use_container_width=True, hide_index=True)
         st.download_button(
             "Download CSV",
