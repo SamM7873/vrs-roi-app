@@ -183,14 +183,28 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         # Merge top-level createdAt into properties as fallback for number_created_at
         if not p.get("number_created_at"):
             p["number_created_at"] = r.get("createdAt") or r.get("created_at") or ""
-        num_by_email[email] = p
+        # Store ALL records per email (a person may have multiple numbers)
+        if email not in num_by_email:
+            num_by_email[email] = []
+        num_by_email[email].append(p)
 
-    # 3. Count each funnel stage
-    has_number       = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("number_created_at"))
-    has_registered   = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("registered_at"))
-    has_login        = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("ursa_first_login"))
-    has_outbound     = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("ursa_first_outbound_call"))
-    has_2nd_outbound = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("ursa_second_outbound_call"))
+    def _any(email, field):
+        """True if any of the email's number records has this field set."""
+        return any(p.get(field) for p in num_by_email.get(email, []))
+
+    def _best(email, field):
+        """Return first non-empty value of field across all number records for email."""
+        for p in num_by_email.get(email, []):
+            if p.get(field):
+                return p.get(field)
+        return None
+
+    # 3. Count each funnel stage (contact has ≥1 number with that field)
+    has_number       = sum(1 for e in contact_emails if _any(e, "number_created_at"))
+    has_registered   = sum(1 for e in contact_emails if _any(e, "registered_at"))
+    has_login        = sum(1 for e in contact_emails if _any(e, "ursa_first_login"))
+    has_outbound     = sum(1 for e in contact_emails if _any(e, "ursa_first_outbound_call"))
+    has_2nd_outbound = sum(1 for e in contact_emails if _any(e, "ursa_second_outbound_call"))
 
     def pct(n):
         return f"{n / total_contacts * 100:.1f}%" if total_contacts else "—"
@@ -263,19 +277,19 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         detail_rows = []
         for email in sorted(contact_emails):
             cp = contact_map.get(email, {})
-            np = num_by_email.get(email, {})
-            first = np.get("first_name") or cp.get("firstname") or ""
-            last  = np.get("last_name")  or cp.get("lastname")  or ""
+            # Use _best() to pick best value across all number records for this email
+            first = _best(email, "first_name") or cp.get("firstname") or ""
+            last  = _best(email, "last_name")  or cp.get("lastname")  or ""
             detail_rows.append({
                 "Name":            f"{first} {last}".strip() or "—",
                 "Email":           email,
-                "Number":          np.get("number") or "—",
+                "Number":          _best(email, "number") or "—",
                 "Contact Created": _fmt(cp.get("createdate")),
-                "Registered At":   _fmt(np.get("registered_at")),
-                "Number Created":  _fmt(np.get("number_created_at")),
-                "First Login":     _fmt(np.get("ursa_first_login")),
-                "First Outbound":  _fmt(np.get("ursa_first_outbound_call")),
-                "Second Outbound": _fmt(np.get("ursa_second_outbound_call")),
+                "Registered At":   _fmt(_best(email, "registered_at")),
+                "Number Created":  _fmt(_best(email, "number_created_at")),
+                "First Login":     _fmt(_best(email, "ursa_first_login")),
+                "First Outbound":  _fmt(_best(email, "ursa_first_outbound_call")),
+                "Second Outbound": _fmt(_best(email, "ursa_second_outbound_call")),
             })
         detail_df = pd.DataFrame(detail_rows)
         st.dataframe(detail_df, use_container_width=True, hide_index=True)
