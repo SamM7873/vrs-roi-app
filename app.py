@@ -80,7 +80,8 @@ churn_page    = st.Page("pages/5_Churn_Risk.py",          title="Churn Risk Repo
 funnel_page   = st.Page("pages/6_Registration_Funnel.py", title="Registration Funnel",   icon="📋")
 portin_page   = st.Page("pages/7_Port_In_Report.py",      title="Port-In Report",        icon="📲")
 journey_page  = st.Page("pages/8_Signup_Journey.py",      title="Sign-Up Journey",        icon="🗺️")
+numfunnel_page = st.Page("pages/9_Number_Funnel.py",      title="Number Funnel",          icon="🔢")
 
-pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page])
+pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page, numfunnel_page])
 render_sync_widget()
 pg.run()
