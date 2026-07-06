@@ -164,7 +164,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
             "2-40974683",
             ["number", "email", "first_name", "last_name",
              "number_status", "service_type",
-             "registered_at", "number_created_at", "createdate", "registration_created_at", "registration_updated_at",
+             "registered_at", "account_created_at", "registration_created_at", "registration_updated_at",
              "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
             progress_label="Fetching number objects",
         )
@@ -270,7 +270,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
                 "Number":          np.get("number") or "—",
                 "Contact Created": _fmt(cp.get("createdate")),
                 "Registered At":   _fmt(np.get("registered_at")),
-                "Number Created":  _fmt(np.get("number_created_at") or np.get("createdate")),
+                "Number Created":  _fmt(np.get("account_created_at")),
                 "First Login":     _fmt(np.get("ursa_first_login")),
                 "First Outbound":  _fmt(np.get("ursa_first_outbound_call")),
                 "Second Outbound": _fmt(np.get("ursa_second_outbound_call")),
