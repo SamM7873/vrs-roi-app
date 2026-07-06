@@ -158,40 +158,35 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         st.warning("No contacts found in the selected date range.")
         st.stop()
 
-    # 2. Pull number objects via search (POST) so custom properties are returned
-    num_props = ["number", "email", "first_name", "last_name",
-                 "number_status", "service_type",
-                 "registered_at", "number_created_at", "registration_created_at", "registration_updated_at",
-                 "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"]
-    num_filter_groups = [{"filters": [
-        {"propertyName": "service_type",   "operator": "EQ", "value": "VRS"},
-        {"propertyName": "number_status",  "operator": "EQ", "value": "Live"},
-    ]}]
-
+    # 2. Pull ALL live VRS number objects, join in Python on email
     with st.spinner("Loading number objects..."):
-        num_records = []
-        email_chunks = [list(contact_emails)[i:i+100] for i in range(0, len(contact_emails), 100)]
-        for chunk in email_chunks:
-            num_records.extend(fetch_all(
-                "2-40974683",
-                num_props,
-                filter_groups=[{"filters": [
-                    {"propertyName": "service_type",  "operator": "EQ", "value": "VRS"},
-                    {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
-                    {"propertyName": "email",         "operator": "IN", "values": chunk},
-                ]}]
-            ))
+        num_records = list_all(
+            "2-40974683",
+            ["number", "email", "first_name", "last_name",
+             "number_status", "service_type",
+             "registered_at", "number_created_at", "registration_created_at", "registration_updated_at",
+             "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
+            progress_label="Fetching number objects",
+        )
 
-    # Index numbers by email
+    # Index numbers by email; store both properties and top-level createdAt
     num_by_email = {}
     for r in num_records:
         p = r.get("properties", {})
+        if norm(p.get("service_type") or "") != "vrs":
+            continue
+        if norm(p.get("number_status") or "") != "live":
+            continue
         email = (p.get("email") or "").strip().lower()
-        if email:
-            num_by_email[email] = p
+        if not email:
+            continue
+        # Merge top-level createdAt into properties as fallback for number_created_at
+        if not p.get("number_created_at"):
+            p["number_created_at"] = r.get("createdAt") or r.get("created_at") or ""
+        num_by_email[email] = p
 
     # 3. Count each funnel stage
-    has_number       = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("createdate"))
+    has_number       = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("number_created_at"))
     has_registered   = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("registered_at"))
     has_login        = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("ursa_first_login"))
     has_outbound     = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("ursa_first_outbound_call"))
