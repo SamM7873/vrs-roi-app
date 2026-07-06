@@ -79,7 +79,8 @@ bulk_page     = st.Page("pages/4_Bulk_Search.py",         title="Bulk Search",  
 churn_page    = st.Page("pages/5_Churn_Risk.py",          title="Churn Risk Report",     icon="🚨")
 funnel_page   = st.Page("pages/6_Registration_Funnel.py", title="Registration Funnel",   icon="📋")
 portin_page   = st.Page("pages/7_Port_In_Report.py",      title="Port-In Report",        icon="📲")
+journey_page  = st.Page("pages/8_Signup_Journey.py",      title="Sign-Up Journey",        icon="🗺️")
 
-pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page])
+pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page])
 render_sync_widget()
 pg.run()
