@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date
 from utils import require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -45,6 +45,80 @@ def _days_fmt(d):
     if d < 1:
         return f"{round(d * 24, 1)}h"
     return f"{d}d"
+
+# ── date filter helpers ───────────────────────────────────────────────────────
+
+def _date_range_for_preset(preset: str):
+    today = date.today()
+    if preset == "Today":
+        return today, today
+    if preset == "Yesterday":
+        y = today - timedelta(days=1)
+        return y, y
+    if preset == "Last 7 Days":
+        return today - timedelta(days=6), today
+    if preset == "Last 30 Days":
+        return today - timedelta(days=29), today
+    if preset == "This Week (Mon–Sun)":
+        start = today - timedelta(days=today.weekday())
+        return start, today
+    if preset == "Last Week":
+        start = today - timedelta(days=today.weekday() + 7)
+        end   = start + timedelta(days=6)
+        return start, end
+    if preset == "This Month":
+        return today.replace(day=1), today
+    if preset == "Last Month":
+        first_this = today.replace(day=1)
+        last_prev  = first_this - timedelta(days=1)
+        return last_prev.replace(day=1), last_prev
+    if preset == "Last 3 Months":
+        return today - timedelta(days=89), today
+    if preset == "This Quarter":
+        q_start_month = ((today.month - 1) // 3) * 3 + 1
+        return today.replace(month=q_start_month, day=1), today
+    if preset == "Last Quarter":
+        q_start_month = ((today.month - 1) // 3) * 3 + 1
+        lq_end   = today.replace(month=q_start_month, day=1) - timedelta(days=1)
+        lq_start = lq_end.replace(month=((lq_end.month - 1) // 3) * 3 + 1, day=1)
+        return lq_start, lq_end
+    if preset == "This Year":
+        return today.replace(month=1, day=1), today
+    if preset == "Last Year":
+        return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
+    return None, None  # "All Time" / custom
+
+# ── date filter UI ────────────────────────────────────────────────────────────
+
+PRESETS = [
+    "All Time", "Today", "Yesterday",
+    "Last 7 Days", "Last 30 Days",
+    "This Week (Mon–Sun)", "Last Week",
+    "This Month", "Last Month", "Last 3 Months",
+    "This Quarter", "Last Quarter",
+    "This Year", "Last Year",
+    "Custom Range",
+]
+
+col_preset, col_from, col_to = st.columns([2, 1, 1])
+with col_preset:
+    preset = st.selectbox("Date range (based on Contact sign-up date)", PRESETS, index=0)
+
+if preset == "Custom Range":
+    with col_from:
+        custom_from = st.date_input("From", value=date.today() - timedelta(days=29))
+    with col_to:
+        custom_to = st.date_input("To", value=date.today())
+    filter_start, filter_end = custom_from, custom_to
+else:
+    filter_start, filter_end = _date_range_for_preset(preset)
+    if filter_start:
+        with col_from:
+            st.markdown(f"<div style='padding-top:1.85rem;font-size:0.82rem;color:#9dc8b0;'>{filter_start.strftime('%b %d, %Y')}</div>", unsafe_allow_html=True)
+        with col_to:
+            st.markdown(f"<div style='padding-top:1.85rem;font-size:0.82rem;color:#9dc8b0;'>{filter_end.strftime('%b %d, %Y')}</div>", unsafe_allow_html=True)
+
+st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
 # ── run ───────────────────────────────────────────────────────────────────────
 
@@ -204,6 +278,26 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         st.stop()
 
     df = pd.DataFrame(rows)
+
+    # Apply date filter on contact created date
+    if filter_start and filter_end:
+        tz_utc = timezone.utc
+        fs = datetime(filter_start.year, filter_start.month, filter_start.day, tzinfo=tz_utc)
+        fe = datetime(filter_end.year, filter_end.month, filter_end.day, 23, 59, 59, tzinfo=tz_utc)
+        def _in_range(v):
+            dt = _parse(v)
+            if dt is None:
+                return True  # keep rows with no contact date
+            return fs <= dt <= fe
+        mask = df["_contact_created"].apply(_in_range)
+        df = df[mask].copy()
+        label = f"{filter_start.strftime('%b %d, %Y')} – {filter_end.strftime('%b %d, %Y')}"
+        st.markdown(f"<div style='font-size:0.8rem;color:#9dc8b0;margin-bottom:0.5rem;'>Filtered to: <strong style='color:#E6F2EC;'>{label}</strong> · {len(df):,} records</div>", unsafe_allow_html=True)
+
+    if df.empty:
+        st.warning("No records match the selected date range.")
+        st.stop()
+
     total = len(df)
 
     has_reg      = df["Has Registration"].sum()
