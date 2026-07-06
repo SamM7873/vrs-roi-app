@@ -80,11 +80,9 @@ PRESETS = [
 
 # ── filter UI ─────────────────────────────────────────────────────────────────
 
-col_preset, col_from, col_to, col_field, col_usage = st.columns([2, 1, 1, 1, 1])
+col_preset, col_from, col_to, col_usage = st.columns([2, 1, 1, 1])
 with col_preset:
     preset = st.selectbox("Date range", PRESETS, index=0)
-with col_field:
-    date_field = st.selectbox("Filter by", ["registered_at", "number_created_at", "Both"], index=0)
 with col_usage:
     usage_filter = st.selectbox("Usage Type", ["All", "Personal", "Business", "Other"], index=0)
 
@@ -136,7 +134,13 @@ if st.button("Run Number Funnel", use_container_width=False):
         if not p.get("number_created_at"):
             p["number_created_at"] = r.get("createdAt") or ""
 
-    # Apply date filter based on chosen field
+    # Baseline = all live VRS records (no date filter)
+    total = len(records)
+    if total == 0:
+        st.warning("No live VRS number records found.")
+        st.stop()
+
+    # Each stage counts records where THAT field falls in the date range
     tz_utc = timezone.utc
     if filter_start and filter_end:
         fs = datetime(filter_start.year, filter_start.month, filter_start.day, tzinfo=tz_utc)
@@ -144,20 +148,12 @@ if st.button("Run Number Funnel", use_container_width=False):
         def _in_range(v):
             dt = _parse(v)
             return dt is not None and fs <= dt <= fe
-        if date_field == "Both":
-            records = [r for r in records if
-                       _in_range(r.get("properties", {}).get("registered_at")) or
-                       _in_range(r.get("properties", {}).get("number_created_at"))]
-        else:
-            records = [r for r in records if _in_range(r.get("properties", {}).get(date_field))]
-
-    total = len(records)
-    if total == 0:
-        st.warning("No records match the selected date range.")
-        st.stop()
+    else:
+        def _in_range(v):
+            return bool(v)
 
     def _count(field):
-        return sum(1 for r in records if r.get("properties", {}).get(field))
+        return sum(1 for r in records if _in_range(r.get("properties", {}).get(field)))
 
     has_registered   = _count("registered_at")
     has_created      = _count("number_created_at")
@@ -177,7 +173,7 @@ if st.button("Run Number Funnel", use_container_width=False):
     st.markdown(f"""
 <div style="font-size:0.8rem;color:#9dc8b0;margin-bottom:1rem;">
   Snapshot: <strong style="color:#E6F2EC;">{range_label}</strong>
-  &nbsp;·&nbsp; Filtered by <strong style="color:#E6F2EC;">{"registered_at or number_created_at" if date_field == "Both" else date_field}</strong>
+  &nbsp;·&nbsp; Each stage counted by its own field within the date range
   &nbsp;·&nbsp; {total:,} numbers
 </div>
 """, unsafe_allow_html=True)
