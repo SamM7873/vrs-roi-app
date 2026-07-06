@@ -84,7 +84,7 @@ col_preset, col_from, col_to, col_field = st.columns([2, 1, 1, 1])
 with col_preset:
     preset = st.selectbox("Date range", PRESETS, index=0)
 with col_field:
-    date_field = st.selectbox("Filter by", ["registered_at", "number_created_at"], index=0)
+    date_field = st.selectbox("Filter by", ["registered_at", "number_created_at", "Both"], index=0)
 
 if preset == "Custom Range":
     with col_from:
@@ -141,7 +141,12 @@ if st.button("Run Number Funnel", use_container_width=False):
         def _in_range(v):
             dt = _parse(v)
             return dt is not None and fs <= dt <= fe
-        records = [r for r in records if _in_range(r.get("properties", {}).get(date_field))]
+        if date_field == "Both":
+            records = [r for r in records if
+                       _in_range(r.get("properties", {}).get("registered_at")) or
+                       _in_range(r.get("properties", {}).get("number_created_at"))]
+        else:
+            records = [r for r in records if _in_range(r.get("properties", {}).get(date_field))]
 
     total = len(records)
     if total == 0:
@@ -169,7 +174,7 @@ if st.button("Run Number Funnel", use_container_width=False):
     st.markdown(f"""
 <div style="font-size:0.8rem;color:#9dc8b0;margin-bottom:1rem;">
   Snapshot: <strong style="color:#E6F2EC;">{range_label}</strong>
-  &nbsp;·&nbsp; Filtered by <strong style="color:#E6F2EC;">{date_field}</strong>
+  &nbsp;·&nbsp; Filtered by <strong style="color:#E6F2EC;">{"registered_at or number_created_at" if date_field == "Both" else date_field}</strong>
   &nbsp;·&nbsp; {total:,} numbers
 </div>
 """, unsafe_allow_html=True)
