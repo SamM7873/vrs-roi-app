@@ -29,6 +29,7 @@ if st.button("Run Churn Risk Analysis", use_container_width=False):
         records = list_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name", "number_status", "service_type",
+             "language_preference", "usage_type",
              "number_created_at", "ursa_first_login", "ursa_last_outbound_call"],
             progress_label="Fetching VRS number records",
         )
@@ -37,6 +38,8 @@ if st.button("Run Churn Risk Analysis", use_container_width=False):
         r for r in records
         if norm(r.get("properties", {}).get("service_type") or "") == "vrs"
         and norm(r.get("properties", {}).get("number_status") or "") == "live"
+        and norm(r.get("properties", {}).get("language_preference") or "") == "en"
+        and norm(r.get("properties", {}).get("usage_type") or "") == "personal"
     ]
 
     if not vrs_live:
