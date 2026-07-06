@@ -164,7 +164,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
             "2-40974683",
             ["number", "email", "first_name", "last_name",
              "number_status", "service_type",
-             "registered_at", "registration_created_at", "registration_updated_at",
+             "registered_at", "createdate", "registration_created_at", "registration_updated_at",
              "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
             progress_label="Fetching number objects",
         )
@@ -184,7 +184,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
             num_by_email[email] = p
 
     # 3. Count each funnel stage
-    has_number       = sum(1 for e in contact_emails if e in num_by_email)
+    has_number       = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("createdate"))
     has_registered   = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("registered_at"))
     has_login        = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("ursa_first_login"))
     has_outbound     = sum(1 for e in contact_emails if num_by_email.get(e, {}).get("ursa_first_outbound_call"))
@@ -270,7 +270,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
                 "Number":          np.get("number") or "—",
                 "Contact Created": _fmt(cp.get("createdate")),
                 "Registered At":   _fmt(np.get("registered_at")),
-                "Number Created":  _fmt(np.get("registration_created_at")),
+                "Number Created":  _fmt(np.get("createdate")),
                 "First Login":     _fmt(np.get("ursa_first_login")),
                 "First Outbound":  _fmt(np.get("ursa_first_outbound_call")),
                 "Second Outbound": _fmt(np.get("ursa_second_outbound_call")),
