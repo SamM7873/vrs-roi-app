@@ -72,9 +72,16 @@ def _date_range_for_preset(preset):
 
 # ── filter UI ─────────────────────────────────────────────────────────────────
 
-col_preset, col_from, col_to, col_usage = st.columns([2, 1, 1, 1])
+col_preset, col_from, col_to, col_field, col_usage = st.columns([2, 1, 1, 1.5, 1])
 with col_preset:
     preset = st.selectbox("Date range", PRESETS, index=0)
+with col_field:
+    date_field_label = st.selectbox(
+        "Filter baseline by",
+        ["Number Created At", "Registered At"],
+        index=0,
+    )
+    date_field = "number_created_at" if date_field_label == "Number Created At" else "registered_at"
 with col_usage:
     usage_filter = st.selectbox("Usage Type", ["All", "Personal", "Business", "Other"], index=0)
 
@@ -127,8 +134,6 @@ if st.button("Run Number Funnel", use_container_width=False):
         st.warning("No live VRS number records found.")
         st.stop()
 
-    total = len(records)
-
     # Build date boundary in CST (UTC-6); data stored in UTC is compared correctly
     CST = timezone(timedelta(hours=-6))
     if filter_start and filter_end:
@@ -138,10 +143,18 @@ if st.button("Run Number Funnel", use_container_width=False):
             dt = _parse(v)
             return dt is not None and fs <= dt <= fe
         range_label = f"{filter_start.strftime('%b %d')}–{filter_end.strftime('%b %d, %Y')}"
+        # Filter baseline: only records where the selected date field is in range
+        records = [p for p in records if in_range(p.get(date_field))]
     else:
         def in_range(v):
             return bool(v)
         range_label = "All Time"
+
+    if not records:
+        st.warning(f"No records found where {date_field_label} is in the selected date range.")
+        st.stop()
+
+    total = len(records)
 
     def count(field):
         return sum(1 for p in records if in_range(p.get(field)))
@@ -162,7 +175,7 @@ if st.button("Run Number Funnel", use_container_width=False):
     st.markdown(f"""
 <div style="font-size:0.8rem;color:#9dc8b0;margin-bottom:1rem;">
   Snapshot: <strong style="color:#E6F2EC;">{range_label}</strong>
-  &nbsp;·&nbsp; Each stage counted by its own field within the date range
+  &nbsp;·&nbsp; Baseline filtered by <strong style="color:#E6F2EC;">{date_field_label}</strong>
   &nbsp;·&nbsp; {total:,} numbers
 </div>
 """, unsafe_allow_html=True)
