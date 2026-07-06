@@ -134,10 +134,10 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         st.stop()
 
     # Filter contacts by date range
-    tz_utc = timezone.utc
+    CST = timezone(timedelta(hours=-6))
     if filter_start and filter_end:
-        fs = datetime(filter_start.year, filter_start.month, filter_start.day, tzinfo=tz_utc)
-        fe = datetime(filter_end.year, filter_end.month, filter_end.day, 23, 59, 59, tzinfo=tz_utc)
+        fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=CST)
+        fe = datetime(filter_end.year, filter_end.month, filter_end.day, 23, 59, 59, tzinfo=CST)
         def _in_range(v):
             dt = _parse(v)
             return dt is not None and fs <= dt <= fe

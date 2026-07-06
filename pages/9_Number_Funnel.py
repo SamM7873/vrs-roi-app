@@ -129,11 +129,11 @@ if st.button("Run Number Funnel", use_container_width=False):
 
     total = len(records)
 
-    # Build date boundary for stage counting
-    tz_utc = timezone.utc
+    # Build date boundary in CST (UTC-6); data stored in UTC is compared correctly
+    CST = timezone(timedelta(hours=-6))
     if filter_start and filter_end:
-        fs = datetime(filter_start.year, filter_start.month, filter_start.day, tzinfo=tz_utc)
-        fe = datetime(filter_end.year,   filter_end.month,   filter_end.day, 23, 59, 59, tzinfo=tz_utc)
+        fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=CST)
+        fe = datetime(filter_end.year,   filter_end.month,   filter_end.day, 23, 59, 59, tzinfo=CST)
         def in_range(v):
             dt = _parse(v)
             return dt is not None and fs <= dt <= fe
