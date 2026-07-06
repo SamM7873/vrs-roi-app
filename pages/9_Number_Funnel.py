@@ -134,11 +134,10 @@ if st.button("Run Number Funnel", use_container_width=False):
         st.warning("No live VRS number records found.")
         st.stop()
 
-    # Build date boundary in CST (UTC-6); data stored in UTC is compared correctly
-    CST = timezone(timedelta(hours=-6))
+    # Build date boundary in UTC
     if filter_start and filter_end:
-        fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=CST)
-        fe = datetime(filter_end.year,   filter_end.month,   filter_end.day, 23, 59, 59, tzinfo=CST)
+        fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=timezone.utc)
+        fe = datetime(filter_end.year,   filter_end.month,   filter_end.day, 23, 59, 59, tzinfo=timezone.utc)
         def in_range(v):
             dt = _parse(v)
             return dt is not None and fs <= dt <= fe
