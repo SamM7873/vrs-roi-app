@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime, timezone, timedelta, date
-from utils import require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -158,29 +158,36 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         st.warning("No contacts found in the selected date range.")
         st.stop()
 
-    # 2. Pull number objects (VRS live only)
+    # 2. Pull number objects via search (POST) so custom properties are returned
+    num_props = ["number", "email", "first_name", "last_name",
+                 "number_status", "service_type",
+                 "registered_at", "number_created_at", "registration_created_at", "registration_updated_at",
+                 "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"]
+    num_filter_groups = [{"filters": [
+        {"propertyName": "service_type",   "operator": "EQ", "value": "VRS"},
+        {"propertyName": "number_status",  "operator": "EQ", "value": "Live"},
+    ]}]
+
     with st.spinner("Loading number objects..."):
-        num_records = list_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name",
-             "number_status", "service_type",
-             "registered_at", "account_created_at", "registration_created_at", "registration_updated_at",
-             "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
-            progress_label="Fetching number objects",
-        )
+        num_records = []
+        email_chunks = [list(contact_emails)[i:i+100] for i in range(0, len(contact_emails), 100)]
+        for chunk in email_chunks:
+            num_records.extend(fetch_all(
+                "2-40974683",
+                num_props,
+                filter_groups=[{"filters": [
+                    {"propertyName": "service_type",  "operator": "EQ", "value": "VRS"},
+                    {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
+                    {"propertyName": "email",         "operator": "IN", "values": chunk},
+                ]}]
+            ))
 
-    num_records = [
-        r for r in num_records
-        if norm(r.get("properties", {}).get("service_type") or "") == "vrs"
-        and norm(r.get("properties", {}).get("number_status") or "") == "live"
-    ]
-
-    # Index numbers by email, only keep those matching contacts in range
+    # Index numbers by email
     num_by_email = {}
     for r in num_records:
         p = r.get("properties", {})
         email = (p.get("email") or "").strip().lower()
-        if email and email in contact_emails:
+        if email:
             num_by_email[email] = p
 
     # 3. Count each funnel stage
@@ -270,7 +277,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
                 "Number":          np.get("number") or "—",
                 "Contact Created": _fmt(cp.get("createdate")),
                 "Registered At":   _fmt(np.get("registered_at")),
-                "Number Created":  _fmt(np.get("account_created_at")),
+                "Number Created":  _fmt(np.get("number_created_at")),
                 "First Login":     _fmt(np.get("ursa_first_login")),
                 "First Outbound":  _fmt(np.get("ursa_first_outbound_call")),
                 "Second Outbound": _fmt(np.get("ursa_second_outbound_call")),
