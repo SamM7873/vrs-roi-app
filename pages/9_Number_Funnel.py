@@ -80,11 +80,13 @@ PRESETS = [
 
 # ── filter UI ─────────────────────────────────────────────────────────────────
 
-col_preset, col_from, col_to, col_field = st.columns([2, 1, 1, 1])
+col_preset, col_from, col_to, col_field, col_usage = st.columns([2, 1, 1, 1, 1])
 with col_preset:
     preset = st.selectbox("Date range", PRESETS, index=0)
 with col_field:
     date_field = st.selectbox("Filter by", ["registered_at", "number_created_at", "Both"], index=0)
+with col_usage:
+    usage_filter = st.selectbox("Usage Type", ["All", "Personal", "Business", "Other"], index=0)
 
 if preset == "Custom Range":
     with col_from:
@@ -110,17 +112,18 @@ if st.button("Run Number Funnel", use_container_width=False):
         records = list_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name",
-             "number_status", "service_type",
+             "number_status", "service_type", "usage_type",
              "registered_at", "number_created_at",
              "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
             progress_label="Fetching number objects",
         )
 
-    # Filter to live VRS only
+    # Filter to live VRS only + usage type
     records = [
         r for r in records
         if norm(r.get("properties", {}).get("service_type") or "") == "vrs"
         and norm(r.get("properties", {}).get("number_status") or "") == "live"
+        and (usage_filter == "All" or norm(r.get("properties", {}).get("usage_type") or "") == norm(usage_filter))
     ]
 
     if not records:
