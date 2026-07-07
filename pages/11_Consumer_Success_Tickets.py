@@ -480,17 +480,14 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     vrs_numbers = list(num_id_to_number.values())  # for display count only
 
-    # Aggregate monthly values: only include month_date months that match
-    # the ticket's closed date month for that number's contact.
+    # Aggregate all June 2026+ monthly values for matched numbers.
+    # HubSpot's report shows June-closed tickets with July monthly values
+    # (usage recorded the following month), so we do not restrict by close month.
     month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "fcc_vrs": 0.0, "fcc_cfz": 0.0})
     for nid, mv_list in num_monthly.items():
-        allowed = nid_to_close_months.get(nid, set())
         for mv in mv_list:
             mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
             if not mk:
-                continue
-            # Tie: only include this MV record if its month matches a ticket close month
-            if allowed and mk not in allowed:
                 continue
             month_agg[mk]["ursa_min"] += mv["ursa_min"]
             month_agg[mk]["cfz_min"]  += mv["cfz_min"]
