@@ -338,30 +338,55 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         st.warning(f"No tickets found for the selected filters ({range_label}).")
         st.stop()
 
-    # ── Step 2: ticket → number object (direct association) → monthly values ────
+    # ── Step 2: ticket → contact → number object → monthly values ────────────────
+    # Path through contacts gives the consumer's personal numbers only.
     filtered_ticket_ids = [r["ID"] for r in rows]
     num_monthly = defaultdict(list)
 
-    with st.spinner(f"Looking up number objects for {len(filtered_ticket_ids)} tickets..."):
-        tid_to_num_ids = defaultdict(list)
-        for i in range(0, len(filtered_ticket_ids), 100):
-            chunk = filtered_ticket_ids[i:i+100]
-            ar = requests.post(
-                f"{BASE_URL}/crm/v4/associations/tickets/2-40974683/batch/read",
-                headers=_headers,
-                json={"inputs": [{"id": tid} for tid in chunk]},
-                timeout=30,
-            )
-            if ar.status_code == 200:
-                for result in ar.json().get("results", []):
-                    tid = str(result.get("from", {}).get("id", ""))
-                    for assoc in result.get("to", []):
-                        nid = str(assoc.get("toObjectId") or assoc.get("id") or "")
-                        if nid:
-                            tid_to_num_ids[tid].append(nid)
-            time.sleep(0.1)
+    # Build ticket → close month map for filtered rows
+    tid_to_close_month = {}
+    for r in rows:
+        close_dt = _parse_dt(r["Closed"])
+        if close_dt:
+            tid_to_close_month[r["ID"]] = close_dt.strftime("%Y-%m")
 
-    all_num_ids = list({nid for nids in tid_to_num_ids.values() for nid in nids})
+    # Collect contact IDs for filtered tickets, tracking which close months each contact belongs to
+    cid_to_close_months = defaultdict(set)
+    for tid in filtered_ticket_ids:
+        cm = tid_to_close_month.get(tid)
+        for cid in tid_to_cids.get(tid, []):
+            if cm:
+                cid_to_close_months[cid].add(cm)
+    filtered_cids = list(cid_to_close_months.keys())
+
+    # Contact → number object IDs (v4 association)
+    cid_to_nids = defaultdict(list)
+    if filtered_cids:
+        with st.spinner(f"Looking up number objects for {len(filtered_cids)} contact(s)..."):
+            for i in range(0, len(filtered_cids), 100):
+                chunk = filtered_cids[i:i+100]
+                ar = requests.post(
+                    f"{BASE_URL}/crm/v4/associations/contacts/2-40974683/batch/read",
+                    headers=_headers,
+                    json={"inputs": [{"id": cid} for cid in chunk]},
+                    timeout=30,
+                )
+                if ar.status_code == 200:
+                    for result in ar.json().get("results", []):
+                        cid = str(result.get("from", {}).get("id", ""))
+                        for assoc in result.get("to", []):
+                            nid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                            if nid:
+                                cid_to_nids[cid].append(nid)
+                time.sleep(0.1)
+
+    # Propagate close months from contact to number IDs
+    nid_to_close_months = defaultdict(set)
+    for cid, nids in cid_to_nids.items():
+        for nid in nids:
+            nid_to_close_months[nid].update(cid_to_close_months.get(cid, set()))
+
+    all_num_ids = list({nid for nids in cid_to_nids.values() for nid in nids})
 
     # Batch-read number objects to get the phone number string
     num_id_to_number = {}
@@ -455,13 +480,17 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     vrs_numbers = list(num_id_to_number.values())  # for display count only
 
-    # Aggregate all monthly values from June 2026+ for associated numbers
-    # (month_date filter is applied server-side; here we just sum across all months returned)
+    # Aggregate monthly values: only include month_date months that match
+    # the ticket's closed date month for that number's contact.
     month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "fcc_vrs": 0.0, "fcc_cfz": 0.0})
     for nid, mv_list in num_monthly.items():
+        allowed = nid_to_close_months.get(nid, set())
         for mv in mv_list:
             mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
             if not mk:
+                continue
+            # Tie: only include this MV record if its month matches a ticket close month
+            if allowed and mk not in allowed:
                 continue
             month_agg[mk]["ursa_min"] += mv["ursa_min"]
             month_agg[mk]["cfz_min"]  += mv["cfz_min"]
