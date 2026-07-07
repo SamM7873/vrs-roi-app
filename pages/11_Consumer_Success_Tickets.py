@@ -567,45 +567,55 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             )
             st.altair_chart(mv_line, use_container_width=True)
 
-            # ── URSA bar chart July 2026+ with FCC cost labels ─────────────────
+            # ── Grouped bar chart: CfZ + URSA minutes with FCC cost labels ───────
             jul26_mks = [mk for mk in sorted_mk if mk >= "2026-06"]
             if jul26_mks:
-                st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.25rem 0 0.5rem;'>URSA Minutes & FCC Cost — June 2026 Onward</div>", unsafe_allow_html=True)
-                ursa_rows = []
+                st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.25rem 0 0.5rem;'>CfZ & URSA Minutes — June 2026 Onward</div>", unsafe_allow_html=True)
+                bar_rows = []
+                fcc_rows = []  # one row per month for FCC label
                 for mk in jul26_mks:
-                    ursa_m  = round(month_agg[mk]["ursa_min"], 1)
-                    usage_m = round(month_agg[mk]["usage_min"],  1)
-                    fcc     = round(month_agg[mk]["fcc_vrs"] + month_agg[mk]["fcc_cfz"], 0)
-                    label   = datetime.strptime(mk, "%Y-%m").strftime("%b %Y")
-                    ursa_rows.append({"Month": label, "URSA Minutes": ursa_m, "Usage Minutes": usage_m, "FCC Cost ($)": fcc})
-                ursa_df   = pd.DataFrame(ursa_rows)
-                m_order   = [r["Month"] for r in ursa_rows]
-                bw        = max(20, min(60, 700 // max(len(m_order), 1)))
-                ursa_bar  = (
-                    alt.Chart(ursa_df)
-                    .mark_bar(color="#00A651", cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=bw)
+                    label = datetime.strptime(mk, "%Y-%m").strftime("%b %Y")
+                    fcc   = round(month_agg[mk]["fcc_vrs"] + month_agg[mk]["fcc_cfz"], 0)
+                    ursa_m = round(month_agg[mk]["ursa_min"], 1)
+                    cfz_m  = round(month_agg[mk]["cfz_min"],  1)
+                    bar_rows.append({"Month": label, "Type": "URSA Minutes", "Minutes": ursa_m, "FCC Cost ($)": fcc})
+                    bar_rows.append({"Month": label, "Type": "CfZ Minutes",  "Minutes": cfz_m,  "FCC Cost ($)": fcc})
+                    fcc_rows.append({"Month": label, "Minutes": max(ursa_m, cfz_m), "FCC Cost ($)": fcc})
+
+                bar_df = pd.DataFrame(bar_rows)
+                fcc_df = pd.DataFrame(fcc_rows)
+                m_order = [datetime.strptime(mk, "%Y-%m").strftime("%b %Y") for mk in jul26_mks]
+
+                grouped_bar = (
+                    alt.Chart(bar_df)
+                    .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
                     .encode(
                         x=alt.X("Month:N", sort=m_order, axis=alt.Axis(title=None, labelAngle=0)),
-                        y=alt.Y("URSA Minutes:Q", title="URSA Minutes"),
+                        y=alt.Y("Minutes:Q", title="Minutes"),
+                        xOffset=alt.XOffset("Type:N", sort=["CfZ Minutes", "URSA Minutes"]),
+                        color=alt.Color("Type:N", scale=alt.Scale(
+                            domain=["CfZ Minutes", "URSA Minutes"],
+                            range=["#8B5CF6", "#00A651"]
+                        ), legend=alt.Legend(orient="top", title=None)),
                         tooltip=[
                             alt.Tooltip("Month:N"),
-                            alt.Tooltip("URSA Minutes:Q", format=",.0f"),
-                            alt.Tooltip("Usage Minutes:Q", format=",.0f"),
+                            alt.Tooltip("Type:N"),
+                            alt.Tooltip("Minutes:Q", format=",.0f"),
                             alt.Tooltip("FCC Cost ($):Q", format="$,.0f"),
                         ],
                     )
                 )
-                ursa_text = (
-                    alt.Chart(ursa_df)
-                    .mark_text(dy=-10, fontSize=11, fontWeight=700, color="#00A651")
+                fcc_text = (
+                    alt.Chart(fcc_df)
+                    .mark_text(dy=-14, fontSize=11, fontWeight=700, color="#00A651")
                     .encode(
                         x=alt.X("Month:N", sort=m_order),
-                        y=alt.Y("URSA Minutes:Q"),
+                        y=alt.Y("Minutes:Q"),
                         text=alt.Text("FCC Cost ($):Q", format="$,.0f"),
                     )
                 )
                 st.altair_chart(
-                    (ursa_bar + ursa_text).properties(height=260, width="container"),
+                    (grouped_bar + fcc_text).properties(height=280, width="container"),
                     use_container_width=True,
                 )
 
