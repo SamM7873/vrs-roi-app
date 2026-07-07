@@ -403,55 +403,86 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                         if num:
                             num_id_to_number[str(obj["id"])] = num
 
-    vrs_numbers = list(set(num_id_to_number.values()))
+    vrs_num_ids = list(num_id_to_number.keys())  # only VRS+live number object IDs
 
-    # Build number string → allowed close months (for scoping monthly values)
-    num_to_close_months = defaultdict(set)
-    for nid, num in num_id_to_number.items():
-        num_to_close_months[num].update(num_id_to_close_months.get(nid, set()))
+    # Build nid → allowed close months
+    nid_to_close_months = {nid: num_id_to_close_months.get(nid, set()) for nid in vrs_num_ids}
 
-    if vrs_numbers:
-        with st.spinner(f"Fetching monthly values for {len(vrs_numbers)} number(s)..."):
-            for i in range(0, len(vrs_numbers), 100):
-                chunk = vrs_numbers[i:i+100]
-                mv_recs = fetch_all(
-                    "2-46246179",
-                    ["number", "month_date", "service_type",
-                     "usage_minutes", "ursa_minutes", "cfz_minutes",
-                     "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
-                     "fcc_rate_1"],
-                    filter_groups=[{"filters": [
-                        {"propertyName": "number", "operator": "IN", "values": chunk},
-                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
-                    ]}]
+    # Step 3: number object IDs → monthly value record IDs (v4 direct association)
+    nid_to_mv_ids = defaultdict(list)   # number obj ID → [monthly value record IDs]
+    if vrs_num_ids:
+        with st.spinner(f"Looking up monthly value records for {len(vrs_num_ids)} number(s)..."):
+            for i in range(0, len(vrs_num_ids), 100):
+                chunk = vrs_num_ids[i:i+100]
+                ar = requests.post(
+                    f"{BASE_URL}/crm/v4/associations/2-40974683/2-46246179/batch/read",
+                    headers=_headers,
+                    json={"inputs": [{"id": nid} for nid in chunk]},
+                    timeout=30,
                 )
-                for rec in mv_recs:
-                    p2 = rec.get("properties", {})
-                    num = str(p2.get("number") or "").strip()
-                    if num:
-                        num_monthly[num].append({
-                            "month":        p2.get("month_date") or "",
-                            "service_type": norm(p2.get("service_type") or ""),
-                            "ursa_min":     _to_float(p2.get("ursa_minutes")),
-                            "cfz_min":      _to_float(p2.get("cfz_minutes")),
-                            "usage_min":    _to_float(p2.get("usage_minutes")),
-                            "fcc_vrs":      _to_float(p2.get("fcc_cost_based_on_vrs_usage")),
-                            "fcc_cfz":      _to_float(p2.get("fcc_cost_based_on_cfz_usage")),
-                            "fcc_rate":     _to_float(p2.get("fcc_rate_1")),
+                if ar.status_code == 200:
+                    for result in ar.json().get("results", []):
+                        nid = str(result.get("from", {}).get("id", ""))
+                        for assoc in result.get("to", []):
+                            mvid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                            if mvid:
+                                nid_to_mv_ids[nid].append(mvid)
+                time.sleep(0.1)
+
+    # Collect all monthly value record IDs, preserving which nid they belong to
+    # (so we can apply the closed-month constraint per nid)
+    mv_id_to_nid = {}
+    for nid, mv_ids in nid_to_mv_ids.items():
+        for mvid in mv_ids:
+            mv_id_to_nid[mvid] = nid  # last nid wins if dup; dedup below
+
+    all_mv_ids = list(mv_id_to_nid.keys())
+
+    # Step 4: batch-read monthly value records directly by ID
+    MV_PROPS = ["number", "month_date", "service_type",
+                "usage_minutes", "ursa_minutes", "cfz_minutes",
+                "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
+                "fcc_rate_1"]
+
+    if all_mv_ids:
+        with st.spinner(f"Reading {len(all_mv_ids)} monthly value records..."):
+            for i in range(0, len(all_mv_ids), 100):
+                chunk_ids = all_mv_ids[i:i+100]
+                br = requests.post(
+                    f"{BASE_URL}/crm/v3/objects/2-46246179/batch/read",
+                    headers=_headers,
+                    json={"inputs": [{"id": mid} for mid in chunk_ids], "properties": MV_PROPS},
+                    timeout=30,
+                )
+                if br.status_code == 200:
+                    for obj in br.json().get("results", []):
+                        mvid = str(obj["id"])
+                        nid  = mv_id_to_nid.get(mvid, "")
+                        p2   = obj.get("properties", {})
+                        if norm(p2.get("service_type") or "") != "vrs":
+                            continue
+                        # Use nid as key so dedup is at number-object level
+                        num_monthly[nid].append({
+                            "month":    p2.get("month_date") or "",
+                            "ursa_min": _to_float(p2.get("ursa_minutes")),
+                            "cfz_min":  _to_float(p2.get("cfz_minutes")),
+                            "fcc_vrs":  _to_float(p2.get("fcc_cost_based_on_vrs_usage")),
+                            "fcc_cfz":  _to_float(p2.get("fcc_cost_based_on_cfz_usage")),
                         })
+
+    vrs_numbers = list(num_id_to_number.values())  # for display count only
 
     # Aggregate monthly values — only the month matching the ticket's closed date
     month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "fcc_vrs": 0.0, "fcc_cfz": 0.0})
-    for num, mv_list in num_monthly.items():
-        allowed_months = num_to_close_months.get(num, set())
+    for nid, mv_list in num_monthly.items():
+        allowed_months = nid_to_close_months.get(nid, set())
         for mv in mv_list:
             mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
             if not mk or mk < "2026-06":
                 continue
-            # Only include the monthly record for the month the ticket was closed
+            # Only include the monthly record matching the ticket's closed month
             if allowed_months and mk not in allowed_months:
                 continue
-            # All fetched records are service_type=VRS (filtered in query)
             month_agg[mk]["ursa_min"] += mv["ursa_min"]
             month_agg[mk]["cfz_min"]  += mv["cfz_min"]
             month_agg[mk]["fcc_vrs"]  += mv["fcc_vrs"]
