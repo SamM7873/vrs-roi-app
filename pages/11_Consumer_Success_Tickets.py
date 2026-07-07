@@ -75,7 +75,12 @@ TICKET_NAME_OPTIONS = [
     "🧊 AT RISK",
     "⚠️ DECLINING",
     "Churn | Non-Migrated",
+    "VRS Registration + Churn",
 ]
+
+TICKET_NAME_MULTI = {
+    "VRS Registration + Churn": ["vrs registration", "churn | non-migrated"],
+}
 
 def _date_range(preset):
     today = date.today()
@@ -323,7 +328,11 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         rows = [r for r in rows if r["Is Closed"]]
 
     if ticket_name_filter != "All":
-        rows = [r for r in rows if ticket_name_filter.lower() in (r["Subject"] or "").lower()]
+        if ticket_name_filter in TICKET_NAME_MULTI:
+            keywords = TICKET_NAME_MULTI[ticket_name_filter]
+            rows = [r for r in rows if any(kw in (r["Subject"] or "").lower() for kw in keywords)]
+        else:
+            rows = [r for r in rows if ticket_name_filter.lower() in (r["Subject"] or "").lower()]
 
     if not rows:
         st.warning(f"No tickets found for the selected filters ({range_label}).")
