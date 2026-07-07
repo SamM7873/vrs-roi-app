@@ -8,7 +8,7 @@ from collections import defaultdict
 from datetime import datetime, timezone, timedelta, date
 from utils import require_auth, fetch_all, COMMON_CSS, report_header, report_header_close, norm, vrs_rate_for_month
 
-CFZ_RATE  = 2.60
+CONVO_NOW_RATE = 2.60
 
 def _to_float(v):
     try:
@@ -374,11 +374,10 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             month_agg[mk]["cfz_min"]  += mv["cfz_min"]
             month_agg[mk]["vrs_min"]  += mv["usage_min"]
 
-    total_ursa_min = sum(v["ursa_min"] for v in month_agg.values())
-    total_cfz_min  = sum(v["cfz_min"]  for v in month_agg.values())
-    total_vrs_min  = sum(v["vrs_min"]  for v in month_agg.values())
-    total_vrs_fcc  = sum(v["vrs_min"] * vrs_rate_for_month(mk) for mk, v in month_agg.items())
-    total_cfz_fcc  = total_cfz_min  * CFZ_RATE
+    total_ursa_min   = sum(v["ursa_min"] for v in month_agg.values())
+    total_cfz_min    = sum(v["cfz_min"]  for v in month_agg.values())
+    total_usage_min  = sum(v["vrs_min"]  for v in month_agg.values())  # usage_minutes = URSA + CfZ
+    total_vrs_fcc    = sum(v["vrs_min"] * vrs_rate_for_month(mk) for mk, v in month_agg.items())
 
     # ── Summary tiles ──────────────────────────────────────────────────────────
     total    = len(rows)
@@ -421,7 +420,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     # ── Monthly Values section ─────────────────────────────────────────────────
     if num_monthly:
-        st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.5rem 0 0.75rem;'>Monthly Values — Matched Numbers (VRS / CfZ)</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.5rem 0 0.75rem;'>Monthly Values — VRS Numbers</div>", unsafe_allow_html=True)
         st.markdown(f"""
 <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin-bottom:1.5rem;">
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
@@ -431,48 +430,96 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">URSA Minutes</div>
     <div style="font-size:1.4rem;font-weight:800;color:#00A651;font-variant-numeric:tabular-nums;">{total_ursa_min:,.0f}</div>
-    <div style="font-size:0.72rem;color:#6aab85;">FCC rate per month</div>
+    <div style="font-size:0.72rem;color:#6aab85;">VRS sub-type</div>
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">CfZ Minutes</div>
     <div style="font-size:1.4rem;font-weight:800;color:#8B5CF6;font-variant-numeric:tabular-nums;">{total_cfz_min:,.0f}</div>
-    <div style="font-size:0.72rem;color:#a78bfa;">@ ${CFZ_RATE}/min</div>
+    <div style="font-size:0.72rem;color:#a78bfa;">VRS sub-type</div>
+  </div>
+  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Usage Minutes (Total)</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#1F2937;font-variant-numeric:tabular-nums;">{total_usage_min:,.0f}</div>
+    <div style="font-size:0.72rem;color:#9CA3AF;">URSA + CfZ</div>
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">VRS FCC Cost</div>
-    <div style="font-size:1.4rem;font-weight:800;color:#1F2937;font-variant-numeric:tabular-nums;">${total_vrs_fcc:,.0f}</div>
-  </div>
-  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
-    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">CfZ FCC Cost</div>
-    <div style="font-size:1.4rem;font-weight:800;color:#1F2937;font-variant-numeric:tabular-nums;">${total_cfz_fcc:,.0f}</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#00A651;font-variant-numeric:tabular-nums;">${total_vrs_fcc:,.0f}</div>
+    <div style="font-size:0.72rem;color:#6aab85;">Usage min × FCC rate</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
-        # Monthly usage trend line chart
         if month_agg:
             sorted_mk = sorted(month_agg.keys())
+
+            # ── All-months line chart ──────────────────────────────────────────
             mv_chart_df = pd.DataFrame([
-                {"Month": mk, "Type": "URSA (min)",     "Minutes": round(month_agg[mk]["ursa_min"], 1)}
+                {"Month": mk, "Type": "URSA",         "Minutes": round(month_agg[mk]["ursa_min"],  1)}
                 for mk in sorted_mk
             ] + [
-                {"Month": mk, "Type": "CfZ (min)",      "Minutes": round(month_agg[mk]["cfz_min"],  1)}
+                {"Month": mk, "Type": "CfZ",          "Minutes": round(month_agg[mk]["cfz_min"],   1)}
+                for mk in sorted_mk
+            ] + [
+                {"Month": mk, "Type": "Usage (Total)", "Minutes": round(month_agg[mk]["vrs_min"],  1)}
                 for mk in sorted_mk
             ])
             mv_line = (
                 alt.Chart(mv_chart_df)
-                .mark_line(point=alt.OverlayMarkDef(size=50, filled=True), strokeWidth=2.5, interpolate="monotone")
+                .mark_line(point=alt.OverlayMarkDef(size=45, filled=True), strokeWidth=2.5, interpolate="monotone")
                 .encode(
                     x=alt.X("Month:N", sort=sorted_mk, axis=alt.Axis(title=None, labelAngle=-20)),
                     y=alt.Y("Minutes:Q", title="Minutes"),
                     color=alt.Color("Type:N", scale=alt.Scale(
-                        domain=["URSA (min)", "CfZ (min)"],
-                        range=["#00A651", "#8B5CF6"]
+                        domain=["URSA", "CfZ", "Usage (Total)"],
+                        range=["#00A651", "#8B5CF6", "#1F2937"]
                     )),
-                    tooltip=["Month", "Type", "Minutes"],
+                    tooltip=["Month", "Type", alt.Tooltip("Minutes:Q", format=",.0f")],
                 )
-                .properties(height=200, title="Monthly URSA & CfZ Minutes — Matched Numbers")
+                .properties(height=220, title="Monthly URSA / CfZ / Usage Minutes")
             )
             st.altair_chart(mv_line, use_container_width=True)
+
+            # ── URSA bar chart July 2026+ with FCC cost labels ─────────────────
+            jul26_mks = [mk for mk in sorted_mk if mk >= "2026-07"]
+            if jul26_mks:
+                st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.25rem 0 0.5rem;'>URSA Minutes & FCC Cost — July 2026 Onward</div>", unsafe_allow_html=True)
+                ursa_rows = []
+                for mk in jul26_mks:
+                    ursa_m  = round(month_agg[mk]["ursa_min"], 1)
+                    usage_m = round(month_agg[mk]["vrs_min"],  1)
+                    fcc     = round(usage_m * vrs_rate_for_month(mk), 0)
+                    label   = datetime.strptime(mk, "%Y-%m").strftime("%b %Y")
+                    ursa_rows.append({"Month": label, "URSA Minutes": ursa_m, "Usage Minutes": usage_m, "FCC Cost ($)": fcc})
+                ursa_df   = pd.DataFrame(ursa_rows)
+                m_order   = [r["Month"] for r in ursa_rows]
+                bw        = max(20, min(60, 700 // max(len(m_order), 1)))
+                ursa_bar  = (
+                    alt.Chart(ursa_df)
+                    .mark_bar(color="#00A651", cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=bw)
+                    .encode(
+                        x=alt.X("Month:N", sort=m_order, axis=alt.Axis(title=None, labelAngle=0)),
+                        y=alt.Y("URSA Minutes:Q", title="URSA Minutes"),
+                        tooltip=[
+                            alt.Tooltip("Month:N"),
+                            alt.Tooltip("URSA Minutes:Q", format=",.0f"),
+                            alt.Tooltip("Usage Minutes:Q", format=",.0f"),
+                            alt.Tooltip("FCC Cost ($):Q", format="$,.0f"),
+                        ],
+                    )
+                )
+                ursa_text = (
+                    alt.Chart(ursa_df)
+                    .mark_text(dy=-10, fontSize=11, fontWeight=700, color="#00A651")
+                    .encode(
+                        x=alt.X("Month:N", sort=m_order),
+                        y=alt.Y("URSA Minutes:Q"),
+                        text=alt.Text("FCC Cost ($):Q", format="$,.0f"),
+                    )
+                )
+                st.altair_chart(
+                    (ursa_bar + ursa_text).properties(height=260, width="container"),
+                    use_container_width=True,
+                )
 
     # ── Monthly trend chart ────────────────────────────────────────────────────
     month_field_key = "Close Month" if date_field == "closed_date" else "Create Month"
