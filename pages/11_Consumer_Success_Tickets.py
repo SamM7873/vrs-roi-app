@@ -382,6 +382,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                         svc = norm(p.get("service_type") or "")
                         if svc != "vrs":
                             continue
+                        status = norm(p.get("number_status") or "")
+                        if status != "live":
+                            continue
                         num = str(p.get("number") or "").strip()
                         if num:
                             num_id_to_number[str(obj["id"])] = num
@@ -395,9 +398,12 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 mv_recs = fetch_all(
                     "2-46246179",
                     ["number", "month_date", "service_type",
-                     "usage_minutes", "ursa_minutes", "cfz_minutes"],
+                     "usage_minutes", "ursa_minutes", "cfz_minutes",
+                     "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
+                     "fcc_rate_1"],
                     filter_groups=[{"filters": [
                         {"propertyName": "number", "operator": "IN", "values": chunk},
+                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                     ]}]
                 )
                 for rec in mv_recs:
@@ -410,18 +416,23 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                             "ursa_min":     _to_float(p2.get("ursa_minutes")),
                             "cfz_min":      _to_float(p2.get("cfz_minutes")),
                             "usage_min":    _to_float(p2.get("usage_minutes")),
+                            "fcc_vrs":      _to_float(p2.get("fcc_cost_based_on_vrs_usage")),
+                            "fcc_cfz":      _to_float(p2.get("fcc_cost_based_on_cfz_usage")),
+                            "fcc_rate":     _to_float(p2.get("fcc_rate_1")),
                         })
 
     # Aggregate monthly values — only VRS records from June 2026 onward
-    month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0})
+    month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "fcc_vrs": 0.0, "fcc_cfz": 0.0})
     for num, mv_list in num_monthly.items():
         for mv in mv_list:
             mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
             if not mk or mk < "2026-06":
                 continue
-            if mv["service_type"] == "vrs":
-                month_agg[mk]["ursa_min"] += mv["ursa_min"]
-                month_agg[mk]["cfz_min"]  += mv["cfz_min"]
+            # All fetched records are service_type=VRS (filtered in query)
+            month_agg[mk]["ursa_min"] += mv["ursa_min"]
+            month_agg[mk]["cfz_min"]  += mv["cfz_min"]
+            month_agg[mk]["fcc_vrs"]  += mv["fcc_vrs"]
+            month_agg[mk]["fcc_cfz"]  += mv["fcc_cfz"]
 
     # Usage Total = URSA + CfZ (derived, avoids double-counting usage_minutes field)
     for mk in month_agg:
@@ -430,7 +441,8 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
     total_ursa_min   = sum(v["ursa_min"]  for v in month_agg.values())
     total_cfz_min    = sum(v["cfz_min"]   for v in month_agg.values())
     total_usage_min  = sum(v["usage_min"] for v in month_agg.values())
-    total_vrs_fcc    = sum(v["usage_min"] * vrs_rate_for_month(mk) for mk, v in month_agg.items())
+    # Use HubSpot's pre-calculated FCC costs (fcc_cost_based_on_vrs_usage + fcc_cost_based_on_cfz_usage)
+    total_vrs_fcc    = sum(v["fcc_vrs"] + v["fcc_cfz"] for v in month_agg.values())
 
     # ── Summary tiles ──────────────────────────────────────────────────────────
     total    = len(rows)
@@ -498,7 +510,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">VRS FCC Cost</div>
     <div style="font-size:1.4rem;font-weight:800;color:#00A651;font-variant-numeric:tabular-nums;">${total_vrs_fcc:,.0f}</div>
-    <div style="font-size:0.72rem;color:#6aab85;">Usage min × FCC rate</div>
+    <div style="font-size:0.72rem;color:#6aab85;">VRS + CfZ FCC (HubSpot)</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -540,7 +552,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 for mk in jul26_mks:
                     ursa_m  = round(month_agg[mk]["ursa_min"], 1)
                     usage_m = round(month_agg[mk]["usage_min"],  1)
-                    fcc     = round(usage_m * vrs_rate_for_month(mk), 0)
+                    fcc     = round(month_agg[mk]["fcc_vrs"] + month_agg[mk]["fcc_cfz"], 0)
                     label   = datetime.strptime(mk, "%Y-%m").strftime("%b %Y")
                     ursa_rows.append({"Month": label, "URSA Minutes": ursa_m, "Usage Minutes": usage_m, "FCC Cost ($)": fcc})
                 ursa_df   = pd.DataFrame(ursa_rows)
