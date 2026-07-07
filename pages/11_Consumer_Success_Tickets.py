@@ -379,16 +379,17 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                                 "usage_min":    _to_float(p2.get("usage_minutes")),
                             })
 
-    # Aggregate monthly values for all matched numbers
+    # Aggregate monthly values — only VRS records contribute to usage/ursa/cfz totals
     month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "vrs_min": 0.0})
     for num, mv_list in num_monthly.items():
         for mv in mv_list:
             mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
             if not mk:
                 continue
-            month_agg[mk]["ursa_min"] += mv["ursa_min"]
-            month_agg[mk]["cfz_min"]  += mv["cfz_min"]
-            month_agg[mk]["vrs_min"]  += mv["usage_min"]
+            if mv["service_type"] == "vrs":
+                month_agg[mk]["ursa_min"] += mv["ursa_min"]
+                month_agg[mk]["cfz_min"]  += mv["cfz_min"]
+                month_agg[mk]["vrs_min"]  += mv["usage_min"]
 
     total_ursa_min   = sum(v["ursa_min"] for v in month_agg.values())
     total_cfz_min    = sum(v["cfz_min"]  for v in month_agg.values())
