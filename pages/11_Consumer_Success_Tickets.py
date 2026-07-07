@@ -388,12 +388,12 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                                 "usage_min":    _to_float(p2.get("usage_minutes")),
                             })
 
-    # Aggregate monthly values — only VRS records; derive usage total from URSA + CfZ
+    # Aggregate monthly values — only VRS records from June 2026 onward
     month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0})
     for num, mv_list in num_monthly.items():
         for mv in mv_list:
             mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
-            if not mk:
+            if not mk or mk < "2026-06":
                 continue
             if mv["service_type"] == "vrs":
                 month_agg[mk]["ursa_min"] += mv["ursa_min"]
