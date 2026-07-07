@@ -398,7 +398,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                     f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
                     headers=_headers,
                     json={"inputs": [{"id": n} for n in chunk],
-                          "properties": ["number", "service_type", "number_status", "ursa_first_login"]},
+                          "properties": ["number", "service_type", "number_status"]},
                     timeout=30,
                 )
                 if br.status_code == 200:
@@ -409,8 +409,6 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                             continue
                         status = norm(p.get("number_status") or "")
                         if status != "live":
-                            continue
-                        if not p.get("ursa_first_login"):
                             continue
                         num = str(p.get("number") or "").strip()
                         if num:
