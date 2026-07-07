@@ -445,16 +445,15 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     all_mv_ids = list(mv_id_to_nid.keys())
 
-    # Step 4: search MV records by ID with month_date > 2026-05-31 filter
-    # 2026-06-01 00:00:00 UTC in milliseconds = 1780272000000
+    # Step 4: batch-read monthly value records directly by ID (no date filter —
+    # HubSpot report includes May 2026 records for Jun/Jul close-date tickets)
     MV_PROPS = ["number", "month_date", "service_type",
                 "usage_minutes", "ursa_minutes", "cfz_minutes",
                 "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
                 "fcc_rate_1"]
-    MV_DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": "1780272000000"}
 
     if all_mv_ids:
-        with st.spinner(f"Reading {len(all_mv_ids)} monthly value records (June 2026+)..."):
+        with st.spinner(f"Reading {len(all_mv_ids)} monthly value records..."):
             for i in range(0, len(all_mv_ids), 100):
                 chunk_ids = all_mv_ids[i:i+100]
                 mv_recs = fetch_all(
@@ -462,7 +461,6 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                     MV_PROPS,
                     filter_groups=[{"filters": [
                         {"propertyName": "hs_object_id", "operator": "IN", "values": chunk_ids},
-                        MV_DATE_FILTER,
                         {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                     ]}]
                 )
