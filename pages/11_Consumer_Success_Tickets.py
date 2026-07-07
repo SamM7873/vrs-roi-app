@@ -447,15 +447,27 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     all_mv_ids = list(mv_id_to_nid.keys())
 
-    # Step 4: batch-read monthly value records directly by ID (no date filter —
-    # HubSpot report includes May 2026 records for Jun/Jul close-date tickets)
+    # Step 4: fetch MV records with a dynamic month_date floor.
+    # Floor = 2 months before filter_start (captures prior-month records like
+    # May 2026 showing for Jun-closed tickets). For All Time, floor = 2 yrs ago.
     MV_PROPS = ["number", "month_date", "service_type",
                 "usage_minutes", "ursa_minutes", "cfz_minutes",
                 "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
                 "fcc_rate_1"]
 
+    if filter_start:
+        fy, fm = filter_start.year, filter_start.month - 2
+        if fm <= 0:
+            fm += 12; fy -= 1
+        mv_floor = date(fy, fm, 1)
+    else:
+        today_d = date.today()
+        mv_floor = date(today_d.year - 2, today_d.month, 1)
+    mv_floor_ms = str(int(datetime(mv_floor.year, mv_floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
+    MV_DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": mv_floor_ms}
+
     if all_mv_ids:
-        with st.spinner(f"Reading {len(all_mv_ids)} monthly value records..."):
+        with st.spinner(f"Reading monthly value records (from {mv_floor.strftime('%b %Y')})..."):
             for i in range(0, len(all_mv_ids), 100):
                 chunk_ids = all_mv_ids[i:i+100]
                 mv_recs = fetch_all(
@@ -463,6 +475,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                     MV_PROPS,
                     filter_groups=[{"filters": [
                         {"propertyName": "hs_object_id", "operator": "IN", "values": chunk_ids},
+                        MV_DATE_FILTER,
                         {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                     ]}]
                 )
