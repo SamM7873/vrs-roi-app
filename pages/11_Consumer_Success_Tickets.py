@@ -59,6 +59,7 @@ def _month_sort(k):
 # ── date presets ──────────────────────────────────────────────────────────────
 
 PRESETS = [
+    "Jun 2026–Present",
     "All Time", "Today", "Yesterday",
     "Last 7 Days", "Last 30 Days",
     "This Week (Mon–Sun)", "Last Week",
@@ -68,20 +69,29 @@ PRESETS = [
     "Custom Range",
 ]
 
+TICKET_NAME_OPTIONS = [
+    "All",
+    "VRS Registration",
+    "🧊 AT RISK",
+    "⚠️ DECLINING",
+    "Churn | Non-Migrated",
+]
+
 def _date_range(preset):
     today = date.today()
-    if preset == "Today":           return today, today
-    if preset == "Yesterday":       d = today - timedelta(days=1); return d, d
-    if preset == "Last 7 Days":     return today - timedelta(days=6), today
-    if preset == "Last 30 Days":    return today - timedelta(days=29), today
+    if preset == "Jun 2026–Present":  return date(2026, 6, 1), today
+    if preset == "Today":             return today, today
+    if preset == "Yesterday":         d = today - timedelta(days=1); return d, d
+    if preset == "Last 7 Days":       return today - timedelta(days=6), today
+    if preset == "Last 30 Days":      return today - timedelta(days=29), today
     if preset == "This Week (Mon–Sun)": return today - timedelta(days=today.weekday()), today
     if preset == "Last Week":
         s = today - timedelta(days=today.weekday() + 7); return s, s + timedelta(days=6)
-    if preset == "This Month":      return today.replace(day=1), today
+    if preset == "This Month":        return today.replace(day=1), today
     if preset == "Last Month":
         last = today.replace(day=1) - timedelta(days=1)
         return last.replace(day=1), last
-    if preset == "Last 3 Months":   return today - timedelta(days=89), today
+    if preset == "Last 3 Months":     return today - timedelta(days=89), today
     if preset == "This Quarter":
         q = ((today.month - 1) // 3) * 3 + 1
         return today.replace(month=q, day=1), today
@@ -90,8 +100,8 @@ def _date_range(preset):
         end = today.replace(month=q, day=1) - timedelta(days=1)
         start = end.replace(month=((end.month - 1) // 3) * 3 + 1, day=1)
         return start, end
-    if preset == "This Year":       return today.replace(month=1, day=1), today
-    if preset == "Last Year":       return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
+    if preset == "This Year":         return today.replace(month=1, day=1), today
+    if preset == "Last Year":         return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
     return None, None
 
 # ── filter UI ─────────────────────────────────────────────────────────────────
@@ -99,7 +109,7 @@ def _date_range(preset):
 col_preset, col_from, col_to, col_field, col_status = st.columns([2, 1, 1, 1.5, 1.5])
 
 with col_preset:
-    preset = st.selectbox("Date range", PRESETS, index=9)  # default Last 3 Months
+    preset = st.selectbox("Date range", PRESETS, index=0)  # default Jun 2026–Present
 with col_field:
     date_field_label = st.selectbox("Filter date by", ["Close Date", "Create Date"], index=0)
     date_field = "closed_date" if date_field_label == "Close Date" else "createdate"
@@ -108,7 +118,7 @@ with col_status:
 
 if preset == "Custom Range":
     with col_from:
-        custom_from = st.date_input("From", value=date.today() - timedelta(days=89))
+        custom_from = st.date_input("From", value=date(2026, 6, 1))
     with col_to:
         custom_to = st.date_input("To", value=date.today())
     filter_start, filter_end = custom_from, custom_to
@@ -119,6 +129,9 @@ else:
             st.markdown(f"<div style='padding-top:1.85rem;font-size:0.82rem;color:#9dc8b0;'>{filter_start.strftime('%b %d, %Y')}</div>", unsafe_allow_html=True)
         with col_to:
             st.markdown(f"<div style='padding-top:1.85rem;font-size:0.82rem;color:#9dc8b0;'>{filter_end.strftime('%b %d, %Y')}</div>", unsafe_allow_html=True)
+
+# ── ticket name filter ─────────────────────────────────────────────────────────
+ticket_name_filter = st.selectbox("Ticket name filter", TICKET_NAME_OPTIONS, index=0)
 
 st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
@@ -308,6 +321,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         rows = [r for r in rows if not r["Is Closed"]]
     elif status_filter == "Closed":
         rows = [r for r in rows if r["Is Closed"]]
+
+    if ticket_name_filter != "All":
+        rows = [r for r in rows if ticket_name_filter.lower() in (r["Subject"] or "").lower()]
 
     if not rows:
         st.warning(f"No tickets found for the selected filters ({range_label}).")
