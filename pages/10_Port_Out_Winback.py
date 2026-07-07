@@ -120,14 +120,22 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
         p = r.get("properties", {})
         if norm(p.get("service_type") or "") != "vrs":
             continue
-        if norm(p.get("number_status") or "") != "deactivated":
+        if norm(p.get("number_status") or "") not in ("deactivated", "deleted", "inactive", "cancelled"):
             continue
-        if norm(p.get("bandwidth_order_type") or "") != "port out":
+        bw = norm(p.get("bandwidth_order_type") or "")
+        if "port" not in bw:
             continue
         records.append(p)
 
     if not records:
-        st.warning("No deactivated VRS port-out records found.")
+        # Debug: show what values are present so we can tune the filter
+        vrs_all = [r for r in raw if norm(r.get("properties", {}).get("service_type") or "") == "vrs"]
+        statuses = list({r.get("properties", {}).get("number_status") or "—" for r in vrs_all})
+        bw_types = list({r.get("properties", {}).get("bandwidth_order_type") or "—" for r in vrs_all})
+        st.warning("No matching port-out records found.")
+        st.markdown(f"**VRS records pulled:** {len(vrs_all):,}")
+        st.markdown(f"**number_status values seen:** `{', '.join(sorted(statuses))}`")
+        st.markdown(f"**bandwidth_order_type values seen:** `{', '.join(sorted(bw_types))}`")
         st.stop()
 
     # Apply date filter to baseline
