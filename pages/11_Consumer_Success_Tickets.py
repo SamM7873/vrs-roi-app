@@ -388,8 +388,8 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                                 "usage_min":    _to_float(p2.get("usage_minutes")),
                             })
 
-    # Aggregate monthly values — only VRS records contribute to usage/ursa/cfz totals
-    month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "vrs_min": 0.0})
+    # Aggregate monthly values — only VRS records; derive usage total from URSA + CfZ
+    month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0})
     for num, mv_list in num_monthly.items():
         for mv in mv_list:
             mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
@@ -398,12 +398,15 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             if mv["service_type"] == "vrs":
                 month_agg[mk]["ursa_min"] += mv["ursa_min"]
                 month_agg[mk]["cfz_min"]  += mv["cfz_min"]
-                month_agg[mk]["vrs_min"]  += mv["usage_min"]
 
-    total_ursa_min   = sum(v["ursa_min"] for v in month_agg.values())
-    total_cfz_min    = sum(v["cfz_min"]  for v in month_agg.values())
-    total_usage_min  = sum(v["vrs_min"]  for v in month_agg.values())  # usage_minutes = URSA + CfZ
-    total_vrs_fcc    = sum(v["vrs_min"] * vrs_rate_for_month(mk) for mk, v in month_agg.items())
+    # Usage Total = URSA + CfZ (derived, avoids double-counting usage_minutes field)
+    for mk in month_agg:
+        month_agg[mk]["usage_min"] = month_agg[mk]["ursa_min"] + month_agg[mk]["cfz_min"]
+
+    total_ursa_min   = sum(v["ursa_min"]  for v in month_agg.values())
+    total_cfz_min    = sum(v["cfz_min"]   for v in month_agg.values())
+    total_usage_min  = sum(v["usage_min"] for v in month_agg.values())
+    total_vrs_fcc    = sum(v["usage_min"] * vrs_rate_for_month(mk) for mk, v in month_agg.items())
 
     # ── Summary tiles ──────────────────────────────────────────────────────────
     total    = len(rows)
@@ -486,7 +489,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 {"Month": mk, "Type": "CfZ",          "Minutes": round(month_agg[mk]["cfz_min"],   1)}
                 for mk in sorted_mk
             ] + [
-                {"Month": mk, "Type": "Usage (Total)", "Minutes": round(month_agg[mk]["vrs_min"],  1)}
+                {"Month": mk, "Type": "Usage (Total)", "Minutes": round(month_agg[mk]["usage_min"],  1)}
                 for mk in sorted_mk
             ])
             mv_line = (
@@ -512,7 +515,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 ursa_rows = []
                 for mk in jul26_mks:
                     ursa_m  = round(month_agg[mk]["ursa_min"], 1)
-                    usage_m = round(month_agg[mk]["vrs_min"],  1)
+                    usage_m = round(month_agg[mk]["usage_min"],  1)
                     fcc     = round(usage_m * vrs_rate_for_month(mk), 0)
                     label   = datetime.strptime(mk, "%Y-%m").strftime("%b %Y")
                     ursa_rows.append({"Month": label, "URSA Minutes": ursa_m, "Usage Minutes": usage_m, "FCC Cost ($)": fcc})
