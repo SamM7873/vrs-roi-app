@@ -378,7 +378,11 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 )
                 if br.status_code == 200:
                     for obj in br.json().get("results", []):
-                        num = str(obj.get("properties", {}).get("number") or "").strip()
+                        p = obj.get("properties", {})
+                        svc = norm(p.get("service_type") or "")
+                        if svc != "vrs":
+                            continue
+                        num = str(p.get("number") or "").strip()
                         if num:
                             num_id_to_number[str(obj["id"])] = num
 
