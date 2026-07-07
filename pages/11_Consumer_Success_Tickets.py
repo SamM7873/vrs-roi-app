@@ -338,55 +338,75 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         st.warning(f"No tickets found for the selected filters ({range_label}).")
         st.stop()
 
-    # ── Step 2: lookup numbers by ticket email → monthly values ───────────────
-    ticket_emails = list({norm(r["Email"]) for r in rows if r["Email"] != "—"})
+    # ── Step 2: ticket → number object (direct association) → monthly values ────
+    filtered_ticket_ids = [r["ID"] for r in rows]
+    num_monthly = defaultdict(list)
 
-    num_monthly = defaultdict(list)   # number → list of monthly value dicts
-    matched_numbers = []              # number object records
+    with st.spinner(f"Looking up number objects for {len(filtered_ticket_ids)} tickets..."):
+        tid_to_num_ids = defaultdict(list)
+        for i in range(0, len(filtered_ticket_ids), 100):
+            chunk = filtered_ticket_ids[i:i+100]
+            ar = requests.post(
+                f"{BASE_URL}/crm/v4/associations/tickets/2-40974683/batch/read",
+                headers=_headers,
+                json={"inputs": [{"id": tid} for tid in chunk]},
+                timeout=30,
+            )
+            if ar.status_code == 200:
+                for result in ar.json().get("results", []):
+                    tid = str(result.get("from", {}).get("id", ""))
+                    for assoc in result.get("to", []):
+                        nid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                        if nid:
+                            tid_to_num_ids[tid].append(nid)
+            time.sleep(0.1)
 
-    if ticket_emails:
-        with st.spinner(f"Looking up VRS/CfZ numbers for {len(ticket_emails)} email(s)..."):
-            for i in range(0, len(ticket_emails), 100):
-                chunk = ticket_emails[i:i+100]
-                recs = fetch_all(
-                    "2-40974683",
-                    ["number", "email", "first_name", "last_name", "service_type", "number_status"],
+    all_num_ids = list({nid for nids in tid_to_num_ids.values() for nid in nids})
+
+    # Batch-read number objects to get the phone number string
+    num_id_to_number = {}
+    if all_num_ids:
+        with st.spinner(f"Reading {len(all_num_ids)} number objects..."):
+            for i in range(0, len(all_num_ids), 100):
+                chunk = all_num_ids[i:i+100]
+                br = requests.post(
+                    f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
+                    headers=_headers,
+                    json={"inputs": [{"id": n} for n in chunk],
+                          "properties": ["number", "service_type", "number_status"]},
+                    timeout=30,
+                )
+                if br.status_code == 200:
+                    for obj in br.json().get("results", []):
+                        num = str(obj.get("properties", {}).get("number") or "").strip()
+                        if num:
+                            num_id_to_number[str(obj["id"])] = num
+
+    vrs_numbers = list(set(num_id_to_number.values()))
+
+    if vrs_numbers:
+        with st.spinner(f"Fetching monthly values for {len(vrs_numbers)} number(s)..."):
+            for i in range(0, len(vrs_numbers), 100):
+                chunk = vrs_numbers[i:i+100]
+                mv_recs = fetch_all(
+                    "2-46246179",
+                    ["number", "month_date", "service_type",
+                     "usage_minutes", "ursa_minutes", "cfz_minutes"],
                     filter_groups=[{"filters": [
-                        {"propertyName": "email", "operator": "IN", "values": chunk},
+                        {"propertyName": "number", "operator": "IN", "values": chunk},
                     ]}]
                 )
-                for rec in recs:
-                    p = rec.get("properties", {})
-                    svc = norm(p.get("service_type") or "")
-                    if svc in ("vrs", "cfz", "convo now"):
-                        matched_numbers.append(p)
-
-        vrs_numbers = [str(p.get("number") or "").strip() for p in matched_numbers if p.get("number")]
-        vrs_numbers = list(set(vrs_numbers))
-
-        if vrs_numbers:
-            with st.spinner(f"Fetching monthly values for {len(vrs_numbers)} number(s)..."):
-                for i in range(0, len(vrs_numbers), 100):
-                    chunk = vrs_numbers[i:i+100]
-                    mv_recs = fetch_all(
-                        "2-46246179",
-                        ["number", "month_date", "service_type",
-                         "usage_minutes", "ursa_minutes", "cfz_minutes"],
-                        filter_groups=[{"filters": [
-                            {"propertyName": "number", "operator": "IN", "values": chunk},
-                        ]}]
-                    )
-                    for rec in mv_recs:
-                        p2 = rec.get("properties", {})
-                        num = str(p2.get("number") or "").strip()
-                        if num:
-                            num_monthly[num].append({
-                                "month":        p2.get("month_date") or "",
-                                "service_type": norm(p2.get("service_type") or ""),
-                                "ursa_min":     _to_float(p2.get("ursa_minutes")),
-                                "cfz_min":      _to_float(p2.get("cfz_minutes")),
-                                "usage_min":    _to_float(p2.get("usage_minutes")),
-                            })
+                for rec in mv_recs:
+                    p2 = rec.get("properties", {})
+                    num = str(p2.get("number") or "").strip()
+                    if num:
+                        num_monthly[num].append({
+                            "month":        p2.get("month_date") or "",
+                            "service_type": norm(p2.get("service_type") or ""),
+                            "ursa_min":     _to_float(p2.get("ursa_minutes")),
+                            "cfz_min":      _to_float(p2.get("cfz_minutes")),
+                            "usage_min":    _to_float(p2.get("usage_minutes")),
+                        })
 
     # Aggregate monthly values — only VRS records from June 2026 onward
     month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0})
