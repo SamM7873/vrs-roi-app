@@ -33,6 +33,26 @@ def _fmt(v):
     dt = _parse(v)
     return dt.strftime("%b %d, %Y") if dt else "—"
 
+def _tenure_from_days(days):
+    years  = days // 365
+    months = (days % 365) // 30
+    rem    = (days % 365) % 30
+    if years >= 1:
+        return f"{years}y {months}m"
+    if months >= 1:
+        return f"{months}m {rem}d"
+    return f"{days}d"
+
+def _tenure(created, deleted):
+    dc = _parse(created)
+    dd = _parse(deleted)
+    if not dc or not dd:
+        return "—"
+    days = (dd - dc).days
+    if days < 0:
+        return "—"
+    return _tenure_from_days(days)
+
 # ── date presets ──────────────────────────────────────────────────────────────
 
 PRESETS = [
@@ -211,6 +231,15 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
     total_cfz   = sum(_totals(str(p.get("number") or ""))[2] for p in records)
     with_history = sum(1 for p in records if num_monthly.get(str(p.get("number") or "")))
 
+    tenure_days_list = []
+    for p in records:
+        dc = _parse(p.get("number_created_at"))
+        dd = _parse(p.get("number_deleted_at"))
+        if dc and dd and (dd - dc).days >= 0:
+            tenure_days_list.append((dd - dc).days)
+    avg_tenure_days = sum(tenure_days_list) / len(tenure_days_list) if tenure_days_list else 0
+    avg_tenure_str  = _tenure_from_days(int(avg_tenure_days)) if tenure_days_list else "—"
+
     st.markdown(f"""
 <div style="font-size:0.8rem;color:#9dc8b0;margin-bottom:1rem;">
   Snapshot: <strong style="color:#E6F2EC;">{range_label}</strong>
@@ -221,10 +250,14 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
 """, unsafe_allow_html=True)
 
     st.markdown(f"""
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin:0.5rem 0 1.5rem;">
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0.85rem;margin:0.5rem 0 1.5rem;">
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Port-Out Numbers</div>
     <div style="font-size:1.4rem;font-weight:800;color:#1F2937;">{total:,}</div>
+  </div>
+  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Avg Tenure</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#F59E0B;">{avg_tenure_str}</div>
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">With Usage History</div>
@@ -249,6 +282,9 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
     for p in records:
         num = str(p.get("number") or "").strip()
         usage, ursa, cfz, months, avg = _totals(num)
+        dc = _parse(p.get("number_created_at"))
+        dd = _parse(p.get("number_deleted_at"))
+        tenure_days = (dd - dc).days if dc and dd and (dd - dc).days >= 0 else None
         detail_rows.append({
             "Number":           num or "—",
             "Name":             f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
@@ -257,6 +293,8 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
             "Deleted Reason":   p.get("deleted_reason") or "—",
             "Created At":       _fmt(p.get("number_created_at")),
             "Deleted At":       _fmt(p.get("number_deleted_at")),
+            "Tenure":           _tenure(p.get("number_created_at"), p.get("number_deleted_at")),
+            "Tenure (days)":    tenure_days if tenure_days is not None else 0,
             "History Months":   months,
             "Total Usage (min)":  round(usage, 1),
             "Total URSA (min)":   round(ursa, 1),
