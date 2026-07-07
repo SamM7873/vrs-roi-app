@@ -4,8 +4,18 @@ import altair as alt
 import requests
 import time
 import os
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta, date
-from utils import require_auth, COMMON_CSS, report_header, report_header_close, norm
+from utils import require_auth, fetch_all, COMMON_CSS, report_header, report_header_close, norm
+
+VRS_RATE  = 8.33
+CFZ_RATE  = 2.60
+
+def _to_float(v):
+    try:
+        return float(v) if v not in (None, "", "—") else 0.0
+    except Exception:
+        return 0.0
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -258,6 +268,73 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         st.warning(f"No tickets found for the selected filters ({range_label}).")
         st.stop()
 
+    # ── Step 2: lookup numbers by ticket email → monthly values ───────────────
+    ticket_emails = list({norm(r["Email"]) for r in rows if r["Email"] != "—"})
+
+    num_monthly = defaultdict(list)   # number → list of monthly value dicts
+    matched_numbers = []              # number object records
+
+    if ticket_emails:
+        with st.spinner(f"Looking up VRS/CfZ numbers for {len(ticket_emails)} email(s)..."):
+            for i in range(0, len(ticket_emails), 100):
+                chunk = ticket_emails[i:i+100]
+                recs = fetch_all(
+                    "2-40974683",
+                    ["number", "email", "first_name", "last_name", "service_type", "number_status"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "email", "operator": "IN", "values": chunk},
+                    ]}]
+                )
+                for rec in recs:
+                    p = rec.get("properties", {})
+                    svc = norm(p.get("service_type") or "")
+                    if svc in ("vrs", "cfz", "convo now"):
+                        matched_numbers.append(p)
+
+        vrs_numbers = [str(p.get("number") or "").strip() for p in matched_numbers if p.get("number")]
+        vrs_numbers = list(set(vrs_numbers))
+
+        if vrs_numbers:
+            with st.spinner(f"Fetching monthly values for {len(vrs_numbers)} number(s)..."):
+                for i in range(0, len(vrs_numbers), 100):
+                    chunk = vrs_numbers[i:i+100]
+                    mv_recs = fetch_all(
+                        "2-46246179",
+                        ["number", "month_date", "service_type",
+                         "usage_minutes", "ursa_minutes", "cfz_minutes"],
+                        filter_groups=[{"filters": [
+                            {"propertyName": "number", "operator": "IN", "values": chunk},
+                        ]}]
+                    )
+                    for rec in mv_recs:
+                        p2 = rec.get("properties", {})
+                        num = str(p2.get("number") or "").strip()
+                        if num:
+                            num_monthly[num].append({
+                                "month":        p2.get("month_date") or "",
+                                "service_type": norm(p2.get("service_type") or ""),
+                                "ursa_min":     _to_float(p2.get("ursa_minutes")),
+                                "cfz_min":      _to_float(p2.get("cfz_minutes")),
+                                "usage_min":    _to_float(p2.get("usage_minutes")),
+                            })
+
+    # Aggregate monthly values for all matched numbers
+    month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "vrs_min": 0.0})
+    for num, mv_list in num_monthly.items():
+        for mv in mv_list:
+            mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
+            if not mk:
+                continue
+            month_agg[mk]["ursa_min"] += mv["ursa_min"]
+            month_agg[mk]["cfz_min"]  += mv["cfz_min"]
+            month_agg[mk]["vrs_min"]  += mv["usage_min"]
+
+    total_ursa_min = sum(v["ursa_min"] for v in month_agg.values())
+    total_cfz_min  = sum(v["cfz_min"]  for v in month_agg.values())
+    total_vrs_min  = sum(v["vrs_min"]  for v in month_agg.values())
+    total_vrs_fcc  = total_vrs_min  * VRS_RATE
+    total_cfz_fcc  = total_cfz_min  * CFZ_RATE
+
     # ── Summary tiles ──────────────────────────────────────────────────────────
     total    = len(rows)
     closed_n = sum(1 for r in rows if r["Is Closed"])
@@ -297,6 +374,61 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
   </div>
 </div>""", unsafe_allow_html=True)
 
+    # ── Monthly Values section ─────────────────────────────────────────────────
+    if num_monthly:
+        st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.5rem 0 0.75rem;'>Monthly Values — Matched Numbers (VRS / CfZ)</div>", unsafe_allow_html=True)
+        st.markdown(f"""
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin-bottom:1.5rem;">
+  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Numbers Matched</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#1F2937;">{len(vrs_numbers):,}</div>
+  </div>
+  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">URSA Minutes</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#00A651;font-variant-numeric:tabular-nums;">{total_ursa_min:,.0f}</div>
+    <div style="font-size:0.72rem;color:#6aab85;">@ ${VRS_RATE}/min</div>
+  </div>
+  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">CfZ Minutes</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#8B5CF6;font-variant-numeric:tabular-nums;">{total_cfz_min:,.0f}</div>
+    <div style="font-size:0.72rem;color:#a78bfa;">@ ${CFZ_RATE}/min</div>
+  </div>
+  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">VRS FCC Cost</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#1F2937;font-variant-numeric:tabular-nums;">${total_vrs_fcc:,.0f}</div>
+  </div>
+  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">CfZ FCC Cost</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#1F2937;font-variant-numeric:tabular-nums;">${total_cfz_fcc:,.0f}</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+        # Monthly usage trend line chart
+        if month_agg:
+            sorted_mk = sorted(month_agg.keys())
+            mv_chart_df = pd.DataFrame([
+                {"Month": mk, "Type": "URSA (min)",     "Minutes": round(month_agg[mk]["ursa_min"], 1)}
+                for mk in sorted_mk
+            ] + [
+                {"Month": mk, "Type": "CfZ (min)",      "Minutes": round(month_agg[mk]["cfz_min"],  1)}
+                for mk in sorted_mk
+            ])
+            mv_line = (
+                alt.Chart(mv_chart_df)
+                .mark_line(point=alt.OverlayMarkDef(size=50, filled=True), strokeWidth=2.5, interpolate="monotone")
+                .encode(
+                    x=alt.X("Month:N", sort=sorted_mk, axis=alt.Axis(title=None, labelAngle=-20)),
+                    y=alt.Y("Minutes:Q", title="Minutes"),
+                    color=alt.Color("Type:N", scale=alt.Scale(
+                        domain=["URSA (min)", "CfZ (min)"],
+                        range=["#00A651", "#8B5CF6"]
+                    )),
+                    tooltip=["Month", "Type", "Minutes"],
+                )
+                .properties(height=200, title="Monthly URSA & CfZ Minutes — Matched Numbers")
+            )
+            st.altair_chart(mv_line, use_container_width=True)
+
     # ── Monthly trend chart ────────────────────────────────────────────────────
     month_field_key = "Close Month" if date_field == "closed_date" else "Create Month"
     month_counts = {}
@@ -330,7 +462,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         s = r["Status"]
         status_counts[s] = status_counts.get(s, 0) + 1
     if status_counts:
-        st.markdown("#### Status Breakdown")
+        st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1rem 0 0.5rem;'>Status Breakdown</div>", unsafe_allow_html=True)
         sc_df = pd.DataFrame([{"Status": k, "Count": v} for k, v in status_counts.items()]).sort_values("Count", ascending=False)
         bar2 = (
             alt.Chart(sc_df)
