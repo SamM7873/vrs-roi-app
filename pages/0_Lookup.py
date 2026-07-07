@@ -8,6 +8,7 @@ import os
 import time
 from datetime import datetime
 from collections import defaultdict
+from utils import vrs_rate_for_month as _vrs_rate
 
 HUBSPOT_TOKEN = st.secrets.get("HUBSPOT_TOKEN", os.environ.get("HUBSPOT_TOKEN", ""))
 if not HUBSPOT_TOKEN:
@@ -238,10 +239,11 @@ def classify_roi(vrs_minutes, convo_minutes):
     else:
         return "-", diff, roi_pct
 
-def classify_cost_roi(vrs_minutes, convo_minutes):
+def classify_cost_roi(vrs_minutes, convo_minutes, month=None):
     vrs = to_float(vrs_minutes) or 0
     convo = to_float(convo_minutes) or 0
-    vrs_cost = vrs * VRS_RATE_PER_MINUTE
+    rate = _vrs_rate(month) if month else VRS_RATE_PER_MINUTE
+    vrs_cost = vrs * rate
     convo_cost = convo * CONVO_NOW_RATE_PER_MINUTE
     diff = vrs_cost - convo_cost
 
@@ -373,7 +375,7 @@ def build_report(matched_numbers):
             cfz_merged = sum(cfz_list) if cfz_list else None
             convo_merged = sum(convo_list) if convo_list else None
             roi, diff, roi_pct = classify_roi(vrs_merged, convo_merged)
-            vrs_cost, convo_cost, cost_diff, cost_roi = classify_cost_roi(vrs_merged, convo_merged)
+            vrs_cost, convo_cost, cost_diff, cost_roi = classify_cost_roi(vrs_merged, convo_merged, month=mkey)
 
             rows.append({"Name": name_display, "Email": email_display, "Numbers": numbers_display, "Credit Type": credit_display,
                          "Number Status": status_display, "Usage Type": usage_type_display,
