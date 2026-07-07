@@ -189,7 +189,6 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                     {"propertyName": "hs_pipeline", "operator": "EQ", "value": cs_pipeline_id}
                 ]}],
                 "properties": TICKET_PROPS,
-                "associations": ["contacts"],
                 "limit": 100,
                 "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
             }
@@ -210,19 +209,31 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 break
             time.sleep(0.25)
 
-    # Batch-read contact emails from ticket associations
+    # Use v4 batch associations API to get contact IDs for each ticket
     ticket_contact_email = {}   # ticket_id → email
-    all_contact_ids = []
-    for t in all_tickets:
-        assoc = t.get("associations", {}).get("contacts", {}).get("results", [])
-        for a in assoc:
-            cid = str(a.get("id") or a.get("toObjectId") or "")
-            if cid:
-                all_contact_ids.append((t["id"], cid))
+    ticket_ids = [t["id"] for t in all_tickets]
 
-    if all_contact_ids:
-        with st.spinner(f"Fetching emails for {len(all_contact_ids)} contact associations..."):
-            unique_cids = list({cid for _, cid in all_contact_ids})
+    with st.spinner(f"Looking up contact emails for {len(ticket_ids)} tickets..."):
+        tid_to_cids = defaultdict(list)  # ticket_id → [contact_id, ...]
+        for i in range(0, len(ticket_ids), 100):
+            chunk = ticket_ids[i:i+100]
+            ar = requests.post(
+                f"{BASE_URL}/crm/v4/associations/tickets/contacts/batch/read",
+                headers=_headers,
+                json={"inputs": [{"id": tid} for tid in chunk]},
+                timeout=30,
+            )
+            if ar.status_code == 200:
+                for result in ar.json().get("results", []):
+                    tid = str(result.get("from", {}).get("id", ""))
+                    for assoc in result.get("to", []):
+                        cid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                        if cid:
+                            tid_to_cids[tid].append(cid)
+            time.sleep(0.1)
+
+        unique_cids = list({cid for cids in tid_to_cids.values() for cid in cids})
+        if unique_cids:
             contact_email_map = {}
             for i in range(0, len(unique_cids), 100):
                 chunk = unique_cids[i:i+100]
@@ -238,9 +249,11 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                         email = (c.get("properties", {}).get("email") or "").strip().lower()
                         if email:
                             contact_email_map[cid] = email
-            for tid, cid in all_contact_ids:
-                if cid in contact_email_map and tid not in ticket_contact_email:
-                    ticket_contact_email[tid] = contact_email_map[cid]
+            for tid, cids in tid_to_cids.items():
+                for cid in cids:
+                    if cid in contact_email_map:
+                        ticket_contact_email[tid] = contact_email_map[cid]
+                        break
 
     if not all_tickets:
         st.warning("No Consumer Success tickets found.")
