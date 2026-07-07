@@ -6,7 +6,7 @@ import time
 import os
 from datetime import datetime
 from collections import defaultdict
-from utils import require_auth, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close
+from utils import require_auth, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close, vrs_rate_for_month
 
 st.set_page_config(page_title="Bulk Search", layout="wide", page_icon="🔎")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -16,7 +16,6 @@ HUBSPOT_TOKEN = st.secrets.get("HUBSPOT_TOKEN", os.environ.get("HUBSPOT_TOKEN", 
 BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
-VRS_RATE = 8.33
 CONVO_RATE = 2.60
 
 def month_sort_key(m):
@@ -148,7 +147,9 @@ if run_clicked and raw_input.strip():
         total_convo = sum(convo_vals)
         avg_vrs = (total_vrs / len(vrs_vals)) if vrs_vals else 0.0
         avg_convo = (total_convo / len(convo_vals)) if convo_vals else 0.0
-        saved = (total_vrs * VRS_RATE) - (total_convo * CONVO_RATE)
+        vrs_cost = sum(v["vrs"] * vrs_rate_for_month(mk) for mk, v in months.items())
+        convo_cost = total_convo * CONVO_RATE
+        saved = vrs_cost - convo_cost
         live_nums = sum(1 for n in person_nums[pk] if norm(num_to_status.get(n,"")) == "live")
         rows.append({
             "Name": person_name.get(pk, "—"),
@@ -160,8 +161,8 @@ if run_clicked and raw_input.strip():
             "Total Convo Now Min": round(total_convo, 1),
             "Avg VRS Min/Month": round(avg_vrs, 1),
             "Avg Convo Now Min/Month": round(avg_convo, 1),
-            "VRS Cost ($)": round(total_vrs * VRS_RATE, 2),
-            "Convo Now Cost ($)": round(total_convo * CONVO_RATE, 2),
+            "VRS Cost ($)": round(vrs_cost, 2),
+            "Convo Now Cost ($)": round(convo_cost, 2),
             "Cost Saved ($)": round(saved, 2),
         })
 

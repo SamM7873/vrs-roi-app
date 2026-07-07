@@ -6,9 +6,8 @@ import time
 import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta, date
-from utils import require_auth, fetch_all, COMMON_CSS, report_header, report_header_close, norm
+from utils import require_auth, fetch_all, COMMON_CSS, report_header, report_header_close, norm, vrs_rate_for_month
 
-VRS_RATE  = 8.33
 CFZ_RATE  = 2.60
 
 def _to_float(v):
@@ -332,7 +331,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
     total_ursa_min = sum(v["ursa_min"] for v in month_agg.values())
     total_cfz_min  = sum(v["cfz_min"]  for v in month_agg.values())
     total_vrs_min  = sum(v["vrs_min"]  for v in month_agg.values())
-    total_vrs_fcc  = total_vrs_min  * VRS_RATE
+    total_vrs_fcc  = sum(v["vrs_min"] * vrs_rate_for_month(mk) for mk, v in month_agg.items())
     total_cfz_fcc  = total_cfz_min  * CFZ_RATE
 
     # ── Summary tiles ──────────────────────────────────────────────────────────
@@ -386,7 +385,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">URSA Minutes</div>
     <div style="font-size:1.4rem;font-weight:800;color:#00A651;font-variant-numeric:tabular-nums;">{total_ursa_min:,.0f}</div>
-    <div style="font-size:0.72rem;color:#6aab85;">@ ${VRS_RATE}/min</div>
+    <div style="font-size:0.72rem;color:#6aab85;">FCC rate per month</div>
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">CfZ Minutes</div>
