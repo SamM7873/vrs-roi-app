@@ -73,7 +73,7 @@ def _date_range_for_preset(preset):
 
 # ── filter UI ─────────────────────────────────────────────────────────────────
 
-col_preset, col_from, col_to, col_field = st.columns([2, 1, 1, 1.5])
+col_preset, col_from, col_to, col_field, col_reason = st.columns([2, 1, 1, 1.4, 1.6])
 with col_preset:
     preset = st.selectbox("Date range", PRESETS, index=0)
 with col_field:
@@ -83,6 +83,12 @@ with col_field:
         index=0,
     )
     date_field = "number_deleted_at" if date_field_label == "Number Deleted At" else "number_created_at"
+with col_reason:
+    reason_filter = st.selectbox(
+        "Deleted Reason",
+        ["CUSTOMER_PORTED_OUT", "All Reasons"],
+        index=0,
+    )
 
 if preset == "Custom Range":
     with col_from:
@@ -150,8 +156,12 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
     else:
         range_label = "All Time"
 
+    # Apply deleted reason filter
+    if reason_filter != "All Reasons":
+        records = [p for p in records if norm(p.get("deleted_reason") or "") == norm(reason_filter)]
+
     if not records:
-        st.warning(f"No records found in the selected date range.")
+        st.warning(f"No records found for the selected filters.")
         st.stop()
 
     total = len(records)
@@ -205,6 +215,7 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
 <div style="font-size:0.8rem;color:#9dc8b0;margin-bottom:1rem;">
   Snapshot: <strong style="color:#E6F2EC;">{range_label}</strong>
   &nbsp;·&nbsp; Filtered by <strong style="color:#E6F2EC;">{date_field_label}</strong>
+  &nbsp;·&nbsp; Reason: <strong style="color:#E6F2EC;">{reason_filter}</strong>
   &nbsp;·&nbsp; {total:,} port-out numbers
 </div>
 """, unsafe_allow_html=True)
@@ -302,9 +313,9 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
         st.markdown("#### Deleted Reason Breakdown")
         bar = alt.Chart(reason_counts).mark_bar(color="#EF4444", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
             x=alt.X("Count:Q", title="Count"),
-            y=alt.Y("Deleted Reason:N", sort="-x", title=None),
+            y=alt.Y("Deleted Reason:N", sort="-x", title=None, axis=alt.Axis(labelLimit=300)),
             tooltip=["Deleted Reason", "Count"],
-        ).properties(height=max(120, len(reason_counts) * 28))
+        ).properties(height=max(120, len(reason_counts) * 36))
         st.altair_chart(bar, use_container_width=True)
 
     # ── Data table ────────────────────────────────────────────────────────────
