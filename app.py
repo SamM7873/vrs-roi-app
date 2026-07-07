@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 st.set_page_config(page_title="VRS Lookup", layout="wide", page_icon="🔍")
 
@@ -39,7 +39,7 @@ def render_sync_widget():
             "healthy": healthy,
             "live": live if live is not None else "—",
             "suspended": suspended if suspended is not None else "—",
-            "last_sync": datetime.now().strftime("%b %d at %I:%M %p"),
+            "last_sync": datetime.now(timezone(timedelta(hours=-5))).strftime("%b %d at %I:%M %p CT"),
         }
     d = st.session_state["_sync_widget"]
     dot  = "#2DB84B" if d["healthy"] else "#EF4444"
