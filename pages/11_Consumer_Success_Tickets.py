@@ -189,6 +189,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                     {"propertyName": "hs_pipeline", "operator": "EQ", "value": cs_pipeline_id}
                 ]}],
                 "properties": TICKET_PROPS,
+                "associations": ["contacts"],
                 "limit": 100,
                 "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
             }
@@ -208,6 +209,38 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             if not after:
                 break
             time.sleep(0.25)
+
+    # Batch-read contact emails from ticket associations
+    ticket_contact_email = {}   # ticket_id → email
+    all_contact_ids = []
+    for t in all_tickets:
+        assoc = t.get("associations", {}).get("contacts", {}).get("results", [])
+        for a in assoc:
+            cid = str(a.get("id") or a.get("toObjectId") or "")
+            if cid:
+                all_contact_ids.append((t["id"], cid))
+
+    if all_contact_ids:
+        with st.spinner(f"Fetching emails for {len(all_contact_ids)} contact associations..."):
+            unique_cids = list({cid for _, cid in all_contact_ids})
+            contact_email_map = {}
+            for i in range(0, len(unique_cids), 100):
+                chunk = unique_cids[i:i+100]
+                br = requests.post(
+                    f"{BASE_URL}/crm/v3/objects/contacts/batch/read",
+                    headers=_headers,
+                    json={"inputs": [{"id": c} for c in chunk], "properties": ["email"]},
+                    timeout=30,
+                )
+                if br.status_code == 200:
+                    for c in br.json().get("results", []):
+                        cid = str(c["id"])
+                        email = (c.get("properties", {}).get("email") or "").strip().lower()
+                        if email:
+                            contact_email_map[cid] = email
+            for tid, cid in all_contact_ids:
+                if cid in contact_email_map and tid not in ticket_contact_email:
+                    ticket_contact_email[tid] = contact_email_map[cid]
 
     if not all_tickets:
         st.warning("No Consumer Success tickets found.")
@@ -235,7 +268,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             "Category":      tp.get("hs_ticket_category") or "—",
             "Subcategory":   tp.get("hs_ticket_subcategory") or "—",
             "Owner":         owner_names.get(tp.get("hubspot_owner_id") or "", "—"),
-            "Email":         tp.get("email") or "—",
+            "Email":         ticket_contact_email.get(t["id"]) or tp.get("email") or "—",
             "Created":       tp.get("createdate") or "",
             "Closed":        tp.get("closed_date") or "",
             "Description":   tp.get("content") or "—",
@@ -443,15 +476,18 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             "Month":   month_labels,
             "Tickets": [month_counts[m] for m in sorted_months],
         })
+        n_months = len(month_labels)
+        bar_width = max(20, min(60, 800 // max(n_months, 1)))
+        chart_width = max(400, n_months * (bar_width + 10))
         bar = (
             alt.Chart(chart_df)
-            .mark_bar(color="#3B82F6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+            .mark_bar(color="#3B82F6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=bar_width)
             .encode(
                 x=alt.X("Month:N", sort=month_labels, axis=alt.Axis(title=None, labelAngle=-20)),
                 y=alt.Y("Tickets:Q", title="Ticket Count"),
                 tooltip=["Month", "Tickets"],
             )
-            .properties(height=220, title=f"Tickets by {date_field_label} — Monthly")
+            .properties(height=220, width=chart_width, title=f"Tickets by {date_field_label} — Monthly")
         )
         st.altair_chart(bar, use_container_width=True)
 
