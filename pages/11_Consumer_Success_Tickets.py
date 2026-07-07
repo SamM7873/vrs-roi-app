@@ -497,9 +497,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             st.altair_chart(mv_line, use_container_width=True)
 
             # ── URSA bar chart July 2026+ with FCC cost labels ─────────────────
-            jul26_mks = [mk for mk in sorted_mk if mk >= "2026-07"]
+            jul26_mks = [mk for mk in sorted_mk if mk >= "2026-06"]
             if jul26_mks:
-                st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.25rem 0 0.5rem;'>URSA Minutes & FCC Cost — July 2026 Onward</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.25rem 0 0.5rem;'>URSA Minutes & FCC Cost — June 2026 Onward</div>", unsafe_allow_html=True)
                 ursa_rows = []
                 for mk in jul26_mks:
                     ursa_m  = round(month_agg[mk]["ursa_min"], 1)
