@@ -50,8 +50,13 @@ def render_sync_widget():
     with st.sidebar:
         st.markdown("""<div style="border-top:1px solid rgba(255,255,255,0.1);margin:0.5rem 0;"></div>""",
                     unsafe_allow_html=True)
-        ts_ms = int(d["ts"] * 1000)
         age_mins = int((time.time() - d["ts"]) / 60)
+        # Format in Central Time (UTC-5 CDT / UTC-6 CST) — auto pick offset by month
+        _now = datetime.fromtimestamp(d["ts"], tz=timezone.utc)
+        _ct_offset = -5 if 3 <= _now.month <= 11 else -6  # CDT Mar–Nov, CST otherwise
+        _ct_label  = "CDT" if _ct_offset == -5 else "CST"
+        last_sync  = _now.astimezone(timezone(timedelta(hours=_ct_offset))).strftime(f"%b %d at %I:%M %p {_ct_label}")
+
         st.markdown(f"""
 <div style="padding:0.6rem 0.25rem 0;">
   <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
@@ -60,38 +65,17 @@ def render_sync_widget():
     <span style="font-size:0.78rem;font-weight:700;color:rgba(255,255,255,0.9);">HubSpot {label}</span>
   </div>
   <div style="font-size:0.68rem;color:rgba(255,255,255,0.45);margin-bottom:0.75rem;">
-    Last sync: <span id="sync-time-main">—</span>
+    Last sync: {last_sync}
   </div>
   <div style="font-size:0.68rem;color:rgba(255,255,255,0.35);">
     Data refreshes every 5 min · {age_mins}m ago
   </div>
 </div>
-<script>
-(function() {{
-  var ts = {ts_ms};
-  var d = new Date(ts);
-  var fmt = d.toLocaleString('en-US', {{month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short'}});
-  var el = document.getElementById('sync-time-main');
-  if (el) el.textContent = fmt;
-}})();
-</script>
 """, unsafe_allow_html=True)
 
         with st.expander("View Details"):
-            st.markdown(f"""
-<span style="font-size:0.75rem;color:#6B7280;">
-  Last sync: <span id="sync-time-detail">—</span>
-</span>
-<script>
-(function() {{
-  var ts = {ts_ms};
-  var d = new Date(ts);
-  var fmt = d.toLocaleString('en-US', {{month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short'}});
-  var el = document.getElementById('sync-time-detail');
-  if (el) el.textContent = fmt;
-}})();
-</script>
-""", unsafe_allow_html=True)
+            st.caption(f"Data refreshes every 5 min · {age_mins}m ago")
+            st.caption(f"Last sync: {last_sync}")
 
 lookup_page   = st.Page("pages/0_Lookup.py",              title="VRS Lookup",           icon="🔍", default=True)
 numbers_page  = st.Page("pages/1_Numbers_Report.py",      title="Numbers Report",        icon="📊")
