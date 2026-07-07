@@ -430,45 +430,45 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 time.sleep(0.1)
 
     # Collect all monthly value record IDs, preserving which nid they belong to
-    # (so we can apply the closed-month constraint per nid)
     mv_id_to_nid = {}
     for nid, mv_ids in nid_to_mv_ids.items():
         for mvid in mv_ids:
-            mv_id_to_nid[mvid] = nid  # last nid wins if dup; dedup below
+            mv_id_to_nid[mvid] = nid
 
     all_mv_ids = list(mv_id_to_nid.keys())
 
-    # Step 4: batch-read monthly value records directly by ID
+    # Step 4: search MV records by ID with month_date > 2026-05-31 filter
+    # 2026-06-01 00:00:00 UTC in milliseconds = 1780272000000
     MV_PROPS = ["number", "month_date", "service_type",
                 "usage_minutes", "ursa_minutes", "cfz_minutes",
                 "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
                 "fcc_rate_1"]
+    MV_DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": "1780272000000"}
 
     if all_mv_ids:
-        with st.spinner(f"Reading {len(all_mv_ids)} monthly value records..."):
+        with st.spinner(f"Reading {len(all_mv_ids)} monthly value records (June 2026+)..."):
             for i in range(0, len(all_mv_ids), 100):
                 chunk_ids = all_mv_ids[i:i+100]
-                br = requests.post(
-                    f"{BASE_URL}/crm/v3/objects/2-46246179/batch/read",
-                    headers=_headers,
-                    json={"inputs": [{"id": mid} for mid in chunk_ids], "properties": MV_PROPS},
-                    timeout=30,
+                mv_recs = fetch_all(
+                    "2-46246179",
+                    MV_PROPS,
+                    filter_groups=[{"filters": [
+                        {"propertyName": "hs_object_id", "operator": "IN", "values": chunk_ids},
+                        MV_DATE_FILTER,
+                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
+                    ]}]
                 )
-                if br.status_code == 200:
-                    for obj in br.json().get("results", []):
-                        mvid = str(obj["id"])
-                        nid  = mv_id_to_nid.get(mvid, "")
-                        p2   = obj.get("properties", {})
-                        if norm(p2.get("service_type") or "") != "vrs":
-                            continue
-                        # Use nid as key so dedup is at number-object level
-                        num_monthly[nid].append({
-                            "month":    p2.get("month_date") or "",
-                            "ursa_min": _to_float(p2.get("ursa_minutes")),
-                            "cfz_min":  _to_float(p2.get("cfz_minutes")),
-                            "fcc_vrs":  _to_float(p2.get("fcc_cost_based_on_vrs_usage")),
-                            "fcc_cfz":  _to_float(p2.get("fcc_cost_based_on_cfz_usage")),
-                        })
+                for obj in mv_recs:
+                    mvid = str(obj["id"])
+                    nid  = mv_id_to_nid.get(mvid, "")
+                    p2   = obj.get("properties", {})
+                    num_monthly[nid].append({
+                        "month":    p2.get("month_date") or "",
+                        "ursa_min": _to_float(p2.get("ursa_minutes")),
+                        "cfz_min":  _to_float(p2.get("cfz_minutes")),
+                        "fcc_vrs":  _to_float(p2.get("fcc_cost_based_on_vrs_usage")),
+                        "fcc_cfz":  _to_float(p2.get("fcc_cost_based_on_cfz_usage")),
+                    })
 
     vrs_numbers = list(num_id_to_number.values())  # for display count only
 
