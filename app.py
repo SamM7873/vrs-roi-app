@@ -39,7 +39,6 @@ def render_sync_widget():
             "healthy": healthy,
             "live": live if live is not None else "—",
             "suspended": suspended if suspended is not None else "—",
-            "last_sync": datetime.now(timezone(timedelta(hours=-5))).strftime("%b %d at %I:%M %p CT"),
         }
     d = st.session_state["_sync_widget"]
     dot  = "#2DB84B" if d["healthy"] else "#EF4444"
@@ -51,6 +50,8 @@ def render_sync_widget():
     with st.sidebar:
         st.markdown("""<div style="border-top:1px solid rgba(255,255,255,0.1);margin:0.5rem 0;"></div>""",
                     unsafe_allow_html=True)
+        ts_ms = int(d["ts"] * 1000)
+        age_mins = int((time.time() - d["ts"]) / 60)
         st.markdown(f"""
 <div style="padding:0.6rem 0.25rem 0;">
   <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
@@ -59,17 +60,38 @@ def render_sync_widget():
     <span style="font-size:0.78rem;font-weight:700;color:rgba(255,255,255,0.9);">HubSpot {label}</span>
   </div>
   <div style="font-size:0.68rem;color:rgba(255,255,255,0.45);margin-bottom:0.75rem;">
-    Last sync: {d['last_sync']}
+    Last sync: <span id="sync-time-main">—</span>
   </div>
-
+  <div style="font-size:0.68rem;color:rgba(255,255,255,0.35);">
+    Data refreshes every 5 min · {age_mins}m ago
+  </div>
+</div>
+<script>
+(function() {{
+  var ts = {ts_ms};
+  var d = new Date(ts);
+  var fmt = d.toLocaleString('en-US', {{month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short'}});
+  var el = document.getElementById('sync-time-main');
+  if (el) el.textContent = fmt;
+}})();
+</script>
 """, unsafe_allow_html=True)
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
         with st.expander("View Details"):
-            age_mins = int((time.time() - d["ts"]) / 60)
-            st.caption(f"Data refreshes every 5 min · {age_mins}m ago")
-            st.caption(f"Last sync: {d['last_sync']}")
+            st.markdown(f"""
+<span style="font-size:0.75rem;color:#6B7280;">
+  Last sync: <span id="sync-time-detail">—</span>
+</span>
+<script>
+(function() {{
+  var ts = {ts_ms};
+  var d = new Date(ts);
+  var fmt = d.toLocaleString('en-US', {{month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short'}});
+  var el = document.getElementById('sync-time-detail');
+  if (el) el.textContent = fmt;
+}})();
+</script>
+""", unsafe_allow_html=True)
 
 lookup_page   = st.Page("pages/0_Lookup.py",              title="VRS Lookup",           icon="🔍", default=True)
 numbers_page  = st.Page("pages/1_Numbers_Report.py",      title="Numbers Report",        icon="📊")
