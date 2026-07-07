@@ -716,30 +716,59 @@ def render_profit_loss_summary(df):
     cost_profit_months = month_rows[month_rows["Cost ROI"] == "PROFIT"]
     cost_loss_months   = month_rows[month_rows["Cost ROI"] == "LOSS"]
 
+    def _sec_head(text):
+        st.markdown(f"<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:#9dc8b0;margin:1.25rem 0 0.6rem;'>{text}</div>", unsafe_allow_html=True)
+
+    def _mini_tiles(*items):
+        tiles = "".join(
+            f"""<div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
+  <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">{lbl}</div>
+  <div style="font-size:1.3rem;font-weight:800;color:#E6F2EC;font-variant-numeric:tabular-nums;">{val}</div>
+  {f'<div style="font-size:0.75rem;color:#6aab85;margin-top:0.2rem;">{sub}</div>' if sub else ''}
+</div>"""
+            for lbl, val, sub in items
+        )
+        st.markdown(f'<div style="display:grid;grid-template-columns:repeat({len(items)},1fr);gap:0.85rem;margin-bottom:0.5rem;">{tiles}</div>', unsafe_allow_html=True)
+
     # ── VRS ────────────────────────────────────────────────────────────────────
-    st.markdown("#### VRS")
-    v1, v2, v3 = st.columns(3)
-    v1.metric("Total Minutes", f"{vrs_mins.sum():,.1f} min")
-    v2.metric("Total Cost", f"${vrs_cost.sum():,.2f}")
-    v3.metric("Rate", f"${VRS_RATE_PER_MINUTE}/min")
+    _sec_head("VRS")
+    _mini_tiles(
+        ("Total Minutes", f"{vrs_mins.sum():,.1f} min", f"@ ${VRS_RATE_PER_MINUTE}/min"),
+        ("Total Cost",    f"${vrs_cost.sum():,.2f}",    ""),
+        ("Rate",          f"${VRS_RATE_PER_MINUTE}/min",""),
+    )
 
     # ── Convo Now ──────────────────────────────────────────────────────────────
-    st.markdown("#### Convo Now")
-    n1, n2, n3 = st.columns(3)
-    n1.metric("Total Minutes", f"{convo_mins.sum():,.1f} min")
-    n2.metric("Total Cost", f"${convo_cost.sum():,.2f}")
-    n3.metric("Rate", f"${CONVO_NOW_RATE_PER_MINUTE}/min")
+    _sec_head("Convo Now")
+    _mini_tiles(
+        ("Total Minutes", f"{convo_mins.sum():,.1f} min", f"@ ${CONVO_NOW_RATE_PER_MINUTE}/min"),
+        ("Total Cost",    f"${convo_cost.sum():,.2f}",    ""),
+        ("Rate",          f"${CONVO_NOW_RATE_PER_MINUTE}/min", ""),
+    )
 
     # ── Cost Summary ───────────────────────────────────────────────────────────
-    st.markdown("#### Cost Summary")
-    s1, s2, s3 = st.columns(3)
     net = cost_diff.sum()
-    s1.metric("PROFIT months", len(cost_profit_months), f"+${cost_diff[cost_diff > 0].sum():,.2f}")
-    s2.metric("LOSS months",   len(cost_loss_months),   f"-${abs(cost_diff[cost_diff < 0].sum()):,.2f}")
-    s3.metric("Net Cost (VRS − Convo Now)", f"${net:,.2f}", delta_color="inverse")
+    net_color = "#00A651" if net >= 0 else "#EF4444"
+    _sec_head("Cost Summary")
+    st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:0.5rem;">
+  <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
+    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">PROFIT Months</div>
+    <div style="font-size:1.3rem;font-weight:800;color:#00A651;">{len(cost_profit_months)}</div>
+    <div style="font-size:0.75rem;color:#6aab85;">+${cost_diff[cost_diff > 0].sum():,.2f}</div>
+  </div>
+  <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
+    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">LOSS Months</div>
+    <div style="font-size:1.3rem;font-weight:800;color:#EF4444;">{len(cost_loss_months)}</div>
+    <div style="font-size:0.75rem;color:#f87171;">-${abs(cost_diff[cost_diff < 0].sum()):,.2f}</div>
+  </div>
+  <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
+    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">Net Cost (VRS − Convo Now)</div>
+    <div style="font-size:1.3rem;font-weight:800;color:{net_color};font-variant-numeric:tabular-nums;">${net:,.2f}</div>
+  </div>
+</div>""", unsafe_allow_html=True)
 
     st.markdown("""<div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
-                   color:#6B7280;margin:1.25rem 0 0.6rem;">Loss Months Detail</div>""", unsafe_allow_html=True)
+                   color:#9dc8b0;margin:1.25rem 0 0.6rem;">Loss Months Detail</div>""", unsafe_allow_html=True)
     if loss_months.empty:
         st.markdown('<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:0.75rem 1rem;color:#15803D;font-size:0.85rem;">No LOSS months — all months are profitable.</div>', unsafe_allow_html=True)
     else:
@@ -821,9 +850,16 @@ p, span, div, label { line-height: 1.6; }
 h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.2; }
 /* Tabs typography */
 .stTabs [data-baseweb="tab"] { font-size: 0.875rem !important; font-weight: 600 !important; letter-spacing: 0.01em !important; }
-/* Metric/label text */
-[data-testid="stMetricLabel"] { font-size: 0.72rem !important; font-weight: 700 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
-[data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 800 !important; }
+/* Metric/label text — force readable colors on dark background */
+[data-testid="stMetricLabel"] { font-size: 0.72rem !important; font-weight: 700 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; color: #9dc8b0 !important; }
+[data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 800 !important; color: #E6F2EC !important; }
+[data-testid="stMetricDelta"] { font-size: 0.82rem !important; }
+/* Tab styling on dark background */
+.stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 2px solid #1e5438 !important; gap: 0.25rem !important; }
+.stTabs [data-baseweb="tab"] { background: transparent !important; color: #9dc8b0 !important; border-radius: 8px 8px 0 0 !important; padding: 0.5rem 1rem !important; }
+.stTabs [data-baseweb="tab"][aria-selected="true"] { background: #1a4d32 !important; color: #E6F2EC !important; border-bottom: 2px solid #00A651 !important; }
+.stTabs [data-baseweb="tab"]:hover { background: #163e28 !important; color: #E6F2EC !important; }
+.stTabs [data-baseweb="tab-panel"] { padding-top: 1.25rem !important; }
 /* Info/warning boxes */
 [data-testid="stAlert"] { font-size: 0.9rem !important; line-height: 1.5 !important; }
 /* Dataframe text */
@@ -1711,7 +1747,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             "D": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is at risk — immediate action needed to prevent churn.",
         }
 
-        st.markdown("#### VRS Consumer Retention Analysis")
+        st.markdown("<div style='font-size:1.05rem;font-weight:700;color:#E6F2EC;margin-bottom:0.75rem;letter-spacing:-0.01em;'>VRS Consumer Retention Analysis</div>", unsafe_allow_html=True)
         analysis_date = datetime.now().strftime("%b %d, %Y at %I:%M %p")
 
         seg_counts = {"A": 0, "B": 0, "C": 0, "D": 0}
