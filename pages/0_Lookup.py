@@ -639,14 +639,14 @@ def render_table_and_summary(df):
     net_label = "PROFIT" if net >= 0 else "LOSS"
 
     # ── Summary stat tiles ──
-    def stat_tile(label, value, sub="", color="#1F2937"):
-        return f"""<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:12px;padding:1rem 1.25rem;">
-  <div style="font-size:0.68rem;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#7A8A7A;margin-bottom:0.4rem;">{label}</div>
-  <div style="font-size:1.5rem;font-weight:800;color:{color};line-height:1.1;letter-spacing:-0.02em;">{value}</div>
-  {f'<div style="font-size:0.78rem;color:#8A907A;margin-top:0.25rem;font-weight:500;">{sub}</div>' if sub else ''}
+    def stat_tile(label, value, sub="", color="#1A1A1A"):
+        return f"""<div style="background:#ffffff;border:1px solid #E2E8E2;border-radius:14px;padding:1.1rem 1.4rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+  <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6B7280;margin-bottom:0.5rem;">{label}</div>
+  <div style="font-size:1.6rem;font-weight:800;color:{color};line-height:1.1;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;">{value}</div>
+  {f'<div style="font-size:0.8rem;color:#9CA3AF;margin-top:0.3rem;font-weight:500;">{sub}</div>' if sub else ''}
 </div>"""
 
-    tiles_html = f"""<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.85rem;margin-bottom:1.5rem;">
+    tiles_html = f"""<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.75rem;">
   {stat_tile("Total VRS Minutes", f"{vrs_mins.sum():,.1f}", f"@ ${VRS_RATE_PER_MINUTE}/min")}
   {stat_tile("Total Convo Now Min", f"{convo_mins.sum():,.1f}", f"@ ${CONVO_NOW_RATE_PER_MINUTE}/min")}
   {stat_tile("Net Cost Saved", f"${abs(net):,.2f}", net_label, net_color)}
@@ -655,27 +655,26 @@ def render_table_and_summary(df):
     st.markdown(tiles_html, unsafe_allow_html=True)
 
     # ── Month-by-month table ──
-    st.markdown("""<div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
-                   color:#6B7280;margin-bottom:0.6rem;">Month-by-Month Breakdown</div>""", unsafe_allow_html=True)
+    st.markdown("""<div style="font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+                   color:#E6F2EC;margin-bottom:0.75rem;">Month-by-Month Breakdown</div>""", unsafe_allow_html=True)
 
     def roi_badge(val):
         if val == "PROFIT":
-            return '<span style="background:#DCFCE7;color:#15803D;padding:2px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;">PROFIT</span>'
+            return '<span style="background:#DCFCE7;color:#15803D;padding:3px 12px;border-radius:6px;font-size:0.78rem;font-weight:700;letter-spacing:0.02em;">PROFIT</span>'
         if val == "LOSS":
-            return '<span style="background:#FEE2E2;color:#B91C1C;padding:2px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;">LOSS</span>'
-        return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 8px;border-radius:6px;font-size:0.72rem;">—</span>'
+            return '<span style="background:#FEE2E2;color:#B91C1C;padding:3px 12px;border-radius:6px;font-size:0.78rem;font-weight:700;letter-spacing:0.02em;">LOSS</span>'
+        return '<span style="background:#F3F4F6;color:#9CA3AF;padding:3px 10px;border-radius:6px;font-size:0.78rem;">—</span>'
 
-    header = """<div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 1fr 1fr 100px;
-                gap:0.5rem;padding:0.5rem 1rem;background:#F6F8FA;border-radius:8px 8px 0 0;
-                border:1px solid #E5E7EB;border-bottom:none;
-                font-size:0.68rem;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6B7280;">
+    header = """<div style="display:grid;grid-template-columns:130px 1fr 1fr 1fr 1fr 1fr 110px;
+                gap:0.75rem;padding:0.7rem 1.25rem;background:#1a4d32;border-radius:10px 10px 0 0;
+                font-size:0.72rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:#9dc8b0;">
   <div>Month</div><div>VRS Min</div><div>Convo Now Min</div>
   <div>VRS Cost</div><div>Convo Now Cost</div><div>Saved ($)</div><div style="text-align:center;">ROI</div>
 </div>"""
 
     rows_html = ""
     for i, (_, row) in enumerate(month_rows.sort_values("Month", key=lambda s: s.map(month_sort_key), ascending=False).iterrows()):
-        bg = "#fff" if i % 2 == 0 else "#FAFAFA"
+        bg = "#ffffff" if i % 2 == 0 else "#F8FAF8"
         vrs_m  = row["VRS Minutes"]
         con_m  = row["Convo Now Minutes"]
         vrs_c  = row["VRS Cost ($)"]
@@ -685,19 +684,19 @@ def render_table_and_summary(df):
         try: diff_str = f"${float(diff_v):+,.2f}"
         except: diff_str = str(diff_v)
         diff_color = "#15803D" if roi_v == "PROFIT" else "#B91C1C" if roi_v == "LOSS" else "#6B7280"
-        rows_html += f"""<div style="display:grid;grid-template-columns:120px 1fr 1fr 1fr 1fr 1fr 100px;
-            gap:0.5rem;padding:0.55rem 1rem;background:{bg};border:1px solid #E5E7EB;border-top:none;
-            font-size:0.83rem;color:#1F2937;align-items:center;">
-  <div style="font-weight:600;color:#374151;">{row['Month']}</div>
+        rows_html += f"""<div style="display:grid;grid-template-columns:130px 1fr 1fr 1fr 1fr 1fr 110px;
+            gap:0.75rem;padding:0.7rem 1.25rem;background:{bg};border-left:1px solid #E5E7EB;border-right:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;
+            font-size:0.9rem;color:#1F2937;align-items:center;font-variant-numeric:tabular-nums;">
+  <div style="font-weight:600;color:#374151;font-size:0.88rem;">{row['Month']}</div>
   <div>{f"{float(vrs_m):,.1f}" if vrs_m not in ("-", None) else "—"}</div>
   <div>{f"{float(con_m):,.1f}" if con_m not in ("-", None) else "—"}</div>
   <div>{f"${float(vrs_c):,.2f}" if vrs_c not in ("-", None) else "—"}</div>
   <div>{f"${float(con_c):,.2f}" if con_c not in ("-", None) else "—"}</div>
-  <div style="font-weight:600;color:{diff_color};">{diff_str}</div>
+  <div style="font-weight:700;color:{diff_color};">{diff_str}</div>
   <div style="text-align:center;">{roi_badge(roi_v)}</div>
 </div>"""
 
-    st.markdown(f'<div style="border-radius:8px;overflow:hidden;">{header}{rows_html}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">{header}{rows_html}</div>', unsafe_allow_html=True)
 
 def render_profit_loss_summary(df):
     month_rows = df[df["Month"] != "-"]
@@ -748,7 +747,7 @@ def render_profit_loss_summary(df):
         st.dataframe(loss_months[cols_show].reset_index(drop=True), use_container_width=True, hide_index=True)
 
 def render_charts(person_numbers, person_month_values, person_email_display):
-    st.subheader("VRS vs Convo Now — Month-over-Month Comparison")
+    st.markdown("<div style='font-size:1.1rem;font-weight:700;color:#E6F2EC;margin:1.5rem 0 1rem;letter-spacing:-0.01em;'>VRS vs Convo Now — Month-over-Month Comparison</div>", unsafe_allow_html=True)
 
     for person_key in sorted(person_numbers.keys()):
         months = person_month_values.get(person_key)
