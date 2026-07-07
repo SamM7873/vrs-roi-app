@@ -363,6 +363,20 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     all_num_ids = list({nid for nids in tid_to_num_ids.values() for nid in nids})
 
+    # Build num_id → closed month from each ticket's closed date
+    # (used later to scope monthly values to the month the ticket was closed)
+    num_id_to_close_months = defaultdict(set)
+    tid_to_close_month = {}
+    for r in rows:
+        close_dt = _parse_dt(r["Closed"])
+        if close_dt:
+            tid_to_close_month[r["ID"]] = close_dt.strftime("%Y-%m")
+    for tid, nids in tid_to_num_ids.items():
+        cm = tid_to_close_month.get(tid)
+        if cm:
+            for nid in nids:
+                num_id_to_close_months[nid].add(cm)
+
     # Batch-read number objects to get the phone number string
     num_id_to_number = {}
     if all_num_ids:
@@ -390,6 +404,11 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                             num_id_to_number[str(obj["id"])] = num
 
     vrs_numbers = list(set(num_id_to_number.values()))
+
+    # Build number string → allowed close months (for scoping monthly values)
+    num_to_close_months = defaultdict(set)
+    for nid, num in num_id_to_number.items():
+        num_to_close_months[num].update(num_id_to_close_months.get(nid, set()))
 
     if vrs_numbers:
         with st.spinner(f"Fetching monthly values for {len(vrs_numbers)} number(s)..."):
@@ -421,12 +440,16 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                             "fcc_rate":     _to_float(p2.get("fcc_rate_1")),
                         })
 
-    # Aggregate monthly values — only VRS records from June 2026 onward
+    # Aggregate monthly values — only the month matching the ticket's closed date
     month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "fcc_vrs": 0.0, "fcc_cfz": 0.0})
     for num, mv_list in num_monthly.items():
+        allowed_months = num_to_close_months.get(num, set())
         for mv in mv_list:
             mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
             if not mk or mk < "2026-06":
+                continue
+            # Only include the monthly record for the month the ticket was closed
+            if allowed_months and mk not in allowed_months:
                 continue
             # All fetched records are service_type=VRS (filtered in query)
             month_agg[mk]["ursa_min"] += mv["ursa_min"]
