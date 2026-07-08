@@ -90,7 +90,8 @@ numfunnel_page = st.Page("pages/9_Number_Funnel.py",      title="Number Funnel",
 winback_page    = st.Page("pages/10_Port_Out_Winback.py",          title="Port-Out Winback",         icon="🔄")
 cs_tickets_page  = st.Page("pages/11_Consumer_Success_Tickets.py",  title="Consumer Success Tickets",  icon="🎫")
 vrs_zero_page    = st.Page("pages/12_VRS_Zero_ConvoNow_Active.py",   title="VRS Zero / Convo Now Active", icon="🔄")
+age_demo_page    = st.Page("pages/13_Age_Demographics.py",           title="Age Demographics",             icon="👥")
 
-pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page, numfunnel_page, winback_page, cs_tickets_page, vrs_zero_page])
+pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page, numfunnel_page, winback_page, cs_tickets_page, vrs_zero_page, age_demo_page])
 render_sync_widget()
 pg.run()
