@@ -407,9 +407,6 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                         svc = norm(p.get("service_type") or "")
                         if svc != "vrs":
                             continue
-                        status = norm(p.get("number_status") or "")
-                        if status != "live":
-                            continue
                         num = str(p.get("number") or "").strip()
                         if num:
                             num_id_to_number[str(obj["id"])] = num
