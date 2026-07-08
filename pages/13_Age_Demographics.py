@@ -4,7 +4,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from collections import defaultdict
 from datetime import date, datetime, timezone
-from utils import require_auth, fetch_all, list_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import (
+    require_auth, fetch_all, list_all, norm,
+    save_report, load_report, saved_at_label,
+    COMMON_CSS, report_header, report_header_close,
+)
 
 st.set_page_config(page_title="Age Demographics", layout="wide", page_icon="👥")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -77,14 +81,24 @@ MV_DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": floo
 
 run = st.button("Load Age Demographics", type="primary")
 
+def _filters_match(c):
+    return (c and c.get("service_type") == service_type
+            and c.get("number_status") == number_status
+            and c.get("range_label") == range_label)
+
 cached = st.session_state.get("_age_demo_cache")
-if cached and not run:
-    if (cached.get("service_type") != service_type
-            or cached.get("number_status") != number_status
-            or cached.get("range_label") != range_label):
-        cached = None  # filters changed — require a fresh load
+if not _filters_match(cached):
+    cached = None
+
+# Fall back to the saved report on disk (survives reloads and restarts)
+if cached is None and not run:
+    saved = load_report("age_demographics")
+    if _filters_match(saved):
+        cached = saved
+        st.session_state["_age_demo_cache"] = saved
 
 if run:
+    cached = None
 
     # ── Step 1: Fetch Number objects ─────────────────────────────────────────
     NUM_PROPS = ["number", "email", "first_name", "last_name",
@@ -243,6 +257,8 @@ if run:
         "summary": summary,
     }
     cached = st.session_state["_age_demo_cache"]
+    save_report("age_demographics", cached)
+    cached = load_report("age_demographics") or cached
 
 # ── Render ───────────────────────────────────────────────────────────────────
 if cached:
@@ -250,6 +266,11 @@ if cached:
     df_state  = cached["df_state"]
     df_detail = cached["df_detail"]
     summary   = cached["summary"]
+
+    if cached.get("saved_at"):
+        st.caption(f"📌 Saved report · data as of {saved_at_label(cached)} · "
+                   f"{cached.get('range_label')} · {cached.get('service_type')} · "
+                   f"click **Load Age Demographics** to refresh")
 
     # Summary tiles
     c1, c2, c3, c4, c5, c6 = st.columns(6)
