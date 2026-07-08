@@ -585,7 +585,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         if month_agg:
             sorted_mk = sorted(month_agg.keys())
 
-            # ── All-months line chart ──────────────────────────────────────────
+            # ── All-months grouped bar chart ───────────────────────────────────
             mv_chart_df = pd.DataFrame([
                 {"Month": mk, "Type": "URSA",         "Minutes": round(month_agg[mk]["ursa_min"],  1)}
                 for mk in sorted_mk
@@ -596,21 +596,22 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 {"Month": mk, "Type": "Usage (Total)", "Minutes": round(month_agg[mk]["usage_min"],  1)}
                 for mk in sorted_mk
             ])
-            mv_line = (
+            mv_bar = (
                 alt.Chart(mv_chart_df)
-                .mark_line(point=alt.OverlayMarkDef(size=45, filled=True), strokeWidth=2.5, interpolate="monotone")
+                .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
                 .encode(
                     x=alt.X("Month:N", sort=sorted_mk, axis=alt.Axis(title=None, labelAngle=-20)),
                     y=alt.Y("Minutes:Q", title="Minutes"),
+                    xOffset=alt.XOffset("Type:N", sort=["CfZ", "URSA", "Usage (Total)"]),
                     color=alt.Color("Type:N", scale=alt.Scale(
                         domain=["URSA", "CfZ", "Usage (Total)"],
-                        range=["#00A651", "#8B5CF6", "#1F2937"]
-                    )),
-                    tooltip=["Month", "Type", alt.Tooltip("Minutes:Q", format=",.0f")],
+                        range=["#00A651", "#8B5CF6", "#D1D5DB"]
+                    ), legend=alt.Legend(orient="top", title=None)),
+                    tooltip=["Month", "Type", alt.Tooltip("Minutes:Q", format=",.1f")],
                 )
-                .properties(height=220, title="Monthly URSA / CfZ / Usage Minutes")
+                .properties(height=240, title="Monthly URSA / CfZ / Usage Minutes")
             )
-            st.altair_chart(mv_line, use_container_width=True)
+            st.altair_chart(mv_bar, use_container_width=True)
 
             # ── Grouped bar chart: CfZ + URSA minutes with FCC cost labels ───────
             jul26_mks = [mk for mk in sorted_mk if mk >= "2026-06"]
@@ -700,7 +701,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         s = r["Status"]
         status_counts[s] = status_counts.get(s, 0) + 1
     if status_counts:
-        st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1rem 0 0.5rem;'>Status Breakdown</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#6B7280;margin:1rem 0 0.5rem;'>Status Breakdown</div>", unsafe_allow_html=True)
         sc_df = pd.DataFrame([{"Status": k, "Count": v} for k, v in status_counts.items()]).sort_values("Count", ascending=False)
         bar2 = (
             alt.Chart(sc_df)
@@ -735,29 +736,29 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
     ch1, ch2 = st.columns(2)
     with ch1:
         if pri_counts:
-            st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.5rem;'>By Priority</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#6B7280;margin-bottom:0.5rem;'>By Priority</div>", unsafe_allow_html=True)
             for lbl, cnt in sorted(pri_counts.items(), key=lambda x: -x[1]):
                 color = PRIORITY_COLOR.get(lbl, "#9CA3AF")
                 pct = cnt / total * 100
-                st.markdown(f"""<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.4rem;">
-  <div style="width:90px;font-size:0.82rem;font-weight:600;color:#E6F2EC;">{lbl}</div>
-  <div style="flex:1;background:#1a4d32;border-radius:4px;height:10px;overflow:hidden;">
+                st.markdown(f"""<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+  <div style="width:90px;font-size:0.83rem;font-weight:600;color:#374151;">{lbl}</div>
+  <div style="flex:1;background:#E5E7EB;border-radius:4px;height:10px;overflow:hidden;">
     <div style="width:{pct:.0f}%;background:{color};height:100%;border-radius:4px;"></div>
   </div>
-  <div style="width:40px;text-align:right;font-size:0.82rem;font-weight:700;color:{color};font-variant-numeric:tabular-nums;">{cnt}</div>
+  <div style="width:40px;text-align:right;font-size:0.83rem;font-weight:700;color:{color};font-variant-numeric:tabular-nums;">{cnt}</div>
 </div>""", unsafe_allow_html=True)
     with ch2:
         if owner_counts:
-            st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.5rem;'>By Owner</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#6B7280;margin-bottom:0.5rem;'>By Owner</div>", unsafe_allow_html=True)
             max_count = max(owner_counts.values())
             for lbl, cnt in sorted(owner_counts.items(), key=lambda x: -x[1])[:10]:
                 pct = cnt / max_count * 100
-                st.markdown(f"""<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.4rem;">
-  <div style="width:120px;font-size:0.82rem;font-weight:600;color:#E6F2EC;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{lbl}</div>
-  <div style="flex:1;background:#1a4d32;border-radius:4px;height:10px;overflow:hidden;">
+                st.markdown(f"""<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+  <div style="width:130px;font-size:0.83rem;font-weight:600;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{lbl}</div>
+  <div style="flex:1;background:#E5E7EB;border-radius:4px;height:10px;overflow:hidden;">
     <div style="width:{pct:.0f}%;background:#3B82F6;height:100%;border-radius:4px;"></div>
   </div>
-  <div style="width:40px;text-align:right;font-size:0.82rem;font-weight:700;color:#E6F2EC;font-variant-numeric:tabular-nums;">{cnt}</div>
+  <div style="width:40px;text-align:right;font-size:0.83rem;font-weight:700;color:#374151;font-variant-numeric:tabular-nums;">{cnt}</div>
 </div>""", unsafe_allow_html=True)
 
     st.markdown("<div style='margin:1rem 0;'></div>", unsafe_allow_html=True)
