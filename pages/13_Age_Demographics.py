@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from collections import defaultdict
+from datetime import date, datetime, timezone
 from utils import require_auth, fetch_all, list_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.set_page_config(page_title="Age Demographics", layout="wide", page_icon="👥")
@@ -43,29 +44,47 @@ def _f(v):
 # ── UI ──────────────────────────────────────────────────────────────────────
 report_header("Age Demographics", "Usage minutes by age group and state")
 
-fc1, fc2, fc3 = st.columns([1, 1, 2])
+fc1, fc2, fc3 = st.columns([1, 1, 1])
 with fc1:
-    service_type = st.selectbox("Service Type", ["VRS", "Convo Now", "Both"], key="age_svc")
+    RANGE_OPTIONS = ["This Month", "This Year", "Last 3 Months", "Last 6 Months", "Last 12 Months", "All Time"]
+    range_label = st.selectbox("Date range (month_date)", RANGE_OPTIONS, key="age_range")
 with fc2:
+    service_type = st.selectbox("Service Type", ["VRS", "Convo Now", "Both"], key="age_svc")
+with fc3:
     number_status = st.selectbox("Number Status", ["All", "Live", "Suspended"], key="age_status")
+
+# Resolve date floor for monthly value records
+today = date.today()
+if range_label == "This Month":
+    floor = date(today.year, today.month, 1)
+elif range_label == "This Year":
+    floor = date(today.year, 1, 1)
+elif range_label == "Last 3 Months":
+    m, y = today.month - 3, today.year
+    if m <= 0: m += 12; y -= 1
+    floor = date(y, m, 1)
+elif range_label == "Last 6 Months":
+    m, y = today.month - 6, today.year
+    if m <= 0: m += 12; y -= 1
+    floor = date(y, m, 1)
+elif range_label == "Last 12 Months":
+    floor = date(today.year - 1, today.month, 1)
+else:
+    floor = date(2000, 1, 1)
+
+floor_ms = str(int(datetime(floor.year, floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
+MV_DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": floor_ms}
 
 run = st.button("Load Age Demographics", type="primary")
 
 cached = st.session_state.get("_age_demo_cache")
-if cached and cached.get("service_type") == service_type and cached.get("number_status") == number_status:
-    run = False  # use cache
-    df_age  = cached["df_age"]
-    df_state = cached["df_state"]
-    df_detail = cached["df_detail"]
-    summary = cached["summary"]
-else:
-    cached = None
-
-if run or (not cached and st.session_state.get("_age_demo_loaded")):
-    cached = None
+if cached and not run:
+    if (cached.get("service_type") != service_type
+            or cached.get("number_status") != number_status
+            or cached.get("range_label") != range_label):
+        cached = None  # filters changed — require a fresh load
 
 if run:
-    st.session_state["_age_demo_loaded"] = True
 
     # ── Step 1: Fetch Number objects ─────────────────────────────────────────
     NUM_PROPS = ["number", "email", "first_name", "last_name",
@@ -119,7 +138,7 @@ if run:
     chunks = [all_phones[i:i+100] for i in range(0, len(all_phones), 100)]
 
     for idx, chunk in enumerate(chunks):
-        filters = [{"propertyName": "number", "operator": "IN", "values": chunk}]
+        filters = [{"propertyName": "number", "operator": "IN", "values": chunk}, MV_DATE_FILTER]
         if mv_svc_filters:
             filters += mv_svc_filters
 
@@ -217,6 +236,7 @@ if run:
     st.session_state["_age_demo_cache"] = {
         "service_type": service_type,
         "number_status": number_status,
+        "range_label": range_label,
         "df_age": df_age,
         "df_state": df_state,
         "df_detail": df_detail,
