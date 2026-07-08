@@ -1,41 +1,30 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-import requests
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from collections import defaultdict
 from utils import (
     require_auth, fetch_all, norm, to_float,
-    COMMON_CSS, report_header, report_header_close, vrs_rate_for_month
+    COMMON_CSS, report_header, report_header_close,
 )
 
 st.set_page_config(page_title="VRS Zero / Convo Now Active", layout="wide", page_icon="🔄")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
 
-HUBSPOT_TOKEN = st.secrets.get("HUBSPOT_TOKEN", os.environ.get("HUBSPOT_TOKEN", ""))
-BASE_URL = "https://api.hubapi.com"
-_headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
-
 CONVO_RATE = 2.60
 
 report_header(
     "VRS Zero / Convo Now Active",
-    "Contacts with 0 VRS minutes and active Convo Now usage in the selected period",
+    "Contacts with 0 VRS minutes, 0 CfZ minutes, and active Convo Now usage in the selected period",
     section="Analytics"
 )
 
 # ── Filters ───────────────────────────────────────────────────────────────────
 col_range, col_run = st.columns([3, 1])
 with col_range:
-    RANGE_OPTIONS = [
-        "Jun 2026–Present",
-        "Last 3 Months",
-        "Last 6 Months",
-        "Last 12 Months",
-        "All Time",
-    ]
+    RANGE_OPTIONS = ["Jun 2026–Present", "Last 3 Months", "Last 6 Months", "Last 12 Months", "All Time"]
     range_label = st.selectbox("Date range (month_date)", RANGE_OPTIONS)
 with col_run:
     st.markdown("<div style='margin-top:1.65rem;'></div>", unsafe_allow_html=True)
@@ -52,21 +41,18 @@ today = date.today()
 if range_label == "Jun 2026–Present":
     floor = date(2026, 6, 1)
 elif range_label == "Last 3 Months":
-    m = today.month - 3
-    y = today.year + (m - 1) // 12
-    floor = date(y if m > 0 else y - 1, ((m - 1) % 12) + 1, 1)
+    m, y = today.month - 3, today.year
+    if m <= 0: m += 12; y -= 1
+    floor = date(y, m, 1)
 elif range_label == "Last 6 Months":
-    m = today.month - 6
-    y = today.year + (m - 1) // 12
-    floor = date(y if m > 0 else y - 1, ((m - 1) % 12) + 1, 1)
+    m, y = today.month - 6, today.year
+    if m <= 0: m += 12; y -= 1
+    floor = date(y, m, 1)
 elif range_label == "Last 12 Months":
-    m = today.month - 12
-    y = today.year - 1
-    floor = date(y, today.month, 1)
+    floor = date(today.year - 1, today.month, 1)
 else:
     floor = date(2000, 1, 1)
 
-from datetime import timezone
 floor_ms = str(int(datetime(floor.year, floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
 DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": floor_ms}
 
@@ -77,17 +63,17 @@ with st.spinner("Fetching Convo Now monthly values with usage > 0…"):
         ["number", "month_date", "usage_minutes", "service_type"],
         filter_groups=[{"filters": [
             DATE_FILTER,
-            {"propertyName": "service_type", "operator": "EQ",  "value": "Convo Now"},
-            {"propertyName": "usage_minutes",  "operator": "GT",  "value": "0"},
+            {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
+            {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
         ]}]
     )
 
 cn_numbers = set()
-cn_num_month_usage = defaultdict(lambda: defaultdict(float))  # number → month → usage
+cn_num_month_usage: dict = defaultdict(lambda: defaultdict(float))
 for r in cn_mvs:
     p = r.get("properties", {})
     num = str(p.get("number") or "").strip()
-    mk = (p.get("month_date") or "")[:7]
+    mk  = (p.get("month_date") or "")[:7]
     usage = to_float(p.get("usage_minutes")) or 0.0
     if num and mk:
         cn_numbers.add(num)
@@ -97,16 +83,15 @@ if not cn_numbers:
     st.warning("No Convo Now records with usage > 0 found in this date range.")
     st.stop()
 
-# ── Step 2: Look up number objects to get emails ──────────────────────────────
+# ── Step 2: Number objects — filter by usage_type & credit_plan_name ──────────
 with st.spinner(f"Looking up {len(cn_numbers):,} Convo Now number objects…"):
-    cn_num_list = list(cn_numbers)
     cn_obj_records = []
-    for i in range(0, len(cn_num_list), 100):
-        chunk = cn_num_list[i:i+100]
+    for i in range(0, len(cn_numbers), 100):
+        chunk = list(cn_numbers)[i:i+100]
         cn_obj_records.extend(fetch_all(
             "2-40974683",
-            ["number", "email", "first_name", "last_name", "service_type", "number_status",
-             "usage_type", "credit_plan_name"],
+            ["number", "email", "first_name", "last_name", "service_type",
+             "number_status", "usage_type", "credit_plan_name"],
             filter_groups=[{"filters": [
                 {"propertyName": "number",           "operator": "IN", "values": chunk},
                 {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
@@ -114,15 +99,15 @@ with st.spinner(f"Looking up {len(cn_numbers):,} Convo Now number objects…"):
             ]}]
         ))
 
-cn_emails = set()
-num_to_email = {}
-email_to_name = {}
+cn_emails: set = set()
+num_to_email: dict = {}
+email_to_name: dict = {}
 for r in cn_obj_records:
     p = r.get("properties", {})
-    num = str(p.get("number") or "").strip()
-    email = str(p.get("email") or "").strip().lower()
+    num   = str(p.get("number") or "").strip()
+    email = str(p.get("email")  or "").strip().lower()
     fn = (p.get("first_name") or "").strip()
-    ln = (p.get("last_name") or "").strip()
+    ln = (p.get("last_name")  or "").strip()
     if email:
         cn_emails.add(email)
         num_to_email[num] = email
@@ -130,15 +115,14 @@ for r in cn_obj_records:
             email_to_name[email] = f"{fn} {ln}".strip()
 
 if not cn_emails:
-    st.warning("No emails found for Convo Now numbers.")
+    st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary).")
     st.stop()
 
-# ── Step 3: All number objects for those emails (VRS + Convo Now) ──────────────
+# ── Step 3: All numbers for those contacts (VRS + Convo Now) ─────────────────
 with st.spinner(f"Fetching all numbers for {len(cn_emails):,} contacts…"):
-    email_list = list(cn_emails)
     all_num_objs = []
-    for i in range(0, len(email_list), 100):
-        chunk = email_list[i:i+100]
+    for i in range(0, len(cn_emails), 100):
+        chunk = list(cn_emails)[i:i+100]
         all_num_objs.extend(fetch_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name", "service_type", "number_status"],
@@ -147,13 +131,12 @@ with st.spinner(f"Fetching all numbers for {len(cn_emails):,} contacts…"):
             ]}]
         ))
 
-# Build lookup: email → {vrs_numbers, cn_numbers}, number → email
-email_vrs_nums = defaultdict(set)
-email_cn_nums  = defaultdict(set)
-all_numbers_by_email = defaultdict(set)
+email_vrs_nums: dict = defaultdict(set)
+email_cn_nums:  dict = defaultdict(set)
+all_numbers_by_email: dict = defaultdict(set)
 
 for r in all_num_objs:
-    p = r.get("properties", {})
+    p     = r.get("properties", {})
     num   = str(p.get("number") or "").strip()
     email = str(p.get("email")  or "").strip().lower()
     svc   = norm(p.get("service_type") or "")
@@ -172,83 +155,95 @@ for r in all_num_objs:
 
 all_nums_flat = list({n for nums in all_numbers_by_email.values() for n in nums})
 
-# ── Step 4: All MV records for those numbers in the period ────────────────────
+# ── Step 4: MV records for all numbers in the period ─────────────────────────
 with st.spinner(f"Fetching monthly values for {len(all_nums_flat):,} numbers…"):
     all_mvs = []
     for i in range(0, len(all_nums_flat), 100):
         chunk = all_nums_flat[i:i+100]
         all_mvs.extend(fetch_all(
             "2-46246179",
-            ["number", "month_date", "usage_minutes", "service_type"],
+            ["number", "month_date", "usage_minutes", "ursa_minutes", "cfz_minutes", "service_type"],
             filter_groups=[{"filters": [
                 DATE_FILTER,
-                {"propertyName": "number",       "operator": "IN",  "values": chunk},
-                {"propertyName": "service_type", "operator": "IN",  "values": ["VRS", "Convo Now"]},
+                {"propertyName": "number",       "operator": "IN", "values": chunk},
+                {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
             ]}]
         ))
 
-# ── Step 5: Aggregate per email per service type ──────────────────────────────
-email_vrs_total  = defaultdict(float)
-email_cn_total   = defaultdict(float)
-email_vrs_months = defaultdict(lambda: defaultdict(float))  # email → month → vrs_min
-email_cn_months  = defaultdict(lambda: defaultdict(float))  # email → month → cn_min
+# ── Step 5: Aggregate per contact ────────────────────────────────────────────
+email_vrs_total:  dict = defaultdict(float)   # total usage_minutes for VRS
+email_cfz_total:  dict = defaultdict(float)   # total cfz_minutes for VRS
+email_ursa_total: dict = defaultdict(float)   # total ursa_minutes for VRS
+email_cn_total:   dict = defaultdict(float)   # total usage_minutes for Convo Now
+email_vrs_months: dict = defaultdict(lambda: defaultdict(float))
+email_cn_months:  dict = defaultdict(lambda: defaultdict(float))
 
 for r in all_mvs:
     p    = r.get("properties", {})
     num  = str(p.get("number") or "").strip()
     mk   = (p.get("month_date") or "")[:7]
     svc  = norm(p.get("service_type") or "")
-    usage = to_float(p.get("usage_minutes")) or 0.0
     email = num_to_email.get(num)
     if not email or not mk:
         continue
+    usage = to_float(p.get("usage_minutes")) or 0.0
     if svc == "vrs":
+        cfz_min  = to_float(p.get("cfz_minutes"))  or 0.0
+        ursa_min = to_float(p.get("ursa_minutes")) or 0.0
         email_vrs_total[email]       += usage
+        email_cfz_total[email]       += cfz_min
+        email_ursa_total[email]      += ursa_min
         email_vrs_months[email][mk]  += usage
     elif svc == "convo now":
         email_cn_total[email]        += usage
         email_cn_months[email][mk]   += usage
 
-# ── Step 6: Filter contacts where VRS = 0 AND Convo Now > 0 ──────────────────
+# ── Step 6: Filter — VRS = 0 AND CfZ = 0 AND Convo Now > 0 ──────────────────
 rows = []
 for email in sorted(cn_emails):
-    vrs_total = email_vrs_total.get(email, 0.0)
-    cn_total  = email_cn_total.get(email,  0.0)
-    if vrs_total > 0 or cn_total == 0:
-        continue  # skip: still has VRS usage, or no Convo Now usage
+    vrs_total  = email_vrs_total.get(email,  0.0)
+    cfz_total  = email_cfz_total.get(email,  0.0)
+    ursa_total = email_ursa_total.get(email, 0.0)
+    cn_total   = email_cn_total.get(email,   0.0)
 
-    cn_months = email_cn_months.get(email, {})
+    # Must have: VRS usage = 0, CfZ = 0, Convo Now > 0
+    if vrs_total > 0 or cfz_total > 0 or cn_total == 0:
+        continue
+
+    cn_months     = email_cn_months.get(email, {})
     active_months = len(cn_months)
     latest_month  = max(cn_months.keys()) if cn_months else ""
     latest_cn_min = cn_months.get(latest_month, 0.0) if latest_month else 0.0
-    cn_cost = cn_total * CONVO_RATE
+    cn_cost  = cn_total * CONVO_RATE
     vrs_nums = sorted(email_vrs_nums.get(email, set()))
     cn_nums  = sorted(email_cn_nums.get(email,  set()))
 
     rows.append({
-        "Name":             email_to_name.get(email, "—"),
-        "Email":            email,
-        "VRS Numbers":      ", ".join(vrs_nums) if vrs_nums else "—",
+        "Name":              email_to_name.get(email, "—"),
+        "Email":             email,
+        "VRS Numbers":       ", ".join(vrs_nums) if vrs_nums else "—",
         "Convo Now Numbers": ", ".join(cn_nums)  if cn_nums  else "—",
-        "VRS Minutes":      0.0,
-        "Convo Now Min":    round(cn_total, 1),
-        "Convo Now Cost":   round(cn_cost, 2),
-        "Active Months":    active_months,
-        "Latest Month":     latest_month,
-        "Latest Month Min": round(latest_cn_min, 1),
+        "VRS Minutes":       round(vrs_total,  1),
+        "URSA Minutes":      round(ursa_total, 1),
+        "CfZ Minutes":       round(cfz_total,  1),
+        "Convo Now Min":     round(cn_total,   1),
+        "Convo Now Cost":    round(cn_cost,    2),
+        "Active Months":     active_months,
+        "Latest Month":      latest_month,
+        "Latest Month Min":  round(latest_cn_min, 1),
     })
 
 if not rows:
-    st.success("No contacts found with VRS = 0 and Convo Now > 0 in this period.")
+    st.success("No contacts found matching VRS = 0, CfZ = 0, Convo Now > 0 in this period.")
     st.stop()
 
-df = pd.DataFrame(rows).sort_values("Convo Now Min", ascending=False)
+df_full = pd.DataFrame(rows).sort_values("Convo Now Min", ascending=False).reset_index(drop=True)
 
 # ── Summary tiles ─────────────────────────────────────────────────────────────
-total_contacts  = len(df)
-total_cn_min    = df["Convo Now Min"].sum()
-total_cn_cost   = df["Convo Now Cost"].sum()
-avg_months      = df["Active Months"].mean()
+total_contacts = len(df_full)
+total_cn_min   = df_full["Convo Now Min"].sum()
+total_cn_cost  = df_full["Convo Now Cost"].sum()
+avg_months     = df_full["Active Months"].mean()
 
 def tile(label, value, sub="", color="#1F2937"):
     return f"""<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
@@ -259,66 +254,126 @@ def tile(label, value, sub="", color="#1F2937"):
 
 st.markdown(f"""
 <div style="font-size:0.8rem;color:#6B7280;margin-bottom:1rem;">
-  Period: <strong>{range_label}</strong> &nbsp;·&nbsp; VRS = 0 min &nbsp;·&nbsp; Convo Now &gt; 0 min
+  Period: <strong>{range_label}</strong>
+  &nbsp;·&nbsp; VRS = 0 min &nbsp;·&nbsp; CfZ = 0 min &nbsp;·&nbsp; Convo Now &gt; 0 min
 </div>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.85rem;margin-bottom:1.5rem;">
-  {tile("Contacts", f"{total_contacts:,}", "VRS=0, Convo Now active")}
-  {tile("Convo Now Minutes", f"{total_cn_min:,.1f}", "total across period", "#3B82F6")}
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin-bottom:1.5rem;">
+  {tile("Contacts", f"{total_contacts:,}", "VRS=0, CfZ=0, CN active")}
+  {tile("VRS Minutes", "0", "confirmed zero", "#6B7280")}
+  {tile("CfZ Minutes", "0", "confirmed zero", "#6B7280")}
+  {tile("Convo Now Min", f"{total_cn_min:,.1f}", "total across period", "#3B82F6")}
   {tile("Convo Now Cost", f"${total_cn_cost:,.2f}", f"@ ${CONVO_RATE}/min", "#3B82F6")}
-  {tile("Avg Active Months", f"{avg_months:.1f}", "months with Convo Now usage")}
 </div>""", unsafe_allow_html=True)
 
-# ── Monthly bar chart: Convo Now usage across contacts ────────────────────────
-all_month_keys = sorted({mk for e in cn_emails for mk in email_cn_months.get(e, {})})
-if all_month_keys:
-    # Only include contacts that passed the filter
-    filtered_emails = set(df["Email"])
-    month_totals = defaultdict(float)
-    for email in filtered_emails:
-        for mk, usage in email_cn_months.get(email, {}).items():
-            month_totals[mk] += usage
+# ── Charts ────────────────────────────────────────────────────────────────────
+filtered_emails = set(df_full["Email"])
 
-    chart_df = pd.DataFrame([
-        {"Month": mk, "Convo Now Minutes": round(v, 1)}
-        for mk, v in sorted(month_totals.items())
-    ])
-    bar = (
-        alt.Chart(chart_df)
+# Monthly Convo Now usage
+month_totals: dict = defaultdict(float)
+for email in filtered_emails:
+    for mk, usage in email_cn_months.get(email, {}).items():
+        month_totals[mk] += usage
+
+ch_left, ch_right = st.columns(2)
+
+with ch_left:
+    if month_totals:
+        chart_df = pd.DataFrame([
+            {"Month": mk, "Convo Now Minutes": round(v, 1)}
+            for mk, v in sorted(month_totals.items())
+        ])
+        bar = (
+            alt.Chart(chart_df)
+            .mark_bar(color="#3B82F6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+            .encode(
+                x=alt.X("Month:N", sort=list(chart_df["Month"]),
+                        axis=alt.Axis(title=None, labelAngle=-20)),
+                y=alt.Y("Convo Now Minutes:Q", title="Minutes"),
+                tooltip=["Month", alt.Tooltip("Convo Now Minutes:Q", format=",.1f")],
+            )
+            .properties(height=220, title="Convo Now Usage by Month")
+        )
+        st.altair_chart(bar, use_container_width=True)
+
+with ch_right:
+    # Top 15 contacts by Convo Now minutes
+    top_df = df_full.head(15)[["Name", "Email", "Convo Now Min"]].copy()
+    top_df["Label"] = top_df.apply(
+        lambda r: r["Name"] if r["Name"] != "—" else r["Email"], axis=1
+    )
+    top_chart = (
+        alt.Chart(top_df)
         .mark_bar(color="#3B82F6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
         .encode(
-            x=alt.X("Month:N", sort=list(chart_df["Month"]), axis=alt.Axis(title=None, labelAngle=-20)),
-            y=alt.Y("Convo Now Minutes:Q", title="Minutes"),
-            tooltip=["Month", alt.Tooltip("Convo Now Minutes:Q", format=",.1f")],
+            x=alt.X("Convo Now Min:Q", title="Minutes"),
+            y=alt.Y("Label:N", sort="-x", title=None,
+                    axis=alt.Axis(labelLimit=200)),
+            tooltip=["Label", alt.Tooltip("Convo Now Min:Q", format=",.1f")],
         )
-        .properties(height=220, title="Convo Now Usage by Month (VRS=0 contacts)")
+        .properties(height=max(220, min(15, len(top_df)) * 26),
+                    title="Top 15 Contacts by Convo Now Usage")
     )
-    st.altair_chart(bar, use_container_width=True)
+    st.altair_chart(top_chart, use_container_width=True)
 
-# ── Contact table ─────────────────────────────────────────────────────────────
+# Active months distribution
+month_dist_df = df_full["Active Months"].value_counts().reset_index()
+month_dist_df.columns = ["Active Months", "Count"]
+month_dist_df = month_dist_df.sort_values("Active Months")
+dist_chart = (
+    alt.Chart(month_dist_df)
+    .mark_bar(color="#8B5CF6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+    .encode(
+        x=alt.X("Active Months:O", title="Active Months"),
+        y=alt.Y("Count:Q", title="# Contacts"),
+        tooltip=["Active Months", "Count"],
+    )
+    .properties(height=180, title="Distribution: Active Months per Contact")
+)
+st.altair_chart(dist_chart, use_container_width=True)
+
+# ── Search + table ────────────────────────────────────────────────────────────
 st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#6B7280;margin:1.25rem 0 0.5rem;'>Contact Detail</div>", unsafe_allow_html=True)
 
-display_df = df[[
+search = st.text_input(
+    "Search contacts",
+    placeholder="Filter by name, email, or phone number…",
+    label_visibility="collapsed",
+)
+
+df_view = df_full.copy()
+if search.strip():
+    q = search.strip().lower()
+    mask = (
+        df_view["Name"].str.lower().str.contains(q, na=False) |
+        df_view["Email"].str.lower().str.contains(q, na=False) |
+        df_view["VRS Numbers"].str.lower().str.contains(q, na=False) |
+        df_view["Convo Now Numbers"].str.lower().str.contains(q, na=False)
+    )
+    df_view = df_view[mask]
+    st.caption(f'{len(df_view):,} of {total_contacts:,} contacts match "{search}"')
+
+display_df = df_view[[
     "Name", "Email", "Convo Now Numbers", "VRS Numbers",
+    "VRS Minutes", "URSA Minutes", "CfZ Minutes",
     "Convo Now Min", "Convo Now Cost", "Active Months", "Latest Month", "Latest Month Min"
-]].rename(columns={
-    "Convo Now Min":    "CN Min (Total)",
-    "Convo Now Cost":   "CN Cost ($)",
-    "Latest Month Min": "Latest Month Min",
-})
+]]
 
 st.dataframe(
     display_df,
     use_container_width=True,
     hide_index=True,
     column_config={
-        "CN Min (Total)":   st.column_config.NumberColumn(format="%.1f"),
-        "CN Cost ($)":      st.column_config.NumberColumn(format="$%.2f"),
+        "VRS Minutes":      st.column_config.NumberColumn(format="%.1f"),
+        "URSA Minutes":     st.column_config.NumberColumn(format="%.1f"),
+        "CfZ Minutes":      st.column_config.NumberColumn(format="%.1f"),
+        "Convo Now Min":    st.column_config.NumberColumn("CN Min (Total)", format="%.1f"),
+        "Convo Now Cost":   st.column_config.NumberColumn("CN Cost ($)",    format="$%.2f"),
         "Latest Month Min": st.column_config.NumberColumn(format="%.1f"),
     }
 )
 
 # ── CSV download ──────────────────────────────────────────────────────────────
-csv = df.to_csv(index=False).encode("utf-8")
+csv = df_view.to_csv(index=False).encode("utf-8")
 st.download_button(
     "Download CSV",
     csv,
