@@ -105,9 +105,12 @@ with st.spinner(f"Looking up {len(cn_numbers):,} Convo Now number objects…"):
         chunk = cn_num_list[i:i+100]
         cn_obj_records.extend(fetch_all(
             "2-40974683",
-            ["number", "email", "first_name", "last_name", "service_type", "number_status"],
+            ["number", "email", "first_name", "last_name", "service_type", "number_status",
+             "usage_type", "credit_plan_name"],
             filter_groups=[{"filters": [
-                {"propertyName": "number", "operator": "IN", "values": chunk},
+                {"propertyName": "number",           "operator": "IN", "values": chunk},
+                {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
+                {"propertyName": "credit_plan_name", "operator": "EQ", "value": "Convo Now: Access Complimentary"},
             ]}]
         ))
 
