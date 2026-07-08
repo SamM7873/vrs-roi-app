@@ -413,38 +413,8 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     vrs_num_ids = list(num_id_to_number.keys())  # only VRS+live number object IDs
 
-    # Step 3: number object IDs → monthly value record IDs (v4 direct association)
-    nid_to_mv_ids = defaultdict(list)   # number obj ID → [monthly value record IDs]
-    if vrs_num_ids:
-        with st.spinner(f"Looking up monthly value records for {len(vrs_num_ids)} number(s)..."):
-            for i in range(0, len(vrs_num_ids), 100):
-                chunk = vrs_num_ids[i:i+100]
-                ar = requests.post(
-                    f"{BASE_URL}/crm/v4/associations/2-40974683/2-46246179/batch/read",
-                    headers=_headers,
-                    json={"inputs": [{"id": nid} for nid in chunk]},
-                    timeout=30,
-                )
-                if ar.status_code == 200:
-                    for result in ar.json().get("results", []):
-                        nid = str(result.get("from", {}).get("id", ""))
-                        for assoc in result.get("to", []):
-                            mvid = str(assoc.get("toObjectId") or assoc.get("id") or "")
-                            if mvid:
-                                nid_to_mv_ids[nid].append(mvid)
-                time.sleep(0.1)
-
-    # Collect all monthly value record IDs, preserving which nid they belong to
-    mv_id_to_nid = {}
-    for nid, mv_ids in nid_to_mv_ids.items():
-        for mvid in mv_ids:
-            mv_id_to_nid[mvid] = nid
-
-    all_mv_ids = list(mv_id_to_nid.keys())
-
-    # Step 4: fetch MV records with a dynamic month_date floor.
-    # Floor = 2 months before filter_start (captures prior-month records like
-    # May 2026 showing for Jun-closed tickets). For All Time, floor = 2 yrs ago.
+    # Step 3: search monthly values directly by phone number string (more reliable
+    # than v4 association → MV ID lookup which can time out at scale).
     MV_PROPS = ["number", "month_date", "service_type",
                 "usage_minutes", "ursa_minutes", "cfz_minutes",
                 "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
@@ -458,23 +428,26 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
     mv_floor_ms = str(int(datetime(mv_floor.year, mv_floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
     MV_DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": mv_floor_ms}
 
-    if all_mv_ids:
-        with st.spinner(f"Reading monthly value records (from {mv_floor.strftime('%b %Y')})..."):
-            for i in range(0, len(all_mv_ids), 100):
-                chunk_ids = all_mv_ids[i:i+100]
+    vrs_numbers = list(num_id_to_number.values())  # phone number strings
+    num_to_nid  = {v: k for k, v in num_id_to_number.items()}  # phone → object ID
+
+    if vrs_numbers:
+        with st.spinner(f"Fetching monthly values for {len(vrs_numbers):,} numbers (from {mv_floor.strftime('%b %Y')})..."):
+            for i in range(0, len(vrs_numbers), 100):
+                chunk_nums = vrs_numbers[i:i+100]
                 mv_recs = fetch_all(
                     "2-46246179",
                     MV_PROPS,
                     filter_groups=[{"filters": [
-                        {"propertyName": "hs_object_id", "operator": "IN", "values": chunk_ids},
+                        {"propertyName": "number",       "operator": "IN", "values": chunk_nums},
                         MV_DATE_FILTER,
                         {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                     ]}]
                 )
                 for obj in mv_recs:
-                    mvid = str(obj["id"])
-                    nid  = mv_id_to_nid.get(mvid, "")
-                    p2   = obj.get("properties", {})
+                    p2  = obj.get("properties", {})
+                    num = str(p2.get("number") or "").strip()
+                    nid = num_to_nid.get(num, num)  # fall back to phone string as key
                     num_monthly[nid].append({
                         "month":    p2.get("month_date") or "",
                         "ursa_min": _to_float(p2.get("ursa_minutes")),
@@ -482,8 +455,6 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                         "fcc_vrs":  _to_float(p2.get("fcc_cost_based_on_vrs_usage")),
                         "fcc_cfz":  _to_float(p2.get("fcc_cost_based_on_cfz_usage")),
                     })
-
-    vrs_numbers = list(num_id_to_number.values())  # for display count only
 
     # Aggregate all June 2026+ monthly values for matched numbers.
     # HubSpot's report shows June-closed tickets with July monthly values
