@@ -32,7 +32,13 @@ with col_run:
 
 report_header_close()
 
-if not run:
+# Clear cached results if the date range changed since last run
+cached = st.session_state.get("_vrs_zero_cache")
+if cached and cached.get("range_label") != range_label:
+    del st.session_state["_vrs_zero_cache"]
+    cached = None
+
+if not run and not cached:
     st.info("Select a date range and click **Run Report**.")
     st.stop()
 
@@ -60,188 +66,196 @@ else:
 floor_ms = str(int(datetime(floor.year, floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
 DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": floor_ms}
 
-# ── Step 1: Convo Now MV records with usage > 0 ───────────────────────────────
-with st.spinner("Fetching Convo Now monthly values with usage > 0…"):
-    cn_mvs = fetch_all(
-        "2-46246179",
-        ["number", "month_date", "usage_minutes", "service_type"],
-        filter_groups=[{"filters": [
-            DATE_FILTER,
-            {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
-            {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
-        ]}]
-    )
-
-cn_numbers = set()
-cn_num_month_usage: dict = defaultdict(lambda: defaultdict(float))
-for r in cn_mvs:
-    p = r.get("properties", {})
-    num = str(p.get("number") or "").strip()
-    mk  = (p.get("month_date") or "")[:7]
-    usage = to_float(p.get("usage_minutes")) or 0.0
-    if num and mk:
-        cn_numbers.add(num)
-        cn_num_month_usage[num][mk] += usage
-
-if not cn_numbers:
-    st.warning("No Convo Now records with usage > 0 found in this date range.")
-    st.stop()
-
-# ── Step 2: Number objects — filter by usage_type & credit_plan_name ──────────
-with st.spinner(f"Looking up {len(cn_numbers):,} Convo Now number objects…"):
-    cn_obj_records = []
-    for i in range(0, len(cn_numbers), 100):
-        chunk = list(cn_numbers)[i:i+100]
-        cn_obj_records.extend(fetch_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name", "service_type",
-             "number_status", "usage_type", "credit_plan_name"],
-            filter_groups=[{"filters": [
-                {"propertyName": "number",           "operator": "IN", "values": chunk},
-                {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
-                {"propertyName": "credit_plan_name", "operator": "EQ", "value": "Convo Now: Access Complimentary"},
-            ]}]
-        ))
-
-cn_emails: set = set()
-num_to_email: dict = {}
-email_to_name: dict = {}
-for r in cn_obj_records:
-    p = r.get("properties", {})
-    num   = str(p.get("number") or "").strip()
-    email = str(p.get("email")  or "").strip().lower()
-    fn = (p.get("first_name") or "").strip()
-    ln = (p.get("last_name")  or "").strip()
-    if email:
-        cn_emails.add(email)
-        num_to_email[num] = email
-        if fn or ln:
-            email_to_name[email] = f"{fn} {ln}".strip()
-
-if not cn_emails:
-    st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary).")
-    st.stop()
-
-# ── Step 3: All numbers for those contacts (VRS + Convo Now) ─────────────────
-with st.spinner(f"Fetching all numbers for {len(cn_emails):,} contacts…"):
-    all_num_objs = []
-    for i in range(0, len(cn_emails), 100):
-        chunk = list(cn_emails)[i:i+100]
-        all_num_objs.extend(fetch_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name", "service_type", "number_status"],
-            filter_groups=[{"filters": [
-                {"propertyName": "email", "operator": "IN", "values": chunk},
-            ]}]
-        ))
-
-email_vrs_nums: dict = defaultdict(set)
-email_cn_nums:  dict = defaultdict(set)
-all_numbers_by_email: dict = defaultdict(set)
-
-for r in all_num_objs:
-    p     = r.get("properties", {})
-    num   = str(p.get("number") or "").strip()
-    email = str(p.get("email")  or "").strip().lower()
-    svc   = norm(p.get("service_type") or "")
-    fn = (p.get("first_name") or "").strip()
-    ln = (p.get("last_name")  or "").strip()
-    if not email or not num:
-        continue
-    num_to_email[num] = email
-    all_numbers_by_email[email].add(num)
-    if fn or ln:
-        email_to_name.setdefault(email, f"{fn} {ln}".strip())
-    if svc == "vrs":
-        email_vrs_nums[email].add(num)
-    elif svc == "convo now":
-        email_cn_nums[email].add(num)
-
-all_nums_flat = list({n for nums in all_numbers_by_email.values() for n in nums})
-
-# ── Step 4: MV records for all numbers in the period ─────────────────────────
-with st.spinner(f"Fetching monthly values for {len(all_nums_flat):,} numbers…"):
-    all_mvs = []
-    for i in range(0, len(all_nums_flat), 100):
-        chunk = all_nums_flat[i:i+100]
-        all_mvs.extend(fetch_all(
+# Skip data fetch if results are already cached for this range
+if run or not cached:
+    # ── Step 1: Convo Now MV records with usage > 0 ───────────────────────────
+    with st.spinner("Fetching Convo Now monthly values with usage > 0…"):
+        cn_mvs = fetch_all(
             "2-46246179",
-            ["number", "month_date", "usage_minutes", "ursa_minutes", "cfz_minutes", "service_type"],
+            ["number", "month_date", "usage_minutes", "service_type"],
             filter_groups=[{"filters": [
                 DATE_FILTER,
-                {"propertyName": "number",       "operator": "IN", "values": chunk},
-                {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
+                {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
+                {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
             ]}]
-        ))
+        )
 
-# ── Step 5: Aggregate per contact ────────────────────────────────────────────
-email_vrs_total:  dict = defaultdict(float)   # total usage_minutes for VRS
-email_cfz_total:  dict = defaultdict(float)   # total cfz_minutes for VRS
-email_ursa_total: dict = defaultdict(float)   # total ursa_minutes for VRS
-email_cn_total:   dict = defaultdict(float)   # total usage_minutes for Convo Now
-email_vrs_months: dict = defaultdict(lambda: defaultdict(float))
-email_cn_months:  dict = defaultdict(lambda: defaultdict(float))
+    cn_numbers = set()
+    cn_num_month_usage: dict = defaultdict(lambda: defaultdict(float))
+    for r in cn_mvs:
+        p = r.get("properties", {})
+        num = str(p.get("number") or "").strip()
+        mk  = (p.get("month_date") or "")[:7]
+        usage = to_float(p.get("usage_minutes")) or 0.0
+        if num and mk:
+            cn_numbers.add(num)
+            cn_num_month_usage[num][mk] += usage
 
-for r in all_mvs:
-    p    = r.get("properties", {})
-    num  = str(p.get("number") or "").strip()
-    mk   = (p.get("month_date") or "")[:7]
-    svc  = norm(p.get("service_type") or "")
-    email = num_to_email.get(num)
-    if not email or not mk:
-        continue
-    usage = to_float(p.get("usage_minutes")) or 0.0
-    if svc == "vrs":
-        cfz_min  = to_float(p.get("cfz_minutes"))  or 0.0
-        ursa_min = to_float(p.get("ursa_minutes")) or 0.0
-        email_vrs_total[email]       += usage
-        email_cfz_total[email]       += cfz_min
-        email_ursa_total[email]      += ursa_min
-        email_vrs_months[email][mk]  += usage
-    elif svc == "convo now":
-        email_cn_total[email]        += usage
-        email_cn_months[email][mk]   += usage
+    if not cn_numbers:
+        st.warning("No Convo Now records with usage > 0 found in this date range.")
+        st.stop()
 
-# ── Step 6: Filter — VRS = 0 AND CfZ = 0 AND Convo Now > 0 ──────────────────
-rows = []
-for email in sorted(cn_emails):
-    vrs_total  = email_vrs_total.get(email,  0.0)
-    cfz_total  = email_cfz_total.get(email,  0.0)
-    ursa_total = email_ursa_total.get(email, 0.0)
-    cn_total   = email_cn_total.get(email,   0.0)
+    # ── Step 2: Number objects — filter by usage_type & credit_plan_name ──────
+    with st.spinner(f"Looking up {len(cn_numbers):,} Convo Now number objects…"):
+        cn_obj_records = []
+        for i in range(0, len(cn_numbers), 100):
+            chunk = list(cn_numbers)[i:i+100]
+            cn_obj_records.extend(fetch_all(
+                "2-40974683",
+                ["number", "email", "first_name", "last_name", "service_type",
+                 "number_status", "usage_type", "credit_plan_name"],
+                filter_groups=[{"filters": [
+                    {"propertyName": "number",           "operator": "IN", "values": chunk},
+                    {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
+                    {"propertyName": "credit_plan_name", "operator": "EQ", "value": "Convo Now: Access Complimentary"},
+                ]}]
+            ))
 
-    # Must have: VRS usage = 0, CfZ = 0, Convo Now > 0
-    if vrs_total > 0 or cfz_total > 0 or cn_total == 0:
-        continue
+    cn_emails: set = set()
+    num_to_email: dict = {}
+    email_to_name: dict = {}
+    for r in cn_obj_records:
+        p = r.get("properties", {})
+        num   = str(p.get("number") or "").strip()
+        email = str(p.get("email")  or "").strip().lower()
+        fn = (p.get("first_name") or "").strip()
+        ln = (p.get("last_name")  or "").strip()
+        if email:
+            cn_emails.add(email)
+            num_to_email[num] = email
+            if fn or ln:
+                email_to_name[email] = f"{fn} {ln}".strip()
 
-    cn_months     = email_cn_months.get(email, {})
-    active_months = len(cn_months)
-    latest_month  = max(cn_months.keys()) if cn_months else ""
-    latest_cn_min = cn_months.get(latest_month, 0.0) if latest_month else 0.0
-    cn_cost  = cn_total * CONVO_RATE
-    vrs_nums = sorted(email_vrs_nums.get(email, set()))
-    cn_nums  = sorted(email_cn_nums.get(email,  set()))
+    if not cn_emails:
+        st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary).")
+        st.stop()
 
-    rows.append({
-        "Name":              email_to_name.get(email, "—"),
-        "Email":             email,
-        "VRS Numbers":       ", ".join(vrs_nums) if vrs_nums else "—",
-        "Convo Now Numbers": ", ".join(cn_nums)  if cn_nums  else "—",
-        "VRS Minutes":       round(vrs_total,  1),
-        "URSA Minutes":      round(ursa_total, 1),
-        "CfZ Minutes":       round(cfz_total,  1),
-        "Convo Now Min":     round(cn_total,   1),
-        "Convo Now Cost":    round(cn_cost,    2),
-        "Active Months":     active_months,
-        "Latest Month":      latest_month,
-        "Latest Month Min":  round(latest_cn_min, 1),
-    })
+    # ── Step 3: All numbers for those contacts (VRS + Convo Now) ─────────────
+    with st.spinner(f"Fetching all numbers for {len(cn_emails):,} contacts…"):
+        all_num_objs = []
+        for i in range(0, len(cn_emails), 100):
+            chunk = list(cn_emails)[i:i+100]
+            all_num_objs.extend(fetch_all(
+                "2-40974683",
+                ["number", "email", "first_name", "last_name", "service_type", "number_status"],
+                filter_groups=[{"filters": [
+                    {"propertyName": "email", "operator": "IN", "values": chunk},
+                ]}]
+            ))
 
-if not rows:
-    st.success("No contacts found matching VRS = 0, CfZ = 0, Convo Now > 0 in this period.")
-    st.stop()
+    email_vrs_nums: dict = defaultdict(set)
+    email_cn_nums:  dict = defaultdict(set)
+    all_numbers_by_email: dict = defaultdict(set)
 
-df_full = pd.DataFrame(rows).sort_values("Convo Now Min", ascending=False).reset_index(drop=True)
+    for r in all_num_objs:
+        p     = r.get("properties", {})
+        num   = str(p.get("number") or "").strip()
+        email = str(p.get("email")  or "").strip().lower()
+        svc   = norm(p.get("service_type") or "")
+        fn = (p.get("first_name") or "").strip()
+        ln = (p.get("last_name")  or "").strip()
+        if not email or not num:
+            continue
+        num_to_email[num] = email
+        all_numbers_by_email[email].add(num)
+        if fn or ln:
+            email_to_name.setdefault(email, f"{fn} {ln}".strip())
+        if svc == "vrs":
+            email_vrs_nums[email].add(num)
+        elif svc == "convo now":
+            email_cn_nums[email].add(num)
+
+    all_nums_flat = list({n for nums in all_numbers_by_email.values() for n in nums})
+
+    # ── Step 4: MV records for all numbers in the period ─────────────────────
+    with st.spinner(f"Fetching monthly values for {len(all_nums_flat):,} numbers…"):
+        all_mvs = []
+        for i in range(0, len(all_nums_flat), 100):
+            chunk = all_nums_flat[i:i+100]
+            all_mvs.extend(fetch_all(
+                "2-46246179",
+                ["number", "month_date", "usage_minutes", "ursa_minutes", "cfz_minutes", "service_type"],
+                filter_groups=[{"filters": [
+                    DATE_FILTER,
+                    {"propertyName": "number",       "operator": "IN", "values": chunk},
+                    {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
+                ]}]
+            ))
+
+    # ── Step 5: Aggregate per contact ────────────────────────────────────────
+    email_vrs_total:  dict = defaultdict(float)
+    email_cfz_total:  dict = defaultdict(float)
+    email_ursa_total: dict = defaultdict(float)
+    email_cn_total:   dict = defaultdict(float)
+    email_vrs_months: dict = defaultdict(lambda: defaultdict(float))
+    email_cn_months:  dict = defaultdict(lambda: defaultdict(float))
+
+    for r in all_mvs:
+        p    = r.get("properties", {})
+        num  = str(p.get("number") or "").strip()
+        mk   = (p.get("month_date") or "")[:7]
+        svc  = norm(p.get("service_type") or "")
+        email = num_to_email.get(num)
+        if not email or not mk:
+            continue
+        usage = to_float(p.get("usage_minutes")) or 0.0
+        if svc == "vrs":
+            cfz_min  = to_float(p.get("cfz_minutes"))  or 0.0
+            ursa_min = to_float(p.get("ursa_minutes")) or 0.0
+            email_vrs_total[email]       += usage
+            email_cfz_total[email]       += cfz_min
+            email_ursa_total[email]      += ursa_min
+            email_vrs_months[email][mk]  += usage
+        elif svc == "convo now":
+            email_cn_total[email]        += usage
+            email_cn_months[email][mk]   += usage
+
+    # ── Step 6: Filter — VRS = 0 AND CfZ = 0 AND Convo Now > 0 ──────────────
+    rows = []
+    for email in sorted(cn_emails):
+        vrs_total  = email_vrs_total.get(email,  0.0)
+        cfz_total  = email_cfz_total.get(email,  0.0)
+        ursa_total = email_ursa_total.get(email, 0.0)
+        cn_total   = email_cn_total.get(email,   0.0)
+        if vrs_total > 0 or cfz_total > 0 or cn_total == 0:
+            continue
+        cn_months     = email_cn_months.get(email, {})
+        active_months = len(cn_months)
+        latest_month  = max(cn_months.keys()) if cn_months else ""
+        latest_cn_min = cn_months.get(latest_month, 0.0) if latest_month else 0.0
+        cn_cost  = cn_total * CONVO_RATE
+        vrs_nums = sorted(email_vrs_nums.get(email, set()))
+        cn_nums  = sorted(email_cn_nums.get(email,  set()))
+        rows.append({
+            "Name":              email_to_name.get(email, "—"),
+            "Email":             email,
+            "VRS Numbers":       ", ".join(vrs_nums) if vrs_nums else "—",
+            "Convo Now Numbers": ", ".join(cn_nums)  if cn_nums  else "—",
+            "VRS Minutes":       round(vrs_total,  1),
+            "URSA Minutes":      round(ursa_total, 1),
+            "CfZ Minutes":       round(cfz_total,  1),
+            "Convo Now Min":     round(cn_total,   1),
+            "Convo Now Cost":    round(cn_cost,    2),
+            "Active Months":     active_months,
+            "Latest Month":      latest_month,
+            "Latest Month Min":  round(latest_cn_min, 1),
+        })
+
+    if not rows:
+        st.success("No contacts found matching VRS = 0, CfZ = 0, Convo Now > 0 in this period.")
+        st.stop()
+
+    df_full = pd.DataFrame(rows).sort_values("Convo Now Min", ascending=False).reset_index(drop=True)
+
+    # Persist to session state so reruns (search, etc.) don't re-fetch
+    st.session_state["_vrs_zero_cache"] = {
+        "range_label":   range_label,
+        "df_full":       df_full,
+        "email_cn_months": {k: dict(v) for k, v in email_cn_months.items()},
+    }
+else:
+    df_full          = cached["df_full"]
+    email_cn_months  = cached["email_cn_months"]
 
 # ── Summary tiles ─────────────────────────────────────────────────────────────
 total_contacts = len(df_full)
