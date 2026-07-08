@@ -549,7 +549,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 </div>""", unsafe_allow_html=True)
 
     # ── Monthly Values section ─────────────────────────────────────────────────
-    if num_monthly:
+    if vrs_numbers or num_monthly:
         st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.5rem 0 0.75rem;'>Monthly Values — VRS Numbers</div>", unsafe_allow_html=True)
         st.markdown(f"""
 <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin-bottom:1.5rem;">
