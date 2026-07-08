@@ -24,7 +24,7 @@ report_header(
 # ── Filters ───────────────────────────────────────────────────────────────────
 col_range, col_run = st.columns([3, 1])
 with col_range:
-    RANGE_OPTIONS = ["Jun 2026–Present", "Last 3 Months", "Last 6 Months", "Last 12 Months", "All Time"]
+    RANGE_OPTIONS = ["This Month", "This Year", "Jun 2026–Present", "Last 3 Months", "Last 6 Months", "Last 12 Months", "All Time"]
     range_label = st.selectbox("Date range (month_date)", RANGE_OPTIONS)
 with col_run:
     st.markdown("<div style='margin-top:1.65rem;'></div>", unsafe_allow_html=True)
@@ -38,7 +38,11 @@ if not run:
 
 # ── Resolve date floor ────────────────────────────────────────────────────────
 today = date.today()
-if range_label == "Jun 2026–Present":
+if range_label == "This Month":
+    floor = date(today.year, today.month, 1)
+elif range_label == "This Year":
+    floor = date(today.year, 1, 1)
+elif range_label == "Jun 2026–Present":
     floor = date(2026, 6, 1)
 elif range_label == "Last 3 Months":
     m, y = today.month - 3, today.year
