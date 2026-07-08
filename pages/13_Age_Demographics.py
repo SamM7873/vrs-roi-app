@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from collections import defaultdict
-from utils import require_auth, fetch_all, COMMON_CSS, report_header, report_header_close
+from utils import require_auth, fetch_all, list_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.set_page_config(page_title="Age Demographics", layout="wide", page_icon="👥")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -43,8 +43,10 @@ def _f(v):
 # ── UI ──────────────────────────────────────────────────────────────────────
 report_header("Age Demographics", "Usage minutes by age group and state")
 
-with st.sidebar:
+fc1, fc2, fc3 = st.columns([1, 1, 2])
+with fc1:
     service_type = st.selectbox("Service Type", ["VRS", "Convo Now", "Both"], key="age_svc")
+with fc2:
     number_status = st.selectbox("Number Status", ["All", "Live", "Suspended"], key="age_status")
 
 run = st.button("Load Age Demographics", type="primary")
@@ -69,23 +71,16 @@ if run:
     NUM_PROPS = ["number", "email", "first_name", "last_name",
                  "age_bucket", "state", "service_type", "number_status"]
 
-    num_filters = []
-    if service_type != "Both":
-        num_filters.append({"propertyName": "service_type", "operator": "EQ", "value": service_type})
-    if number_status != "All":
-        num_filters.append({"propertyName": "number_status", "operator": "EQ", "value": number_status})
-
-    with st.spinner("Fetching Number records..."):
-        num_recs = fetch_all(
-            "2-40974683",
-            NUM_PROPS,
-            filter_groups=[{"filters": num_filters}] if num_filters else []
-        )
+    num_recs = list_all("2-40974683", NUM_PROPS, progress_label="Fetching Number records")
 
     # index: phone_number → {age_bucket, state, service_type, email}
     phone_meta = {}
     for obj in num_recs:
         p = obj.get("properties", {})
+        if service_type != "Both" and norm(p.get("service_type") or "") != norm(service_type):
+            continue
+        if number_status != "All" and norm(p.get("number_status") or "") != norm(number_status):
+            continue
         num = str(p.get("number") or "").strip()
         if not num:
             continue
