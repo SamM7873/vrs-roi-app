@@ -173,6 +173,46 @@ def fetch_all(object_type_id, properties, filter_groups=None):
     return all_results
 
 
+REPORT_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_cache")
+
+
+def save_report(report_key, data):
+    """Persist a report's results to disk so it survives page reloads and app restarts.
+    `data` is any picklable dict (DataFrames, summaries, filter settings).
+    A `saved_at` timestamp is added automatically."""
+    import pickle
+    os.makedirs(REPORT_CACHE_DIR, exist_ok=True)
+    data = dict(data)
+    data["saved_at"] = time.time()
+    with open(os.path.join(REPORT_CACHE_DIR, f"{report_key}.pkl"), "wb") as f:
+        pickle.dump(data, f)
+
+
+def load_report(report_key):
+    """Load a previously saved report from disk. Returns None if not saved yet."""
+    import pickle
+    path = os.path.join(REPORT_CACHE_DIR, f"{report_key}.pkl")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    except Exception:
+        return None
+
+
+def saved_at_label(data):
+    """Human-readable Central Time label for when a saved report was pulled."""
+    from datetime import timezone as _tz, timedelta as _td
+    ts = (data or {}).get("saved_at")
+    if not ts:
+        return "unknown"
+    dt = datetime.fromtimestamp(ts, tz=_tz.utc)
+    offset = -5 if 3 <= dt.month <= 11 else -6
+    label = "CDT" if offset == -5 else "CST"
+    return dt.astimezone(_tz(_td(hours=offset))).strftime(f"%b %d at %I:%M %p {label}")
+
+
 def month_key(month_str):
     try:
         return datetime.fromisoformat(month_str.replace("Z", "+00:00")).strftime("%m/%d/%Y")
