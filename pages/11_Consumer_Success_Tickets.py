@@ -454,10 +454,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 "fcc_rate_1"]
 
     if filter_start:
-        fy, fm = filter_start.year, filter_start.month - 2
-        if fm <= 0:
-            fm += 12; fy -= 1
-        mv_floor = date(fy, fm, 1)
+        mv_floor = date(filter_start.year, filter_start.month, 1)
     else:
         today_d = date.today()
         mv_floor = date(today_d.year - 2, today_d.month, 1)
