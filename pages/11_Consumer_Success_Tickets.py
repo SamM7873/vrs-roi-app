@@ -432,10 +432,8 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 if br.status_code == 200:
                     for obj in br.json().get("results", []):
                         p = obj.get("properties", {})
-                        # No service_type filter here — HubSpot's report filters
-                        # service type on Monthly Values only, and so does our
-                        # monthly value search below. Filtering numbers too drops
-                        # usage for numbers whose type is blank or was changed.
+                        if norm(p.get("service_type") or "") != "vrs":
+                            continue
                         num = str(p.get("number") or "").strip()
                         if num:
                             num_id_to_number[str(obj["id"])] = num
@@ -592,10 +590,11 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         for cid in cids:
             cbase = {**base, "Contact ID": cid,
                      "Contact Email": contact_email_map.get(cid, "") if unique_cids else ""}
-            nids = cid_to_nids.get(cid, [])
+            # only VRS-typed number objects are in num_id_to_number
+            nids = [n for n in cid_to_nids.get(cid, []) if n in num_id_to_number]
             if not nids:
                 assoc_rows.append({**cbase, "Number ID": "", "Number": "", "MV Records": 0,
-                                   "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "⚠️ No number"})
+                                   "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "⚠️ No VRS number"})
                 continue
             for nid in nids:
                 mv = nid_mv_totals.get(nid)
