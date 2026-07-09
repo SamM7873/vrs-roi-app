@@ -412,14 +412,15 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 if br.status_code == 200:
                     for obj in br.json().get("results", []):
                         p = obj.get("properties", {})
-                        svc = norm(p.get("service_type") or "")
-                        if svc != "vrs":
-                            continue
+                        # No service_type filter here — HubSpot's report filters
+                        # service type on Monthly Values only, and so does our
+                        # monthly value search below. Filtering numbers too drops
+                        # usage for numbers whose type is blank or was changed.
                         num = str(p.get("number") or "").strip()
                         if num:
                             num_id_to_number[str(obj["id"])] = num
 
-    vrs_num_ids = list(num_id_to_number.keys())  # only VRS+live number object IDs
+    vrs_num_ids = list(num_id_to_number.keys())  # all associated number object IDs
 
     # Step 3: search monthly values directly by phone number string (more reliable
     # than v4 association → MV ID lookup which can time out at scale).
