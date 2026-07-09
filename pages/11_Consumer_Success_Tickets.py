@@ -539,14 +539,13 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
     vrs_numbers = list(num_id_to_number.values())  # phone number strings
     num_to_nid  = {v: k for k, v in num_id_to_number.items()}  # phone → object ID
 
-    # Monthly value records collected from both paths, deduped by record ID.
+    # Monthly values are matched number-to-number: MonthlyValue.number must
+    # equal Number.number. Records dedupe by monthly value record ID.
     mv_objects = {}          # mv_id → (number_object_id, properties)
     seen_mv_ids = set()
 
     if vrs_numbers:
         with st.spinner(f"Fetching monthly values for {len(vrs_numbers):,} numbers (from {mv_floor.strftime('%b %Y')})..."):
-            # Path 1: direct phone-string search (fast, but misses rows whose
-            # number text is formatted differently than the Number object's).
             for i in range(0, len(vrs_numbers), 100):
                 chunk_nums = vrs_numbers[i:i+100]
                 mv_recs = fetch_all(
@@ -565,49 +564,10 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                     seen_mv_ids.add(mv_id)
                     p2  = obj.get("properties", {})
                     num = str(p2.get("number") or "").strip()
-                    mv_objects[mv_id] = (num_to_nid.get(num, num), p2)
-
-            # Path 2: number → monthly value associations (matches how HubSpot's
-            # report joins the objects; catches rows the string search missed).
-            nid_to_mv_ids = defaultdict(list)
-            for i in range(0, len(vrs_num_ids), 100):
-                chunk_ids = vrs_num_ids[i:i+100]
-                ar = _post_retry(
-                    f"{BASE_URL}/crm/v4/associations/2-40974683/2-46246179/batch/read",
-                    {"inputs": [{"id": n} for n in chunk_ids]},
-                )
-                if ar.status_code == 200:
-                    for result in ar.json().get("results", []):
-                        nid = str(result.get("from", {}).get("id", ""))
-                        for assoc in result.get("to", []):
-                            mv_id = str(assoc.get("toObjectId") or assoc.get("id") or "")
-                            if mv_id and mv_id not in seen_mv_ids:
-                                nid_to_mv_ids[nid].append(mv_id)
-                time.sleep(0.1)
-
-            missing_mv = [(mid, nid) for nid, mids in nid_to_mv_ids.items() for mid in mids]
-            for i in range(0, len(missing_mv), 100):
-                chunk = missing_mv[i:i+100]
-                br = _post_retry(
-                    f"{BASE_URL}/crm/v3/objects/2-46246179/batch/read",
-                    {"inputs": [{"id": mid} for mid, _ in chunk], "properties": MV_PROPS},
-                )
-                if br.status_code == 200:
-                    owner = dict(chunk)  # mv_id → number object id
-                    for obj in br.json().get("results", []):
-                        mv_id = str(obj["id"])
-                        if mv_id in seen_mv_ids:
-                            continue
-                        p2 = obj.get("properties", {})
-                        # apply the same filters the search path used
-                        if norm(p2.get("service_type") or "") != "vrs":
-                            continue
-                        md = p2.get("month_date") or ""
-                        if md and md[:10] < mv_floor.isoformat():
-                            continue
-                        seen_mv_ids.add(mv_id)
-                        mv_objects[mv_id] = (owner.get(mv_id, ""), p2)
-                time.sleep(0.1)
+                    nid = num_to_nid.get(num)
+                    if nid is None:
+                        continue  # only count rows whose number matches a matched Number
+                    mv_objects[mv_id] = (nid, p2)
 
     for mv_id, (nid, p2) in mv_objects.items():
         num_monthly[nid].append({
