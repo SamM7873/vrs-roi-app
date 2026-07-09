@@ -565,6 +565,62 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
     # Use HubSpot's pre-calculated FCC costs (fcc_cost_based_on_vrs_usage + fcc_cost_based_on_cfz_usage)
     total_vrs_fcc    = sum(v["fcc_vrs"] + v["fcc_cfz"] for v in month_agg.values())
 
+    # ── Association table: ticket → contact → number → monthly values ─────────
+    # One row per link in the chain, with a status showing where it breaks.
+    nid_mv_totals = {}
+    for nid, mv_list in num_monthly.items():
+        nid_mv_totals[nid] = {
+            "ursa": sum(m["ursa_min"] for m in mv_list),
+            "cfz":  sum(m["cfz_min"] for m in mv_list),
+            "months": len(mv_list),
+        }
+
+    assoc_rows = []
+    for r in rows:
+        tid  = r["ID"]
+        base = {
+            "Ticket ID":  tid,
+            "Subject":    r["Subject"],
+            "Close Date": (r["Closed"] or "")[:10],
+        }
+        cids = tid_to_cids.get(tid, [])
+        if not cids:
+            assoc_rows.append({**base, "Contact ID": "", "Contact Email": "",
+                               "Number ID": "", "Number": "", "MV Records": 0,
+                               "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "❌ No contact"})
+            continue
+        for cid in cids:
+            cbase = {**base, "Contact ID": cid,
+                     "Contact Email": contact_email_map.get(cid, "") if unique_cids else ""}
+            nids = cid_to_nids.get(cid, [])
+            if not nids:
+                assoc_rows.append({**cbase, "Number ID": "", "Number": "", "MV Records": 0,
+                                   "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "⚠️ No number"})
+                continue
+            for nid in nids:
+                mv = nid_mv_totals.get(nid)
+                assoc_rows.append({
+                    **cbase,
+                    "Number ID": nid,
+                    "Number":    num_id_to_number.get(nid, ""),
+                    "MV Records": mv["months"] if mv else 0,
+                    "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
+                    "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
+                    "Chain":     "✅ Full chain" if mv else "⚠️ No usage data",
+                })
+
+    assoc_df = pd.DataFrame(assoc_rows)
+
+    st.markdown("#### Association Table — Ticket → Contact → Number → Monthly Values")
+    if not assoc_df.empty:
+        chain_counts = assoc_df["Chain"].value_counts()
+        st.caption(" · ".join(f"**{k}**: {v:,}" for k, v in chain_counts.items())
+                   + f" · URSA total in table: {assoc_df.drop_duplicates('Number ID')['URSA Min'].sum():,.1f} min")
+        st.dataframe(assoc_df, use_container_width=True, hide_index=True, height=420)
+        st.download_button("Download association table CSV",
+                           assoc_df.to_csv(index=False),
+                           "ticket_associations.csv", "text/csv", key="dbg_assoc")
+
     # ── Debug export: per-record reconciliation data ───────────────────────────
     _dbg_rows = []
     for mv_id, (nid, p2) in mv_objects.items():
