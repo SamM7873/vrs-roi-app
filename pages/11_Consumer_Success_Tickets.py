@@ -449,6 +449,7 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     # Batch-read number objects to get the phone number string
     num_id_to_number = {}
+    num_id_meta = {}  # nid → {status, language}
     if all_num_ids:
         with st.spinner(f"Reading {len(all_num_ids)} number objects..."):
             for i in range(0, len(all_num_ids), 100):
@@ -456,16 +457,23 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 br = _post_retry(
                     f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
                     {"inputs": [{"id": n} for n in chunk],
-                     "properties": ["number", "service_type", "number_status"]},
+                     "properties": ["number", "service_type", "number_status", "language_preference"]},
                 )
                 if br.status_code == 200:
                     for obj in br.json().get("results", []):
                         p = obj.get("properties", {})
                         if norm(p.get("service_type") or "") != "vrs":
                             continue
+                        if norm(p.get("number_status") or "") != "live":
+                            continue
                         num = str(p.get("number") or "").strip()
                         if num:
-                            num_id_to_number[str(obj["id"])] = num
+                            nid = str(obj["id"])
+                            num_id_to_number[nid] = num
+                            num_id_meta[nid] = {
+                                "status": (p.get("number_status") or "").strip(),
+                                "language": (p.get("language_preference") or "").strip(),
+                            }
 
     # Email fallback path: ticket/contact email → Number.email → number.
     # Catches numbers with no association to the ticket or its contact.
@@ -481,10 +489,11 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 chunk = ticket_emails[i:i+100]
                 em_recs = fetch_all(
                     "2-40974683",
-                    ["number", "email", "service_type"],
+                    ["number", "email", "service_type", "number_status", "language_preference"],
                     filter_groups=[{"filters": [
-                        {"propertyName": "email",        "operator": "IN", "values": chunk},
-                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
+                        {"propertyName": "email",         "operator": "IN", "values": chunk},
+                        {"propertyName": "service_type",  "operator": "EQ", "value": "VRS"},
+                        {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
                     ]}]
                 )
                 for obj in em_recs:
@@ -495,6 +504,10 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                     if num and em:
                         email_to_nids[em].append(nid)
                         num_id_to_number.setdefault(nid, num)
+                        num_id_meta.setdefault(nid, {
+                            "status": (p.get("number_status") or "").strip(),
+                            "language": (p.get("language_preference") or "").strip(),
+                        })
 
         # Propagate close months from tickets to email-matched numbers
         for r in rows:
@@ -659,6 +672,8 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             assoc_rows.append({
                 **base, "Contact ID": "", "Contact Email": "(direct ticket→number)",
                 "Number ID": nid, "Number": num_id_to_number.get(nid, ""),
+                "Number Status": num_id_meta.get(nid, {}).get("status", ""),
+                "Language": num_id_meta.get(nid, {}).get("language", ""),
                 "MV Records": mv["months"] if mv else 0,
                 "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
                 "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
@@ -678,6 +693,8 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             assoc_rows.append({
                 **base, "Contact ID": "", "Contact Email": f"{t_email} (email match)",
                 "Number ID": nid, "Number": num_id_to_number.get(nid, ""),
+                "Number Status": num_id_meta.get(nid, {}).get("status", ""),
+                "Language": num_id_meta.get(nid, {}).get("language", ""),
                 "MV Records": mv["months"] if mv else 0,
                 "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
                 "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
@@ -686,7 +703,8 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
         if not cids and not seen_nids_for_ticket:
             assoc_rows.append({**base, "Contact ID": "", "Contact Email": "",
-                               "Number ID": "", "Number": "", "MV Records": 0,
+                               "Number ID": "", "Number": "",
+                               "Number Status": "", "Language": "", "MV Records": 0,
                                "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "❌ No contact"})
             continue
         for cid in cids:
@@ -695,7 +713,8 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             # only VRS-typed number objects are in num_id_to_number
             nids = [n for n in cid_to_nids.get(cid, []) if n in num_id_to_number]
             if not nids:
-                assoc_rows.append({**cbase, "Number ID": "", "Number": "", "MV Records": 0,
+                assoc_rows.append({**cbase, "Number ID": "", "Number": "",
+                                   "Number Status": "", "Language": "", "MV Records": 0,
                                    "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "⚠️ No VRS number"})
                 continue
             for nid in nids:
@@ -704,6 +723,8 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                     **cbase,
                     "Number ID": nid,
                     "Number":    num_id_to_number.get(nid, ""),
+                    "Number Status": num_id_meta.get(nid, {}).get("status", ""),
+                    "Language": num_id_meta.get(nid, {}).get("language", ""),
                     "MV Records": mv["months"] if mv else 0,
                     "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
                     "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
