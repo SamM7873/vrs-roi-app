@@ -148,7 +148,10 @@ mv_all_months = st.checkbox(
 
 st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
-CLOSED_KEYWORDS = {"closed", "resolved", "done", "completed"}
+# "Closed" = stage label contains "closed" only, matching HubSpot's report
+# filter (Ticket status is any of "Closed (Consumer Success)"). Broader
+# keywords (resolved/done/completed) counted stages HubSpot's report excludes.
+CLOSED_KEYWORDS = {"closed"}
 
 def _is_closed(status_label):
     return any(k in (status_label or "").lower() for k in CLOSED_KEYWORDS)
@@ -319,8 +322,11 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     # ── Apply date + status filters ────────────────────────────────────────────
     if filter_start and filter_end:
-        fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=timezone.utc)
-        fe = datetime(filter_end.year, filter_end.month, filter_end.day, 23, 59, 59, tzinfo=timezone.utc)
+        # Range boundaries in Central Time, matching HubSpot's report timezone
+        # (CDT Mar–Nov, CST otherwise).
+        _ct = timezone(timedelta(hours=-5 if 3 <= filter_start.month <= 11 else -6))
+        fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=_ct)
+        fe = datetime(filter_end.year, filter_end.month, filter_end.day, 23, 59, 59, tzinfo=_ct)
         def in_range(v):
             dt = _parse_dt(v)
             return dt is not None and fs <= dt <= fe
@@ -345,6 +351,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
     if not rows:
         st.warning(f"No tickets found for the selected filters ({range_label}).")
         st.stop()
+
+    _stage_counts = pd.Series([r["Status"] for r in rows]).value_counts()
+    st.caption("Stage breakdown: " + " · ".join(f"**{s}**: {c:,}" for s, c in _stage_counts.items()))
 
     # ── Step 2: ticket → contact → number object → monthly values ────────────────
     # Path through contacts gives the consumer's personal numbers only.
