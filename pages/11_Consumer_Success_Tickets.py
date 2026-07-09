@@ -565,6 +565,30 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
     # Use HubSpot's pre-calculated FCC costs (fcc_cost_based_on_vrs_usage + fcc_cost_based_on_cfz_usage)
     total_vrs_fcc    = sum(v["fcc_vrs"] + v["fcc_cfz"] for v in month_agg.values())
 
+    # ── Debug export: per-record reconciliation data ───────────────────────────
+    _dbg_rows = []
+    for mv_id, (nid, p2) in mv_objects.items():
+        _dbg_rows.append({
+            "Monthly Value ID": mv_id,
+            "Number Object ID": nid,
+            "Number": str(p2.get("number") or ""),
+            "Month": (p2.get("month_date") or "")[:10],
+            "URSA Minutes": _to_float(p2.get("ursa_minutes")),
+            "CfZ Minutes": _to_float(p2.get("cfz_minutes")),
+        })
+    _dbg_df = pd.DataFrame(_dbg_rows) if _dbg_rows else pd.DataFrame()
+    _matched_nids = pd.DataFrame({"Number Object ID": list(num_id_to_number.keys()),
+                                  "Number": list(num_id_to_number.values())})
+    with st.expander("🔧 Reconciliation data (debug)"):
+        st.caption(f"{len(_matched_nids):,} matched numbers · {len(_dbg_df):,} monthly value records")
+        st.download_button("Download matched numbers CSV",
+                           _matched_nids.to_csv(index=False),
+                           "matched_numbers.csv", "text/csv", key="dbg_nums")
+        if not _dbg_df.empty:
+            st.download_button("Download monthly value records CSV",
+                               _dbg_df.to_csv(index=False),
+                               "monthly_value_records.csv", "text/csv", key="dbg_mvs")
+
     # ── Summary tiles ──────────────────────────────────────────────────────────
     total    = len(rows)
     closed_n = sum(1 for r in rows if r["Is Closed"])
