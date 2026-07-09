@@ -410,13 +410,42 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                                 cid_to_nids[cid].append(nid)
                 time.sleep(0.1)
 
+    # Ticket → number object IDs (direct v4 association). Some tickets are
+    # associated straight to the Number object without a contact→number link,
+    # and HubSpot's report joins those too.
+    tid_to_nids = defaultdict(list)
+    with st.spinner(f"Looking up numbers associated directly to {len(filtered_ticket_ids)} tickets..."):
+        for i in range(0, len(filtered_ticket_ids), 100):
+            chunk = filtered_ticket_ids[i:i+100]
+            ar = _post_retry(
+                f"{BASE_URL}/crm/v4/associations/tickets/2-40974683/batch/read",
+                {"inputs": [{"id": tid} for tid in chunk]},
+            )
+            if ar.status_code == 200:
+                for result in ar.json().get("results", []):
+                    tid = str(result.get("from", {}).get("id", ""))
+                    for assoc in result.get("to", []):
+                        nid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                        if nid:
+                            tid_to_nids[tid].append(nid)
+            time.sleep(0.1)
+
     # Propagate close months from contact to number IDs
     nid_to_close_months = defaultdict(set)
     for cid, nids in cid_to_nids.items():
         for nid in nids:
             nid_to_close_months[nid].update(cid_to_close_months.get(cid, set()))
+    # ...and from directly associated tickets
+    for tid, nids in tid_to_nids.items():
+        cm = tid_to_close_month.get(tid)
+        if cm:
+            for nid in nids:
+                nid_to_close_months[nid].add(cm)
 
-    all_num_ids = list({nid for nids in cid_to_nids.values() for nid in nids})
+    all_num_ids = list(
+        {nid for nids in cid_to_nids.values() for nid in nids} |
+        {nid for nids in tid_to_nids.values() for nid in nids}
+    )
 
     # Batch-read number objects to get the phone number string
     num_id_to_number = {}
@@ -582,7 +611,24 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             "Close Date": (r["Closed"] or "")[:10],
         }
         cids = tid_to_cids.get(tid, [])
-        if not cids:
+        seen_nids_for_ticket = set()
+
+        # Direct ticket → number associations
+        for nid in tid_to_nids.get(tid, []):
+            if nid not in num_id_to_number:
+                continue  # non-VRS
+            seen_nids_for_ticket.add(nid)
+            mv = nid_mv_totals.get(nid)
+            assoc_rows.append({
+                **base, "Contact ID": "", "Contact Email": "(direct ticket→number)",
+                "Number ID": nid, "Number": num_id_to_number.get(nid, ""),
+                "MV Records": mv["months"] if mv else 0,
+                "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
+                "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
+                "Chain":     "✅ Full chain (direct)" if mv else "⚠️ No usage data",
+            })
+
+        if not cids and not seen_nids_for_ticket:
             assoc_rows.append({**base, "Contact ID": "", "Contact Email": "",
                                "Number ID": "", "Number": "", "MV Records": 0,
                                "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "❌ No contact"})
