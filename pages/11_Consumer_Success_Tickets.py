@@ -138,6 +138,14 @@ else:
 # ── ticket name filter ─────────────────────────────────────────────────────────
 ticket_name_filter = st.selectbox("Ticket name filter", TICKET_NAME_OPTIONS, index=0)
 
+mv_all_months = st.checkbox(
+    "Include all months of usage (match HubSpot report)",
+    value=False,
+    help="HubSpot's report has no month filter on Monthly Values — it sums every month of "
+         "usage for contacts whose tickets closed in the period. Unchecked, only usage that "
+         "occurred within the report period is counted.",
+)
+
 st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
 CLOSED_KEYWORDS = {"closed", "resolved", "done", "completed"}
@@ -420,7 +428,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
                 "fcc_rate_1"]
 
-    if filter_start:
+    if mv_all_months:
+        mv_floor = date(2000, 1, 1)  # no floor — sum every month, like HubSpot's report
+    elif filter_start:
         mv_floor = date(filter_start.year, filter_start.month, 1)
     else:
         today_d = date.today()
