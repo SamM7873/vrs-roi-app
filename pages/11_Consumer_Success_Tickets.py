@@ -711,13 +711,17 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             cbase = {**base, "Contact ID": cid,
                      "Contact Email": contact_email_map.get(cid, "") if unique_cids else ""}
             # only VRS-typed number objects are in num_id_to_number
-            nids = [n for n in cid_to_nids.get(cid, []) if n in num_id_to_number]
+            all_contact_nids = [n for n in cid_to_nids.get(cid, []) if n in num_id_to_number]
+            # skip numbers already listed for this ticket via the direct path
+            nids = [n for n in all_contact_nids if n not in seen_nids_for_ticket]
             if not nids:
-                assoc_rows.append({**cbase, "Number ID": "", "Number": "",
-                                   "Number Status": "", "Language": "", "MV Records": 0,
-                                   "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "⚠️ No VRS number"})
+                if not all_contact_nids:
+                    assoc_rows.append({**cbase, "Number ID": "", "Number": "",
+                                       "Number Status": "", "Language": "", "MV Records": 0,
+                                       "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "⚠️ No VRS number"})
                 continue
             for nid in nids:
+                seen_nids_for_ticket.add(nid)
                 mv = nid_mv_totals.get(nid)
                 assoc_rows.append({
                     **cbase,
