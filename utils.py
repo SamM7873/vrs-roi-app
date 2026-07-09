@@ -154,10 +154,19 @@ def fetch_all(object_type_id, properties, filter_groups=None):
         payload = {"limit": 100, "properties": properties, "filterGroups": filter_groups or []}
         if after:
             payload["after"] = after
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
-        if resp.status_code == 429:
-            time.sleep(1.0)
-            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        resp = None
+        for attempt in range(3):
+            try:
+                resp = requests.post(url, headers=headers, json=payload, timeout=60)
+                if resp.status_code == 429:
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                break
+            except requests.exceptions.RequestException:
+                if attempt == 2:
+                    st.error("HubSpot did not respond after 3 attempts. Please try again in a minute.")
+                    return all_results
+                time.sleep(2 * (attempt + 1))
         if resp.status_code != 200:
             st.error(f"Error {resp.status_code}: {resp.text}")
             break

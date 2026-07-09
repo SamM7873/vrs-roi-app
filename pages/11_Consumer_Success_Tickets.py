@@ -148,6 +148,22 @@ mv_all_months = st.checkbox(
 
 st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
+def _post_retry(url, json_body, timeout=60, attempts=3):
+    """POST with retry on timeouts/connection errors and 429 rate limits."""
+    for attempt in range(attempts):
+        try:
+            r = requests.post(url, headers=_headers, json=json_body, timeout=timeout)
+            if r.status_code == 429:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            return r
+        except requests.exceptions.RequestException:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2 * (attempt + 1))
+    return r
+
+
 # "Closed" = stage label contains "closed" only, matching HubSpot's report
 # filter (Ticket status is any of "Closed (Consumer Success)"). Broader
 # keywords (resolved/done/completed) counted stages HubSpot's report excludes.
@@ -223,8 +239,11 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             }
             if after:
                 body["after"] = after
-            resp = requests.post(f"{BASE_URL}/crm/v3/objects/tickets/search",
-                                 headers=_headers, json=body, timeout=30)
+            try:
+                resp = _post_retry(f"{BASE_URL}/crm/v3/objects/tickets/search", body)
+            except requests.exceptions.RequestException:
+                st.error("HubSpot did not respond after 3 attempts. Please try again in a minute.")
+                st.stop()
             if resp.status_code == 429:
                 time.sleep(1.0)
                 continue
@@ -246,11 +265,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         tid_to_cids = defaultdict(list)  # ticket_id → [contact_id, ...]
         for i in range(0, len(ticket_ids), 100):
             chunk = ticket_ids[i:i+100]
-            ar = requests.post(
+            ar = _post_retry(
                 f"{BASE_URL}/crm/v4/associations/tickets/contacts/batch/read",
-                headers=_headers,
-                json={"inputs": [{"id": tid} for tid in chunk]},
-                timeout=30,
+                {"inputs": [{"id": tid} for tid in chunk]},
             )
             if ar.status_code == 200:
                 for result in ar.json().get("results", []):
@@ -266,11 +283,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             contact_email_map = {}
             for i in range(0, len(unique_cids), 100):
                 chunk = unique_cids[i:i+100]
-                br = requests.post(
+                br = _post_retry(
                     f"{BASE_URL}/crm/v3/objects/contacts/batch/read",
-                    headers=_headers,
-                    json={"inputs": [{"id": c} for c in chunk], "properties": ["email"]},
-                    timeout=30,
+                    {"inputs": [{"id": c} for c in chunk], "properties": ["email"]},
                 )
                 if br.status_code == 200:
                     for c in br.json().get("results", []):
@@ -382,11 +397,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         with st.spinner(f"Looking up number objects for {len(filtered_cids)} contact(s)..."):
             for i in range(0, len(filtered_cids), 100):
                 chunk = filtered_cids[i:i+100]
-                ar = requests.post(
+                ar = _post_retry(
                     f"{BASE_URL}/crm/v4/associations/contacts/2-40974683/batch/read",
-                    headers=_headers,
-                    json={"inputs": [{"id": cid} for cid in chunk]},
-                    timeout=30,
+                    {"inputs": [{"id": cid} for cid in chunk]},
                 )
                 if ar.status_code == 200:
                     for result in ar.json().get("results", []):
@@ -411,12 +424,10 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
         with st.spinner(f"Reading {len(all_num_ids)} number objects..."):
             for i in range(0, len(all_num_ids), 100):
                 chunk = all_num_ids[i:i+100]
-                br = requests.post(
+                br = _post_retry(
                     f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
-                    headers=_headers,
-                    json={"inputs": [{"id": n} for n in chunk],
-                          "properties": ["number", "service_type", "number_status"]},
-                    timeout=30,
+                    {"inputs": [{"id": n} for n in chunk],
+                     "properties": ["number", "service_type", "number_status"]},
                 )
                 if br.status_code == 200:
                     for obj in br.json().get("results", []):
@@ -484,11 +495,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             nid_to_mv_ids = defaultdict(list)
             for i in range(0, len(vrs_num_ids), 100):
                 chunk_ids = vrs_num_ids[i:i+100]
-                ar = requests.post(
+                ar = _post_retry(
                     f"{BASE_URL}/crm/v4/associations/2-40974683/2-46246179/batch/read",
-                    headers=_headers,
-                    json={"inputs": [{"id": n} for n in chunk_ids]},
-                    timeout=30,
+                    {"inputs": [{"id": n} for n in chunk_ids]},
                 )
                 if ar.status_code == 200:
                     for result in ar.json().get("results", []):
@@ -502,11 +511,9 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             missing_mv = [(mid, nid) for nid, mids in nid_to_mv_ids.items() for mid in mids]
             for i in range(0, len(missing_mv), 100):
                 chunk = missing_mv[i:i+100]
-                br = requests.post(
+                br = _post_retry(
                     f"{BASE_URL}/crm/v3/objects/2-46246179/batch/read",
-                    headers=_headers,
-                    json={"inputs": [{"id": mid} for mid, _ in chunk], "properties": MV_PROPS},
-                    timeout=30,
+                    {"inputs": [{"id": mid} for mid, _ in chunk], "properties": MV_PROPS},
                 )
                 if br.status_code == 200:
                     owner = dict(chunk)  # mv_id → number object id
