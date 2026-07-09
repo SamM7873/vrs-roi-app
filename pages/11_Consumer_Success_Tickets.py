@@ -467,6 +467,43 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                         if num:
                             num_id_to_number[str(obj["id"])] = num
 
+    # Email fallback path: ticket/contact email → Number.email → number.
+    # Catches numbers with no association to the ticket or its contact.
+    email_to_nids = defaultdict(list)
+    ticket_emails = sorted({
+        (r["Email"] or "").strip().lower()
+        for r in rows
+        if r["Email"] and "@" in r["Email"]
+    })
+    if ticket_emails:
+        with st.spinner(f"Matching numbers by email for {len(ticket_emails):,} addresses..."):
+            for i in range(0, len(ticket_emails), 100):
+                chunk = ticket_emails[i:i+100]
+                em_recs = fetch_all(
+                    "2-40974683",
+                    ["number", "email", "service_type"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "email",        "operator": "IN", "values": chunk},
+                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
+                    ]}]
+                )
+                for obj in em_recs:
+                    p = obj.get("properties", {})
+                    nid = str(obj["id"])
+                    num = str(p.get("number") or "").strip()
+                    em  = (p.get("email") or "").strip().lower()
+                    if num and em:
+                        email_to_nids[em].append(nid)
+                        num_id_to_number.setdefault(nid, num)
+
+        # Propagate close months from tickets to email-matched numbers
+        for r in rows:
+            em = (r["Email"] or "").strip().lower()
+            cm = tid_to_close_month.get(r["ID"])
+            if cm and em in email_to_nids:
+                for nid in email_to_nids[em]:
+                    nid_to_close_months[nid].add(cm)
+
     vrs_num_ids = list(num_id_to_number.keys())  # all associated number object IDs
 
     # Step 3: search monthly values directly by phone number string (more reliable
@@ -626,6 +663,25 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                 "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
                 "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
                 "Chain":     "✅ Full chain (direct)" if mv else "⚠️ No usage data",
+            })
+
+        # Email-matched numbers (no association, matched via Number.email)
+        t_email = (r["Email"] or "").strip().lower()
+        contact_nids = {n for c in cids for n in cid_to_nids.get(c, [])}
+        for nid in email_to_nids.get(t_email, []):
+            if nid in seen_nids_for_ticket or nid in contact_nids:
+                continue
+            if nid not in num_id_to_number:
+                continue
+            seen_nids_for_ticket.add(nid)
+            mv = nid_mv_totals.get(nid)
+            assoc_rows.append({
+                **base, "Contact ID": "", "Contact Email": f"{t_email} (email match)",
+                "Number ID": nid, "Number": num_id_to_number.get(nid, ""),
+                "MV Records": mv["months"] if mv else 0,
+                "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
+                "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
+                "Chain":     "✅ Full chain (email)" if mv else "⚠️ No usage data",
             })
 
         if not cids and not seen_nids_for_ticket:
