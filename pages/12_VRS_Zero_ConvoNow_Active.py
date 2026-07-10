@@ -104,7 +104,7 @@ if run or not cached:
             cn_obj_records.extend(fetch_all(
                 "2-40974683",
                 ["number", "email", "first_name", "last_name", "service_type",
-                 "number_status", "usage_type", "credit_plan_name"],
+                 "number_status", "usage_type", "credit_plan_name", "convo_now_account_id"],
                 filter_groups=[{"filters": [
                     {"propertyName": "number",           "operator": "IN", "values": chunk},
                     {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
@@ -115,6 +115,7 @@ if run or not cached:
     cn_emails: set = set()
     num_to_email: dict = {}
     email_to_name: dict = {}
+    email_to_pendo: dict = {}
     _statuses_seen: dict = defaultdict(int)
     for r in cn_obj_records:
         p = r.get("properties", {})
@@ -131,6 +132,9 @@ if run or not cached:
             num_to_email[num] = email
             if fn or ln:
                 email_to_name[email] = f"{fn} {ln}".strip()
+            pendo = (p.get("convo_now_account_id") or "").strip()
+            if pendo:
+                email_to_pendo.setdefault(email, pendo)
 
     if not cn_emails:
         st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary + Live). "
@@ -236,6 +240,7 @@ if run or not cached:
         rows.append({
             "Name":              email_to_name.get(email, "—"),
             "Email":             email,
+            "Pendo ID":          email_to_pendo.get(email, "—"),
             "VRS Numbers":       ", ".join(vrs_nums) if vrs_nums else "—",
             "Convo Now Numbers": ", ".join(cn_nums)  if cn_nums  else "—",
             "VRS Minutes":       round(vrs_total,  1),
@@ -372,7 +377,8 @@ if search.strip():
         df_view["Name"].str.lower().str.contains(q, na=False) |
         df_view["Email"].str.lower().str.contains(q, na=False) |
         df_view["VRS Numbers"].str.lower().str.contains(q, na=False) |
-        df_view["Convo Now Numbers"].str.lower().str.contains(q, na=False)
+        df_view["Convo Now Numbers"].str.lower().str.contains(q, na=False) |
+        df_view["Pendo ID"].str.lower().str.contains(q, na=False)
     )
     df_view = df_view[mask]
     st.caption(f'{len(df_view):,} of {total_contacts:,} contacts match "{search}"')
