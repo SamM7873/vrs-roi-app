@@ -34,8 +34,10 @@ with col_run:
 report_header_close()
 
 # Clear cached results if the date range changed since last run
+# (or if the cache predates the Pendo ID column)
 cached = st.session_state.get("_vrs_zero_cache")
-if cached and cached.get("range_label") != range_label:
+if cached and (cached.get("range_label") != range_label
+               or "Pendo ID" not in cached.get("df_full", pd.DataFrame()).columns):
     del st.session_state["_vrs_zero_cache"]
     cached = None
 
