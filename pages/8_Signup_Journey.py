@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime, timezone, timedelta, date
-from utils import require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -122,7 +122,7 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 if st.button("Run Sign-Up Journey Report", use_container_width=False):
 
     # 1. Pull contacts
-    with st.spinner("Loading contacts..."):
+    with dash_spinner("Loading contacts..."):
         contact_records = list_all(
             "contacts",
             ["email", "firstname", "lastname", "createdate"],
@@ -161,7 +161,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         st.stop()
 
     # 2. Pull ALL live VRS number objects, join in Python on email
-    with st.spinner("Loading number objects..."):
+    with dash_spinner("Loading number objects..."):
         num_records = list_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name",

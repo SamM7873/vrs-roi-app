@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime, timezone, timedelta, date
-from utils import require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -93,7 +93,7 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 if st.button("Run Port-In Report", use_container_width=False):
 
     # Step 1: pull registrations where registration_type = port_in
-    with st.spinner("Loading port-in registrations..."):
+    with dash_spinner("Loading port-in registrations..."):
         reg_records = list_all(
             "2-58833629",
             ["registration_type", "number", "email", "first_name", "last_name",
@@ -138,7 +138,7 @@ if st.button("Run Port-In Report", use_container_width=False):
     port_in_numbers = list(reg_by_number.keys())
 
     # Step 2: fetch number objects matching those numbers
-    with st.spinner(f"Fetching number objects for {len(port_in_numbers):,} port-in numbers..."):
+    with dash_spinner(f"Fetching number objects for {len(port_in_numbers):,} port-in numbers..."):
         num_records_raw = []
         for i in range(0, len(port_in_numbers), 100):
             chunk = port_in_numbers[i:i + 100]

@@ -87,15 +87,14 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
                 f'<div style="width:14px;height:14px;border-radius:3px;background:{"#2DB84B" if i < filled else "#D1FAE5"};"></div>'
                 for i in range(20)
             )
-            loader.markdown(f"""
-<style>
-@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-.hs-spin {{ display:inline-block;animation:spin 1s linear infinite; }}
-</style>
+            loader.markdown(f"""{_DASH_CSS}
 <div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;
             padding:1.1rem 1.5rem;margin:0.5rem 0;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-  <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
-    <span class="hs-spin" style="font-size:1.4rem;">🔄</span>
+  <div style="display:flex;align-items:center;gap:1.25rem;margin-bottom:0.75rem;">
+    <div class="dash-wrap">
+      <div class="dash uno"></div><div class="dash dos"></div>
+      <div class="dash tres"></div><div class="dash cuatro"></div>
+    </div>
     <div>
       <div style="font-weight:700;color:#111827;font-size:0.95rem;">{progress_label}</div>
       <div style="color:#6B7280;font-size:0.82rem;">{fetched:,} records fetched</div>
@@ -180,6 +179,74 @@ def fetch_all(object_type_id, properties, filter_groups=None):
             break
         time.sleep(0.15)
     return all_results
+
+
+# ── Dash loading animation (shared across all pages) ────────────────────────
+_DASH_CSS = """
+<style>
+.dash-wrap { display:flex; align-items:center; padding:0 10px; }
+.dash {
+  margin: 0 15px; width: 35px; height: 15px; border-radius: 8px;
+  background: #FF2CBD; box-shadow: 0 0 10px 0 #FECDFF;
+}
+.dash.uno   { margin-right: -18px; transform-origin: center left;  animation: dspin  3s linear infinite; }
+.dash.dos   { transform-origin: center right; animation: dspin2 3s linear infinite; animation-delay: .2s; }
+.dash.tres  { transform-origin: center right; animation: dspin3 3s linear infinite; animation-delay: .3s; }
+.dash.cuatro{ transform-origin: center right; animation: dspin4 3s linear infinite; animation-delay: .4s; }
+@keyframes dspin {
+  0% { transform: rotate(0deg); } 25% { transform: rotate(360deg); }
+  30% { transform: rotate(370deg); } 35% { transform: rotate(360deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes dspin2 {
+  0% { transform: rotate(0deg); } 20% { transform: rotate(0deg); }
+  30% { transform: rotate(-180deg); } 35% { transform: rotate(-190deg); }
+  40% { transform: rotate(-180deg); } 78% { transform: rotate(-180deg); }
+  95% { transform: rotate(-360deg); } 98% { transform: rotate(-370deg); }
+  100% { transform: rotate(-360deg); }
+}
+@keyframes dspin3 {
+  0% { transform: rotate(0deg); } 27% { transform: rotate(0deg); }
+  40% { transform: rotate(180deg); } 45% { transform: rotate(190deg); }
+  50% { transform: rotate(180deg); } 62% { transform: rotate(180deg); }
+  75% { transform: rotate(360deg); } 80% { transform: rotate(370deg); }
+  85% { transform: rotate(360deg); } 100% { transform: rotate(360deg); }
+}
+@keyframes dspin4 {
+  0% { transform: rotate(0deg); } 38% { transform: rotate(0deg); }
+  60% { transform: rotate(-360deg); } 65% { transform: rotate(-370deg); }
+  75% { transform: rotate(-360deg); } 100% { transform: rotate(-360deg); }
+}
+</style>
+"""
+
+def _dash_card_html(label, sub=""):
+    sub_html = f'<div style="color:#6B7280;font-size:0.82rem;">{sub}</div>' if sub else ""
+    return f"""{_DASH_CSS}
+<div style="display:flex;align-items:center;gap:1.5rem;background:#fff;border:1.5px solid #E5E7EB;
+            border-radius:14px;padding:1.1rem 1.5rem;margin:0.5rem 0;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+  <div class="dash-wrap">
+    <div class="dash uno"></div><div class="dash dos"></div>
+    <div class="dash tres"></div><div class="dash cuatro"></div>
+  </div>
+  <div>
+    <div style="font-weight:700;color:#111827;font-size:0.95rem;">{label}</div>
+    {sub_html}
+  </div>
+</div>"""
+
+
+from contextlib import contextmanager
+
+@contextmanager
+def dash_spinner(label="Loading..."):
+    """Drop-in replacement for st.spinner using the dash animation."""
+    ph = st.empty()
+    ph.markdown(_dash_card_html(label), unsafe_allow_html=True)
+    try:
+        yield
+    finally:
+        ph.empty()
 
 
 REPORT_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_cache")

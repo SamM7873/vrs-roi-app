@@ -8,7 +8,7 @@ import os
 import time
 from datetime import datetime
 from collections import defaultdict
-from utils import vrs_rate_for_month as _vrs_rate
+from utils import dash_spinner, vrs_rate_for_month as _vrs_rate
 
 HUBSPOT_TOKEN = st.secrets.get("HUBSPOT_TOKEN", os.environ.get("HUBSPOT_TOKEN", ""))
 if not HUBSPOT_TOKEN:
@@ -1023,7 +1023,7 @@ if search_clicked and (search_input.strip() or first_name_input.strip() or last_
     if last_name_input:
         reg_filter_groups_direct.append({"filters": [{"propertyName": "last_name", "operator": "CONTAINS_TOKEN", "value": last_name_input}]})
 
-    with st.spinner("Searching HubSpot..."):
+    with dash_spinner("Searching HubSpot..."):
         matched_numbers = fetch_all(
             "2-40974683",
             [
@@ -1970,7 +1970,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
         if not emails:
             st.info("No email addresses found to look up tickets.")
         else:
-            with st.spinner("Looking up contacts and tickets..."):
+            with dash_spinner("Looking up contacts and tickets..."):
                 # Step 1: find HubSpot contact IDs by email
                 contact_ids = []
                 contact_errors = []

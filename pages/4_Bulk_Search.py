@@ -6,7 +6,7 @@ import time
 import os
 from datetime import datetime
 from collections import defaultdict
-from utils import require_auth, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close, vrs_rate_for_month
+from utils import dash_spinner, require_auth, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close, vrs_rate_for_month
 
 st.set_page_config(page_title="Bulk Search", layout="wide", page_icon="🔎")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -70,7 +70,7 @@ if run_clicked and raw_input.strip():
         st.warning("Nothing to search.")
         st.stop()
 
-    with st.spinner("Fetching number records..."):
+    with dash_spinner("Fetching number records..."):
         matched = fetch_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name", "number_status",
@@ -108,7 +108,7 @@ if run_clicked and raw_input.strip():
     all_nums = list(num_to_person.keys())
 
     # Fetch monthly records
-    with st.spinner("Fetching monthly values..."):
+    with dash_spinner("Fetching monthly values..."):
         monthly = []
         for i in range(0, len(all_nums), 100):
             chunk = all_nums[i:i+100]

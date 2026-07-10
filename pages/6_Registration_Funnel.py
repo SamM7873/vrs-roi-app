@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime
-from utils import require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.set_page_config(page_title="Registration Funnel", layout="wide", page_icon="📋")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -11,7 +11,7 @@ require_auth()
 report_header("Registration Funnel", "Step-by-step conversion from Submitted → LEX → URD → Active", section="Analytics")
 
 if st.button("Load Registration Funnel", use_container_width=False):
-    with st.spinner("Loading all registration records..."):
+    with dash_spinner("Loading all registration records..."):
         records = list_all(
             "2-58833629",
             [

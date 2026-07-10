@@ -6,7 +6,7 @@ import time
 import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta, date
-from utils import require_auth, fetch_all, COMMON_CSS, report_header, report_header_close, norm, vrs_rate_for_month
+from utils import dash_spinner, require_auth, fetch_all, COMMON_CSS, report_header, report_header_close, norm, vrs_rate_for_month
 
 CONVO_NOW_RATE = 2.60
 
@@ -196,7 +196,7 @@ if run_clicked or _use_cache:
         globals().update(_cs_cache["vars"])
     else:
 
-        with st.spinner("Loading pipeline configuration..."):
+        with dash_spinner("Loading pipeline configuration..."):
             # Fetch pipeline and stage metadata
             stage_labels = {}
             pipeline_names = {}
@@ -234,7 +234,7 @@ if run_clicked or _use_cache:
         ]
 
         # Fetch all Consumer Success tickets
-        with st.spinner("Fetching Consumer Success tickets..."):
+        with dash_spinner("Fetching Consumer Success tickets..."):
             owner_names = {}
             try:
                 or_ = requests.get(f"{BASE_URL}/crm/v3/owners", headers=_headers, timeout=15)
@@ -281,7 +281,7 @@ if run_clicked or _use_cache:
         ticket_contact_email = {}   # ticket_id → email
         ticket_ids = [t["id"] for t in all_tickets]
 
-        with st.spinner(f"Looking up contact emails for {len(ticket_ids)} tickets..."):
+        with dash_spinner(f"Looking up contact emails for {len(ticket_ids)} tickets..."):
             tid_to_cids = defaultdict(list)  # ticket_id → [contact_id, ...]
             _failed_assoc_batches = 0
 
@@ -432,7 +432,7 @@ if run_clicked or _use_cache:
         # Contact → number object IDs (v4 association)
         cid_to_nids = defaultdict(list)
         if filtered_cids:
-            with st.spinner(f"Looking up number objects for {len(filtered_cids)} contact(s)..."):
+            with dash_spinner(f"Looking up number objects for {len(filtered_cids)} contact(s)..."):
                 for i in range(0, len(filtered_cids), 100):
                     chunk = filtered_cids[i:i+100]
                     ar = _post_retry(
@@ -452,7 +452,7 @@ if run_clicked or _use_cache:
         # associated straight to the Number object without a contact→number link,
         # and HubSpot's report joins those too.
         tid_to_nids = defaultdict(list)
-        with st.spinner(f"Looking up numbers associated directly to {len(filtered_ticket_ids)} tickets..."):
+        with dash_spinner(f"Looking up numbers associated directly to {len(filtered_ticket_ids)} tickets..."):
             for i in range(0, len(filtered_ticket_ids), 100):
                 chunk = filtered_ticket_ids[i:i+100]
                 ar = _post_retry(
@@ -474,7 +474,7 @@ if run_clicked or _use_cache:
         _orphan_tids = [tid for tid in filtered_ticket_ids
                         if not tid_to_cids.get(str(tid)) and not tid_to_nids.get(str(tid))]
         if _orphan_tids:
-            with st.spinner(f"Individually checking {len(_orphan_tids)} tickets with no associations found..."):
+            with dash_spinner(f"Individually checking {len(_orphan_tids)} tickets with no associations found..."):
                 for tid in _orphan_tids:
                     tid = str(tid)
                     for assoc_path, target in (("contacts", tid_to_cids), ("2-40974683", tid_to_nids)):
@@ -540,7 +540,7 @@ if run_clicked or _use_cache:
         num_id_to_number = {}
         num_id_meta = {}  # nid → {status, language}
         if all_num_ids:
-            with st.spinner(f"Reading {len(all_num_ids)} number objects..."):
+            with dash_spinner(f"Reading {len(all_num_ids)} number objects..."):
                 for i in range(0, len(all_num_ids), 100):
                     chunk = all_num_ids[i:i+100]
                     br = _post_retry(
@@ -573,7 +573,7 @@ if run_clicked or _use_cache:
             if r["Email"] and "@" in r["Email"]
         })
         if ticket_emails:
-            with st.spinner(f"Matching numbers by email for {len(ticket_emails):,} addresses..."):
+            with dash_spinner(f"Matching numbers by email for {len(ticket_emails):,} addresses..."):
                 for i in range(0, len(ticket_emails), 100):
                     chunk = ticket_emails[i:i+100]
                     em_recs = fetch_all(
@@ -634,7 +634,7 @@ if run_clicked or _use_cache:
         seen_mv_ids = set()
 
         if vrs_numbers:
-            with st.spinner(f"Fetching monthly values for {len(vrs_numbers):,} numbers (from {mv_floor.strftime('%b %Y')})..."):
+            with dash_spinner(f"Fetching monthly values for {len(vrs_numbers):,} numbers (from {mv_floor.strftime('%b %Y')})..."):
                 for i in range(0, len(vrs_numbers), 100):
                     chunk_nums = vrs_numbers[i:i+100]
                     mv_recs = fetch_all(

@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime, timezone, timedelta, date
-from utils import require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -105,7 +105,7 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 
 if st.button("Run Number Funnel", use_container_width=False):
 
-    with st.spinner("Loading number objects..."):
+    with dash_spinner("Loading number objects..."):
         raw = list_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name",

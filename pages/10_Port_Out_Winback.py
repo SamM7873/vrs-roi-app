@@ -3,7 +3,7 @@ import pandas as pd
 import altair as alt
 from datetime import datetime, timezone, timedelta, date
 from collections import defaultdict
-from utils import require_auth, list_all, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -130,7 +130,7 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 
 if st.button("Run Port-Out Winback Report", use_container_width=False):
 
-    with st.spinner("Loading deactivated port-out numbers..."):
+    with dash_spinner("Loading deactivated port-out numbers..."):
         raw = list_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name",
@@ -188,7 +188,7 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
     all_nums = [str(p.get("number") or "").strip() for p in records if p.get("number")]
 
     # ── Pull monthly usage for matched numbers ────────────────────────────────
-    with st.spinner(f"Fetching monthly usage for {total:,} numbers..."):
+    with dash_spinner(f"Fetching monthly usage for {total:,} numbers..."):
         monthly_raw = []
         for i in range(0, len(all_nums), 100):
             chunk = all_nums[i:i + 100]

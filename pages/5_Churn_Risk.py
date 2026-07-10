@@ -4,7 +4,7 @@ import altair as alt
 import time
 from datetime import datetime
 from collections import defaultdict
-from utils import require_auth, list_all, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close
 
 st.set_page_config(page_title="Churn Risk Report", layout="wide", page_icon="🚨")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -25,7 +25,7 @@ def month_sort_key(m):
         return datetime.min
 
 if st.button("Run Churn Risk Analysis", use_container_width=False):
-    with st.spinner("Loading all live VRS numbers..."):
+    with dash_spinner("Loading all live VRS numbers..."):
         records = list_all(
             "2-40974683",
             ["number", "email", "first_name", "last_name", "number_status", "service_type",
@@ -49,7 +49,7 @@ if st.button("Run Churn Risk Analysis", use_container_width=False):
     all_nums = [str(r.get("properties", {}).get("number") or "").strip() for r in vrs_live if r.get("properties", {}).get("number")]
     num_props = {str(r.get("properties", {}).get("number") or "").strip(): r.get("properties", {}) for r in vrs_live}
 
-    with st.spinner(f"Fetching monthly usage for {len(all_nums):,} numbers..."):
+    with dash_spinner(f"Fetching monthly usage for {len(all_nums):,} numbers..."):
         monthly = []
         for i in range(0, len(all_nums), 100):
             chunk = all_nums[i:i + 100]

@@ -5,6 +5,7 @@ import os
 from datetime import date, datetime, timezone
 from collections import defaultdict
 from utils import (
+    dash_spinner,
     require_auth, fetch_all, norm, to_float,
     COMMON_CSS, report_header, report_header_close,
 )
@@ -69,7 +70,7 @@ DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": floor_m
 # Skip data fetch if results are already cached for this range
 if run or not cached:
     # ── Step 1: Convo Now MV records with usage > 0 ───────────────────────────
-    with st.spinner("Fetching Convo Now monthly values with usage > 0…"):
+    with dash_spinner("Fetching Convo Now monthly values with usage > 0…"):
         cn_mvs = fetch_all(
             "2-46246179",
             ["number", "month_date", "usage_minutes", "service_type"],
@@ -96,7 +97,7 @@ if run or not cached:
         st.stop()
 
     # ── Step 2: Number objects — filter by usage_type & credit_plan_name ──────
-    with st.spinner(f"Looking up {len(cn_numbers):,} Convo Now number objects…"):
+    with dash_spinner(f"Looking up {len(cn_numbers):,} Convo Now number objects…"):
         cn_obj_records = []
         for i in range(0, len(cn_numbers), 100):
             chunk = list(cn_numbers)[i:i+100]
@@ -131,7 +132,7 @@ if run or not cached:
         st.stop()
 
     # ── Step 3: All numbers for those contacts (VRS + Convo Now) ─────────────
-    with st.spinner(f"Fetching all numbers for {len(cn_emails):,} contacts…"):
+    with dash_spinner(f"Fetching all numbers for {len(cn_emails):,} contacts…"):
         all_num_objs = []
         for i in range(0, len(cn_emails), 100):
             chunk = list(cn_emails)[i:i+100]
@@ -168,7 +169,7 @@ if run or not cached:
     all_nums_flat = list({n for nums in all_numbers_by_email.values() for n in nums})
 
     # ── Step 4: MV records for all numbers in the period ─────────────────────
-    with st.spinner(f"Fetching monthly values for {len(all_nums_flat):,} numbers…"):
+    with dash_spinner(f"Fetching monthly values for {len(all_nums_flat):,} numbers…"):
         all_mvs = []
         for i in range(0, len(all_nums_flat), 100):
             chunk = all_nums_flat[i:i+100]
