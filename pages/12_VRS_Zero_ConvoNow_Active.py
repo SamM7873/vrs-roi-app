@@ -34,10 +34,11 @@ with col_run:
 report_header_close()
 
 # Clear cached results if the date range changed since last run
-# (or if the cache predates the Pendo ID column)
+# (or if the cache is from an older version of this page's pipeline)
+_CACHE_VERSION = 3  # bump when columns/fetch logic change
 cached = st.session_state.get("_vrs_zero_cache")
 if cached and (cached.get("range_label") != range_label
-               or "Age Bucket" not in cached.get("df_full", pd.DataFrame()).columns):
+               or cached.get("version") != _CACHE_VERSION):
     del st.session_state["_vrs_zero_cache"]
     cached = None
 
@@ -287,6 +288,7 @@ if run or not cached:
 
     # Persist to session state so reruns (search, etc.) don't re-fetch
     st.session_state["_vrs_zero_cache"] = {
+        "version":       _CACHE_VERSION,
         "range_label":   range_label,
         "df_full":       df_full,
         "email_cn_months": {k: dict(v) for k, v in email_cn_months.items()},
@@ -419,6 +421,11 @@ with ch2_right:
 
 # ── Search + table ────────────────────────────────────────────────────────────
 st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#6B7280;margin:1.25rem 0 0.5rem;'>Contact Detail</div>", unsafe_allow_html=True)
+
+_age_set   = int((df_full["Age Bucket"] != "—").sum()) if "Age Bucket" in df_full.columns else 0
+_pendo_set = int((df_full["Pendo ID"] != "—").sum()) if "Pendo ID" in df_full.columns else 0
+st.caption(f"Age Bucket set on {_age_set:,} of {len(df_full):,} contacts · "
+           f"Pendo ID set on {_pendo_set:,} of {len(df_full):,}")
 
 search = st.text_input(
     "Search contacts",
