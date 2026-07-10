@@ -109,15 +109,19 @@ if run or not cached:
                     {"propertyName": "number",           "operator": "IN", "values": chunk},
                     {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
                     {"propertyName": "credit_plan_name", "operator": "EQ", "value": "Convo Now: Access Complimentary"},
-                    {"propertyName": "number_status",    "operator": "EQ", "value": "Live"},
                 ]}]
             ))
 
     cn_emails: set = set()
     num_to_email: dict = {}
     email_to_name: dict = {}
+    _statuses_seen: dict = defaultdict(int)
     for r in cn_obj_records:
         p = r.get("properties", {})
+        _status = (p.get("number_status") or "").strip()
+        _statuses_seen[_status or "(blank)"] += 1
+        if norm(_status) != "live":
+            continue
         num   = str(p.get("number") or "").strip()
         email = str(p.get("email")  or "").strip().lower()
         fn = (p.get("first_name") or "").strip()
@@ -129,7 +133,8 @@ if run or not cached:
                 email_to_name[email] = f"{fn} {ln}".strip()
 
     if not cn_emails:
-        st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary + Live).")
+        st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary + Live). "
+                   f"Statuses on matching numbers: {dict(_statuses_seen) or '—'}")
         st.stop()
 
     # ── Step 3: All numbers for those contacts (VRS + Convo Now) ─────────────
