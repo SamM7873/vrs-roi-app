@@ -106,7 +106,7 @@ if run or not cached:
             cn_obj_records.extend(fetch_all(
                 "2-40974683",
                 ["number", "email", "first_name", "last_name", "service_type",
-                 "number_status", "usage_type", "credit_plan_name", "convo_now_account_id"],
+                 "number_status", "usage_type", "credit_plan_name"],
                 filter_groups=[{"filters": [
                     {"propertyName": "number",           "operator": "IN", "values": chunk},
                     {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
@@ -134,14 +134,30 @@ if run or not cached:
             num_to_email[num] = email
             if fn or ln:
                 email_to_name[email] = f"{fn} {ln}".strip()
-            pendo = (p.get("convo_now_account_id") or "").strip()
-            if pendo:
-                email_to_pendo.setdefault(email, pendo)
 
     if not cn_emails:
         st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary + Live). "
                    f"Statuses on matching numbers: {dict(_statuses_seen) or '—'}")
         st.stop()
+
+    # ── Step 2b: Pendo ID (convo_now_account_id) from the Contact records ────
+    with dash_spinner(f"Fetching Pendo IDs for {len(cn_emails):,} contacts…"):
+        _email_list = sorted(cn_emails)
+        for i in range(0, len(_email_list), 100):
+            chunk = _email_list[i:i+100]
+            c_recs = fetch_all(
+                "contacts",
+                ["email", "convo_now_account_id"],
+                filter_groups=[{"filters": [
+                    {"propertyName": "email", "operator": "IN", "values": chunk},
+                ]}]
+            )
+            for c in c_recs:
+                cp = c.get("properties", {})
+                em = (cp.get("email") or "").strip().lower()
+                pendo = (cp.get("convo_now_account_id") or "").strip()
+                if em and pendo:
+                    email_to_pendo.setdefault(em, pendo)
 
     # ── Step 3: All numbers for those contacts (VRS + Convo Now) ─────────────
     with dash_spinner(f"Fetching all numbers for {len(cn_emails):,} contacts…"):
