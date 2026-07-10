@@ -1131,4 +1131,83 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
             "text/csv",
         )
 
+# ── Ticket Inspector: trace one ticket through every step of the chain ───────
+st.markdown("---")
+st.markdown("#### 🔍 Ticket Inspector")
+insp_tid = st.text_input("Ticket ID", placeholder="e.g. 45644573615", key="insp_tid").strip()
+if st.button("Inspect Ticket", key="insp_btn") and insp_tid:
+
+    def _get(url):
+        try:
+            r = requests.get(url, headers=_headers, timeout=30)
+            return r.status_code, (r.json() if r.status_code == 200 else r.text[:300])
+        except requests.exceptions.RequestException as e:
+            return None, str(e)
+
+    # Step 1: the ticket itself
+    sc, ticket = _get(f"{BASE_URL}/crm/v3/objects/tickets/{insp_tid}"
+                      f"?properties=subject,hs_pipeline,hs_pipeline_stage,closed_date,email")
+    if sc != 200:
+        st.error(f"Ticket fetch failed (HTTP {sc}): {ticket}")
+        st.stop()
+    tp = ticket.get("properties", {})
+    st.success(f"**Ticket found:** {tp.get('subject')} · closed {str(tp.get('closed_date') or '—')[:10]} "
+               f"· ticket email: {tp.get('email') or '—'}")
+
+    # Step 2: ticket → contacts
+    sc, assoc_c = _get(f"{BASE_URL}/crm/v4/objects/tickets/{insp_tid}/associations/contacts")
+    cids = [str(x.get("toObjectId")) for x in (assoc_c.get("results", []) if sc == 200 else [])]
+    st.write(f"**Step 2 — ticket → contacts** (HTTP {sc}): {len(cids)} contact(s): {', '.join(cids) or '—'}")
+
+    # Step 3: ticket → numbers (direct)
+    sc, assoc_n = _get(f"{BASE_URL}/crm/v4/objects/tickets/{insp_tid}/associations/2-40974683")
+    direct_nids = [str(x.get("toObjectId")) for x in (assoc_n.get("results", []) if sc == 200 else [])]
+    st.write(f"**Step 3 — ticket → numbers (direct)** (HTTP {sc}): {len(direct_nids)} number(s): "
+             f"{', '.join(direct_nids) or '—'}")
+
+    # Step 4: contact → numbers
+    contact_nids = []
+    for cid in cids:
+        sc, assoc_cn = _get(f"{BASE_URL}/crm/v4/objects/contacts/{cid}/associations/2-40974683")
+        got = [str(x.get("toObjectId")) for x in (assoc_cn.get("results", []) if sc == 200 else [])]
+        contact_nids += got
+        st.write(f"**Step 4 — contact {cid} → numbers** (HTTP {sc}): {len(got)} number(s): {', '.join(got) or '—'}")
+
+    # Step 5: read each number object
+    all_nids = list(dict.fromkeys(direct_nids + contact_nids))
+    numbers_found = []
+    for nid in all_nids:
+        sc, nobj = _get(f"{BASE_URL}/crm/v3/objects/2-40974683/{nid}"
+                        f"?properties=number,email,service_type,number_status,language_preference")
+        if sc == 200:
+            np_ = nobj.get("properties", {})
+            passes = (norm(np_.get("service_type") or "") == "vrs"
+                      and norm(np_.get("number_status") or "") == "live")
+            numbers_found.append((nid, np_, passes))
+            st.write(f"**Step 5 — number {nid}**: `{np_.get('number')}` · service_type=`{np_.get('service_type')}` "
+                     f"· status=`{np_.get('number_status')}` · email=`{np_.get('email') or '—'}` → "
+                     f"{'✅ passes VRS+Live filter' if passes else '❌ EXCLUDED by VRS+Live filter'}")
+        else:
+            st.write(f"**Step 5 — number {nid}**: fetch failed (HTTP {sc})")
+
+    # Step 6: monthly values by number string
+    for nid, np_, passes in numbers_found:
+        num = str(np_.get("number") or "").strip()
+        if not num:
+            continue
+        mv_recs = fetch_all(
+            "2-46246179",
+            ["number", "month_date", "service_type", "ursa_minutes", "cfz_minutes"],
+            filter_groups=[{"filters": [
+                {"propertyName": "number", "operator": "EQ", "value": num},
+                {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
+            ]}]
+        )
+        lines = [f"{(r.get('properties', {}).get('month_date') or '')[:10]}: "
+                 f"URSA {r.get('properties', {}).get('ursa_minutes') or 0} · "
+                 f"CfZ {r.get('properties', {}).get('cfz_minutes') or 0}"
+                 for r in mv_recs]
+        st.write(f"**Step 6 — monthly values for `{num}`** (match on number field): "
+                 f"{len(mv_recs)} record(s)" + (" — " + " | ".join(lines) if lines else ""))
+
 report_header_close()
