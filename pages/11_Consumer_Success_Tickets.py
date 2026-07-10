@@ -450,6 +450,57 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                             tid_to_nids[tid].append(nid)
             time.sleep(0.1)
 
+    # Last-resort fallback: tickets with no contact AND no direct number get an
+    # individual per-ticket association lookup. Batch reads can fail wholesale
+    # and lose all 100 tickets in the chunk; single GETs cannot.
+    _orphan_tids = [tid for tid in filtered_ticket_ids
+                    if not tid_to_cids.get(str(tid)) and not tid_to_nids.get(str(tid))]
+    if _orphan_tids:
+        with st.spinner(f"Individually checking {len(_orphan_tids)} tickets with no associations found..."):
+            for tid in _orphan_tids:
+                tid = str(tid)
+                for assoc_path, target in (("contacts", tid_to_cids), ("2-40974683", tid_to_nids)):
+                    try:
+                        gr = requests.get(
+                            f"{BASE_URL}/crm/v4/objects/tickets/{tid}/associations/{assoc_path}",
+                            headers=_headers, timeout=30,
+                        )
+                        if gr.status_code == 200:
+                            for result in gr.json().get("results", []):
+                                oid = str(result.get("toObjectId") or "")
+                                if oid and oid not in target[tid]:
+                                    target[tid].append(oid)
+                    except requests.exceptions.RequestException:
+                        pass
+                time.sleep(0.05)
+        # Contacts found in the fallback also need close months + email lookups
+        for tid in _orphan_tids:
+            tid = str(tid)
+            cm = tid_to_close_month.get(tid)
+            for cid in tid_to_cids.get(tid, []):
+                if cm:
+                    cid_to_close_months[cid].add(cm)
+                if cid not in filtered_cids:
+                    filtered_cids.append(cid)
+
+        # Fetch numbers for fallback-found contacts not already covered
+        _new_cids = [c for c in {c for tid in _orphan_tids for c in tid_to_cids.get(str(tid), [])}
+                     if c not in cid_to_nids]
+        for i in range(0, len(_new_cids), 100):
+            chunk = _new_cids[i:i+100]
+            ar = _post_retry(
+                f"{BASE_URL}/crm/v4/associations/contacts/2-40974683/batch/read",
+                {"inputs": [{"id": cid} for cid in chunk]},
+            )
+            if ar.status_code == 200:
+                for result in ar.json().get("results", []):
+                    cid = str(result.get("from", {}).get("id", ""))
+                    for assoc in result.get("to", []):
+                        nid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                        if nid:
+                            cid_to_nids[cid].append(nid)
+            time.sleep(0.1)
+
     # Propagate close months from contact to number IDs
     nid_to_close_months = defaultdict(set)
     for cid, nids in cid_to_nids.items():
