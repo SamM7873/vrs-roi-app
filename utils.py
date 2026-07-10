@@ -22,15 +22,14 @@ def _sso_configured():
 
 
 def _allowed_email(email):
-    """Check the signed-in email against ALLOWED_EMAILS / ALLOWED_DOMAINS secrets.
-    If neither is set, any successfully signed-in account is allowed."""
+    """Access requires the signed-in email to match ALLOWED_EMAILS or
+    ALLOWED_DOMAINS in secrets. Deny by default: with no allowlist
+    configured, no one is allowed in."""
     email = (email or "").strip().lower()
     if not email:
         return False
     allowed_emails  = [e.strip().lower() for e in str(st.secrets.get("ALLOWED_EMAILS", "")).split(",") if e.strip()]
     allowed_domains = [d.strip().lower().lstrip("@") for d in str(st.secrets.get("ALLOWED_DOMAINS", "")).split(",") if d.strip()]
-    if not allowed_emails and not allowed_domains:
-        return True
     if email in allowed_emails:
         return True
     domain = email.split("@")[-1]
@@ -74,7 +73,8 @@ def require_auth():
 
         email = getattr(st.user, "email", "") or ""
         if not _allowed_email(email):
-            st.error(f"{email} is not authorized for this app. Ask an admin to add you.")
+            st.error(f"{email} is not authorized for this app. "
+                     "Access is limited to approved emails — ask an admin to add you to ALLOWED_EMAILS.")
             if st.button("Sign out"):
                 st.logout()
             st.stop()
