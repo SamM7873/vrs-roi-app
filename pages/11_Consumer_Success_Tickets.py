@@ -263,20 +263,40 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
 
     with st.spinner(f"Looking up contact emails for {len(ticket_ids)} tickets..."):
         tid_to_cids = defaultdict(list)  # ticket_id → [contact_id, ...]
-        for i in range(0, len(ticket_ids), 100):
-            chunk = ticket_ids[i:i+100]
-            ar = _post_retry(
-                f"{BASE_URL}/crm/v4/associations/tickets/contacts/batch/read",
-                {"inputs": [{"id": tid} for tid in chunk]},
-            )
-            if ar.status_code == 200:
-                for result in ar.json().get("results", []):
-                    tid = str(result.get("from", {}).get("id", ""))
-                    for assoc in result.get("to", []):
-                        cid = str(assoc.get("toObjectId") or assoc.get("id") or "")
-                        if cid:
-                            tid_to_cids[tid].append(cid)
-            time.sleep(0.1)
+        _failed_assoc_batches = 0
+
+        def _read_ticket_contacts(tids, chunk_size):
+            nonlocal_failed = 0
+            for i in range(0, len(tids), chunk_size):
+                chunk = tids[i:i+chunk_size]
+                ar = _post_retry(
+                    f"{BASE_URL}/crm/v4/associations/tickets/contacts/batch/read",
+                    {"inputs": [{"id": tid} for tid in chunk]},
+                )
+                if ar.status_code == 200:
+                    for result in ar.json().get("results", []):
+                        tid = str(result.get("from", {}).get("id", ""))
+                        for assoc in result.get("to", []):
+                            cid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                            if cid and cid not in tid_to_cids[tid]:
+                                tid_to_cids[tid].append(cid)
+                else:
+                    nonlocal_failed += 1
+                time.sleep(0.1)
+            return nonlocal_failed
+
+        _failed_assoc_batches += _read_ticket_contacts(ticket_ids, 100)
+
+        # Second pass: retry tickets that came back with no contact, in
+        # smaller chunks — a single failed batch of 100 silently drops
+        # associations for all 100 tickets.
+        _missing = [tid for tid in ticket_ids if not tid_to_cids.get(str(tid))]
+        if _missing:
+            _failed_assoc_batches += _read_ticket_contacts(_missing, 25)
+
+        if _failed_assoc_batches:
+            st.warning(f"{_failed_assoc_batches} association batch(es) failed — "
+                       "some ticket→contact links may be missing. Re-run to retry.")
 
         unique_cids = list({cid for cids in tid_to_cids.values() for cid in cids})
         if unique_cids:
