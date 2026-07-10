@@ -402,7 +402,7 @@ if search.strip():
     st.caption(f'{len(df_view):,} of {total_contacts:,} contacts match "{search}"')
 
 display_df = df_view[[
-    "Name", "Email", "Convo Now Numbers", "VRS Numbers",
+    "Name", "Email", "Pendo ID", "Convo Now Numbers", "VRS Numbers",
     "VRS Minutes", "URSA Minutes", "CfZ Minutes",
     "Convo Now Min", "Convo Now Cost", "Active Months", "Latest Month", "Latest Month Min"
 ]]
