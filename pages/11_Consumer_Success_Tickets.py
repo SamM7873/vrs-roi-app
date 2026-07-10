@@ -174,249 +174,338 @@ def _is_closed(status_label):
 
 # ── run ───────────────────────────────────────────────────────────────────────
 
-if st.button("Run Consumer Success Tickets", use_container_width=False):
+run_clicked = st.button("Run Consumer Success Tickets", use_container_width=False)
 
-    with st.spinner("Loading pipeline configuration..."):
-        # Fetch pipeline and stage metadata
-        stage_labels = {}
-        pipeline_names = {}
-        cs_pipeline_id = None
-        closed_stage_ids = set()
-        try:
-            pr = requests.get(f"{BASE_URL}/crm/v3/pipelines/tickets", headers=_headers, timeout=15)
-            if pr.status_code == 200:
-                for pipeline in pr.json().get("results", []):
-                    pid = pipeline["id"]
-                    plabel = pipeline.get("label", pid)
-                    pipeline_names[pid] = plabel
-                    if "consumer success" in plabel.lower():
-                        cs_pipeline_id = pid
-                    for stage in pipeline.get("stages", []):
-                        sid = stage["id"]
-                        slabel = stage.get("label", sid)
-                        stage_labels[sid] = slabel
-                        if "consumer success" in plabel.lower() and _is_closed(slabel):
-                            closed_stage_ids.add(sid)
-        except Exception as e:
-            st.error(f"Failed to load pipelines: {e}")
+# Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
+_sig = [preset, str(filter_start), str(filter_end), date_field, status_filter,
+        ticket_name_filter, bool(mv_all_months)]
+_CS_CACHE_VARS = [
+    "rows", "num_monthly", "mv_objects", "month_agg",
+    "total_ursa_min", "total_cfz_min", "total_usage_min", "total_vrs_fcc",
+    "vrs_numbers", "vrs_num_ids", "num_id_to_number", "num_id_meta", "num_to_nid",
+    "tid_to_cids", "cid_to_nids", "tid_to_nids", "email_to_nids",
+    "contact_email_map", "unique_cids", "tid_to_close_month", "cid_to_close_months",
+    "range_label", "mv_floor", "stage_labels", "owner_names",
+    "ticket_contact_email", "filtered_ticket_ids",
+]
+_cs_cache = st.session_state.get("_cs_cache")
+_use_cache = (not run_clicked) and isinstance(_cs_cache, dict) and _cs_cache.get("sig") == _sig
+
+if run_clicked or _use_cache:
+    if _use_cache:
+        globals().update(_cs_cache["vars"])
+    else:
+
+        with st.spinner("Loading pipeline configuration..."):
+            # Fetch pipeline and stage metadata
+            stage_labels = {}
+            pipeline_names = {}
+            cs_pipeline_id = None
+            closed_stage_ids = set()
+            try:
+                pr = requests.get(f"{BASE_URL}/crm/v3/pipelines/tickets", headers=_headers, timeout=15)
+                if pr.status_code == 200:
+                    for pipeline in pr.json().get("results", []):
+                        pid = pipeline["id"]
+                        plabel = pipeline.get("label", pid)
+                        pipeline_names[pid] = plabel
+                        if "consumer success" in plabel.lower():
+                            cs_pipeline_id = pid
+                        for stage in pipeline.get("stages", []):
+                            sid = stage["id"]
+                            slabel = stage.get("label", sid)
+                            stage_labels[sid] = slabel
+                            if "consumer success" in plabel.lower() and _is_closed(slabel):
+                                closed_stage_ids.add(sid)
+            except Exception as e:
+                st.error(f"Failed to load pipelines: {e}")
+                st.stop()
+
+        if not cs_pipeline_id:
+            st.warning("Could not find a 'Consumer Success' pipeline in HubSpot.")
             st.stop()
 
-    if not cs_pipeline_id:
-        st.warning("Could not find a 'Consumer Success' pipeline in HubSpot.")
-        st.stop()
+        # Build search filters
+        TICKET_PROPS = [
+            "subject", "hs_pipeline", "hs_pipeline_stage", "hs_ticket_priority",
+            "createdate", "hs_lastmodifieddate", "closed_date", "content",
+            "hs_ticket_category", "hs_ticket_subcategory",
+            "hubspot_owner_id", "email", "phone", "hs_resolution_time",
+        ]
 
-    # Build search filters
-    TICKET_PROPS = [
-        "subject", "hs_pipeline", "hs_pipeline_stage", "hs_ticket_priority",
-        "createdate", "hs_lastmodifieddate", "closed_date", "content",
-        "hs_ticket_category", "hs_ticket_subcategory",
-        "hubspot_owner_id", "email", "phone", "hs_resolution_time",
-    ]
-
-    # Fetch all Consumer Success tickets
-    with st.spinner("Fetching Consumer Success tickets..."):
-        owner_names = {}
-        try:
-            or_ = requests.get(f"{BASE_URL}/crm/v3/owners", headers=_headers, timeout=15)
-            if or_.status_code == 200:
-                for o in or_.json().get("results", []):
-                    fn = o.get("firstName") or ""
-                    ln = o.get("lastName") or ""
-                    owner_names[str(o["id"])] = f"{fn} {ln}".strip() or o.get("email", str(o["id"]))
-        except Exception:
-            pass
-
-        all_tickets = []
-        after = None
-        while True:
-            body = {
-                "filterGroups": [{"filters": [
-                    {"propertyName": "hs_pipeline", "operator": "EQ", "value": cs_pipeline_id}
-                ]}],
-                "properties": TICKET_PROPS,
-                "limit": 100,
-                "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
-            }
-            if after:
-                body["after"] = after
+        # Fetch all Consumer Success tickets
+        with st.spinner("Fetching Consumer Success tickets..."):
+            owner_names = {}
             try:
-                resp = _post_retry(f"{BASE_URL}/crm/v3/objects/tickets/search", body)
-            except requests.exceptions.RequestException:
-                st.error("HubSpot did not respond after 3 attempts. Please try again in a minute.")
-                st.stop()
-            if resp.status_code == 429:
-                time.sleep(1.0)
-                continue
-            if resp.status_code != 200:
-                st.error(f"Ticket search error {resp.status_code}: {resp.text[:300]}")
-                break
-            data = resp.json()
-            all_tickets.extend(data.get("results", []))
-            after = data.get("paging", {}).get("next", {}).get("after")
-            if not after:
-                break
-            time.sleep(0.25)
+                or_ = requests.get(f"{BASE_URL}/crm/v3/owners", headers=_headers, timeout=15)
+                if or_.status_code == 200:
+                    for o in or_.json().get("results", []):
+                        fn = o.get("firstName") or ""
+                        ln = o.get("lastName") or ""
+                        owner_names[str(o["id"])] = f"{fn} {ln}".strip() or o.get("email", str(o["id"]))
+            except Exception:
+                pass
 
-    # Use v4 batch associations API to get contact IDs for each ticket
-    ticket_contact_email = {}   # ticket_id → email
-    ticket_ids = [t["id"] for t in all_tickets]
+            all_tickets = []
+            after = None
+            while True:
+                body = {
+                    "filterGroups": [{"filters": [
+                        {"propertyName": "hs_pipeline", "operator": "EQ", "value": cs_pipeline_id}
+                    ]}],
+                    "properties": TICKET_PROPS,
+                    "limit": 100,
+                    "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
+                }
+                if after:
+                    body["after"] = after
+                try:
+                    resp = _post_retry(f"{BASE_URL}/crm/v3/objects/tickets/search", body)
+                except requests.exceptions.RequestException:
+                    st.error("HubSpot did not respond after 3 attempts. Please try again in a minute.")
+                    st.stop()
+                if resp.status_code == 429:
+                    time.sleep(1.0)
+                    continue
+                if resp.status_code != 200:
+                    st.error(f"Ticket search error {resp.status_code}: {resp.text[:300]}")
+                    break
+                data = resp.json()
+                all_tickets.extend(data.get("results", []))
+                after = data.get("paging", {}).get("next", {}).get("after")
+                if not after:
+                    break
+                time.sleep(0.25)
 
-    with st.spinner(f"Looking up contact emails for {len(ticket_ids)} tickets..."):
-        tid_to_cids = defaultdict(list)  # ticket_id → [contact_id, ...]
-        _failed_assoc_batches = 0
+        # Use v4 batch associations API to get contact IDs for each ticket
+        ticket_contact_email = {}   # ticket_id → email
+        ticket_ids = [t["id"] for t in all_tickets]
 
-        def _read_ticket_contacts(tids, chunk_size):
-            nonlocal_failed = 0
-            for i in range(0, len(tids), chunk_size):
-                chunk = tids[i:i+chunk_size]
+        with st.spinner(f"Looking up contact emails for {len(ticket_ids)} tickets..."):
+            tid_to_cids = defaultdict(list)  # ticket_id → [contact_id, ...]
+            _failed_assoc_batches = 0
+
+            def _read_ticket_contacts(tids, chunk_size):
+                nonlocal_failed = 0
+                for i in range(0, len(tids), chunk_size):
+                    chunk = tids[i:i+chunk_size]
+                    ar = _post_retry(
+                        f"{BASE_URL}/crm/v4/associations/tickets/contacts/batch/read",
+                        {"inputs": [{"id": tid} for tid in chunk]},
+                    )
+                    if ar.status_code == 200:
+                        for result in ar.json().get("results", []):
+                            tid = str(result.get("from", {}).get("id", ""))
+                            for assoc in result.get("to", []):
+                                cid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                                if cid and cid not in tid_to_cids[tid]:
+                                    tid_to_cids[tid].append(cid)
+                    else:
+                        nonlocal_failed += 1
+                    time.sleep(0.1)
+                return nonlocal_failed
+
+            _failed_assoc_batches += _read_ticket_contacts(ticket_ids, 100)
+
+            # Second pass: retry tickets that came back with no contact, in
+            # smaller chunks — a single failed batch of 100 silently drops
+            # associations for all 100 tickets.
+            _missing = [tid for tid in ticket_ids if not tid_to_cids.get(str(tid))]
+            if _missing:
+                _failed_assoc_batches += _read_ticket_contacts(_missing, 25)
+
+            if _failed_assoc_batches:
+                st.warning(f"{_failed_assoc_batches} association batch(es) failed — "
+                           "some ticket→contact links may be missing. Re-run to retry.")
+
+            unique_cids = list({cid for cids in tid_to_cids.values() for cid in cids})
+            if unique_cids:
+                contact_email_map = {}
+                for i in range(0, len(unique_cids), 100):
+                    chunk = unique_cids[i:i+100]
+                    br = _post_retry(
+                        f"{BASE_URL}/crm/v3/objects/contacts/batch/read",
+                        {"inputs": [{"id": c} for c in chunk], "properties": ["email"]},
+                    )
+                    if br.status_code == 200:
+                        for c in br.json().get("results", []):
+                            cid = str(c["id"])
+                            email = (c.get("properties", {}).get("email") or "").strip().lower()
+                            if email:
+                                contact_email_map[cid] = email
+                for tid, cids in tid_to_cids.items():
+                    for cid in cids:
+                        if cid in contact_email_map:
+                            ticket_contact_email[tid] = contact_email_map[cid]
+                            break
+
+        if not all_tickets:
+            st.warning("No Consumer Success tickets found.")
+            st.stop()
+
+        # Build rows
+        rows = []
+        for t in all_tickets:
+            tp = t.get("properties", {})
+            raw_stage = tp.get("hs_pipeline_stage") or ""
+            stage_label = stage_labels.get(raw_stage, raw_stage)
+            is_closed = _is_closed(stage_label)
+            res_ms = tp.get("hs_resolution_time")
+            res_days = None
+            if res_ms:
+                try:
+                    res_days = round(int(res_ms) / 86400000, 1)
+                except Exception:
+                    pass
+            rows.append({
+                "ID":            t["id"],
+                "Subject":       tp.get("subject") or "—",
+                "Status":        stage_label or "—",
+                "Priority":      (tp.get("hs_ticket_priority") or "—").title(),
+                "Category":      tp.get("hs_ticket_category") or "—",
+                "Subcategory":   tp.get("hs_ticket_subcategory") or "—",
+                "Owner":         owner_names.get(tp.get("hubspot_owner_id") or "", "—"),
+                "Email":         ticket_contact_email.get(t["id"]) or tp.get("email") or "—",
+                "Created":       tp.get("createdate") or "",
+                "Closed":        tp.get("closed_date") or "",
+                "Description":   tp.get("content") or "—",
+                "Resolution Days": res_days,
+                "Is Closed":     is_closed,
+                "Create Month":  _month_key(tp.get("createdate")),
+                "Close Month":   _month_key(tp.get("closed_date")),
+            })
+
+        # ── Apply date + status filters ────────────────────────────────────────────
+        if filter_start and filter_end:
+            # Range boundaries in Central Time, matching HubSpot's report timezone
+            # (CDT Mar–Nov, CST otherwise).
+            _ct = timezone(timedelta(hours=-5 if 3 <= filter_start.month <= 11 else -6))
+            fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=_ct)
+            fe = datetime(filter_end.year, filter_end.month, filter_end.day, 23, 59, 59, tzinfo=_ct)
+            def in_range(v):
+                dt = _parse_dt(v)
+                return dt is not None and fs <= dt <= fe
+            field_key = "Closed" if date_field == "closed_date" else "Created"
+            rows = [r for r in rows if in_range(r[field_key])]
+            range_label = f"{filter_start.strftime('%b %d')}–{filter_end.strftime('%b %d, %Y')}"
+        else:
+            range_label = "All Time"
+
+        if status_filter == "Open":
+            rows = [r for r in rows if not r["Is Closed"]]
+        elif status_filter == "Closed":
+            rows = [r for r in rows if r["Is Closed"]]
+
+        if ticket_name_filter != "All":
+            if ticket_name_filter in TICKET_NAME_MULTI:
+                keywords = TICKET_NAME_MULTI[ticket_name_filter]
+                rows = [r for r in rows if any(kw in (r["Subject"] or "").lower() for kw in keywords)]
+            else:
+                rows = [r for r in rows if ticket_name_filter.lower() in (r["Subject"] or "").lower()]
+
+        if not rows:
+            st.warning(f"No tickets found for the selected filters ({range_label}).")
+            st.stop()
+
+
+        # ── Step 2: ticket → contact → number object → monthly values ────────────────
+        # Path through contacts gives the consumer's personal numbers only.
+        filtered_ticket_ids = [r["ID"] for r in rows]
+        num_monthly = defaultdict(list)
+
+        # Build ticket → close month map for filtered rows
+        tid_to_close_month = {}
+        for r in rows:
+            close_dt = _parse_dt(r["Closed"])
+            if close_dt:
+                tid_to_close_month[r["ID"]] = close_dt.strftime("%Y-%m")
+
+        # Collect contact IDs for filtered tickets, tracking which close months each contact belongs to
+        cid_to_close_months = defaultdict(set)
+        for tid in filtered_ticket_ids:
+            cm = tid_to_close_month.get(tid)
+            for cid in tid_to_cids.get(tid, []):
+                if cm:
+                    cid_to_close_months[cid].add(cm)
+        filtered_cids = list(cid_to_close_months.keys())
+
+        # Contact → number object IDs (v4 association)
+        cid_to_nids = defaultdict(list)
+        if filtered_cids:
+            with st.spinner(f"Looking up number objects for {len(filtered_cids)} contact(s)..."):
+                for i in range(0, len(filtered_cids), 100):
+                    chunk = filtered_cids[i:i+100]
+                    ar = _post_retry(
+                        f"{BASE_URL}/crm/v4/associations/contacts/2-40974683/batch/read",
+                        {"inputs": [{"id": cid} for cid in chunk]},
+                    )
+                    if ar.status_code == 200:
+                        for result in ar.json().get("results", []):
+                            cid = str(result.get("from", {}).get("id", ""))
+                            for assoc in result.get("to", []):
+                                nid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                                if nid:
+                                    cid_to_nids[cid].append(nid)
+                    time.sleep(0.1)
+
+        # Ticket → number object IDs (direct v4 association). Some tickets are
+        # associated straight to the Number object without a contact→number link,
+        # and HubSpot's report joins those too.
+        tid_to_nids = defaultdict(list)
+        with st.spinner(f"Looking up numbers associated directly to {len(filtered_ticket_ids)} tickets..."):
+            for i in range(0, len(filtered_ticket_ids), 100):
+                chunk = filtered_ticket_ids[i:i+100]
                 ar = _post_retry(
-                    f"{BASE_URL}/crm/v4/associations/tickets/contacts/batch/read",
+                    f"{BASE_URL}/crm/v4/associations/tickets/2-40974683/batch/read",
                     {"inputs": [{"id": tid} for tid in chunk]},
                 )
                 if ar.status_code == 200:
                     for result in ar.json().get("results", []):
                         tid = str(result.get("from", {}).get("id", ""))
                         for assoc in result.get("to", []):
-                            cid = str(assoc.get("toObjectId") or assoc.get("id") or "")
-                            if cid and cid not in tid_to_cids[tid]:
-                                tid_to_cids[tid].append(cid)
-                else:
-                    nonlocal_failed += 1
+                            nid = str(assoc.get("toObjectId") or assoc.get("id") or "")
+                            if nid:
+                                tid_to_nids[tid].append(nid)
                 time.sleep(0.1)
-            return nonlocal_failed
 
-        _failed_assoc_batches += _read_ticket_contacts(ticket_ids, 100)
+        # Last-resort fallback: tickets with no contact AND no direct number get an
+        # individual per-ticket association lookup. Batch reads can fail wholesale
+        # and lose all 100 tickets in the chunk; single GETs cannot.
+        _orphan_tids = [tid for tid in filtered_ticket_ids
+                        if not tid_to_cids.get(str(tid)) and not tid_to_nids.get(str(tid))]
+        if _orphan_tids:
+            with st.spinner(f"Individually checking {len(_orphan_tids)} tickets with no associations found..."):
+                for tid in _orphan_tids:
+                    tid = str(tid)
+                    for assoc_path, target in (("contacts", tid_to_cids), ("2-40974683", tid_to_nids)):
+                        try:
+                            gr = requests.get(
+                                f"{BASE_URL}/crm/v4/objects/tickets/{tid}/associations/{assoc_path}",
+                                headers=_headers, timeout=30,
+                            )
+                            if gr.status_code == 200:
+                                for result in gr.json().get("results", []):
+                                    oid = str(result.get("toObjectId") or "")
+                                    if oid and oid not in target[tid]:
+                                        target[tid].append(oid)
+                        except requests.exceptions.RequestException:
+                            pass
+                    time.sleep(0.05)
+            # Contacts found in the fallback also need close months + email lookups
+            for tid in _orphan_tids:
+                tid = str(tid)
+                cm = tid_to_close_month.get(tid)
+                for cid in tid_to_cids.get(tid, []):
+                    if cm:
+                        cid_to_close_months[cid].add(cm)
+                    if cid not in filtered_cids:
+                        filtered_cids.append(cid)
 
-        # Second pass: retry tickets that came back with no contact, in
-        # smaller chunks — a single failed batch of 100 silently drops
-        # associations for all 100 tickets.
-        _missing = [tid for tid in ticket_ids if not tid_to_cids.get(str(tid))]
-        if _missing:
-            _failed_assoc_batches += _read_ticket_contacts(_missing, 25)
-
-        if _failed_assoc_batches:
-            st.warning(f"{_failed_assoc_batches} association batch(es) failed — "
-                       "some ticket→contact links may be missing. Re-run to retry.")
-
-        unique_cids = list({cid for cids in tid_to_cids.values() for cid in cids})
-        if unique_cids:
-            contact_email_map = {}
-            for i in range(0, len(unique_cids), 100):
-                chunk = unique_cids[i:i+100]
-                br = _post_retry(
-                    f"{BASE_URL}/crm/v3/objects/contacts/batch/read",
-                    {"inputs": [{"id": c} for c in chunk], "properties": ["email"]},
-                )
-                if br.status_code == 200:
-                    for c in br.json().get("results", []):
-                        cid = str(c["id"])
-                        email = (c.get("properties", {}).get("email") or "").strip().lower()
-                        if email:
-                            contact_email_map[cid] = email
-            for tid, cids in tid_to_cids.items():
-                for cid in cids:
-                    if cid in contact_email_map:
-                        ticket_contact_email[tid] = contact_email_map[cid]
-                        break
-
-    if not all_tickets:
-        st.warning("No Consumer Success tickets found.")
-        st.stop()
-
-    # Build rows
-    rows = []
-    for t in all_tickets:
-        tp = t.get("properties", {})
-        raw_stage = tp.get("hs_pipeline_stage") or ""
-        stage_label = stage_labels.get(raw_stage, raw_stage)
-        is_closed = _is_closed(stage_label)
-        res_ms = tp.get("hs_resolution_time")
-        res_days = None
-        if res_ms:
-            try:
-                res_days = round(int(res_ms) / 86400000, 1)
-            except Exception:
-                pass
-        rows.append({
-            "ID":            t["id"],
-            "Subject":       tp.get("subject") or "—",
-            "Status":        stage_label or "—",
-            "Priority":      (tp.get("hs_ticket_priority") or "—").title(),
-            "Category":      tp.get("hs_ticket_category") or "—",
-            "Subcategory":   tp.get("hs_ticket_subcategory") or "—",
-            "Owner":         owner_names.get(tp.get("hubspot_owner_id") or "", "—"),
-            "Email":         ticket_contact_email.get(t["id"]) or tp.get("email") or "—",
-            "Created":       tp.get("createdate") or "",
-            "Closed":        tp.get("closed_date") or "",
-            "Description":   tp.get("content") or "—",
-            "Resolution Days": res_days,
-            "Is Closed":     is_closed,
-            "Create Month":  _month_key(tp.get("createdate")),
-            "Close Month":   _month_key(tp.get("closed_date")),
-        })
-
-    # ── Apply date + status filters ────────────────────────────────────────────
-    if filter_start and filter_end:
-        # Range boundaries in Central Time, matching HubSpot's report timezone
-        # (CDT Mar–Nov, CST otherwise).
-        _ct = timezone(timedelta(hours=-5 if 3 <= filter_start.month <= 11 else -6))
-        fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=_ct)
-        fe = datetime(filter_end.year, filter_end.month, filter_end.day, 23, 59, 59, tzinfo=_ct)
-        def in_range(v):
-            dt = _parse_dt(v)
-            return dt is not None and fs <= dt <= fe
-        field_key = "Closed" if date_field == "closed_date" else "Created"
-        rows = [r for r in rows if in_range(r[field_key])]
-        range_label = f"{filter_start.strftime('%b %d')}–{filter_end.strftime('%b %d, %Y')}"
-    else:
-        range_label = "All Time"
-
-    if status_filter == "Open":
-        rows = [r for r in rows if not r["Is Closed"]]
-    elif status_filter == "Closed":
-        rows = [r for r in rows if r["Is Closed"]]
-
-    if ticket_name_filter != "All":
-        if ticket_name_filter in TICKET_NAME_MULTI:
-            keywords = TICKET_NAME_MULTI[ticket_name_filter]
-            rows = [r for r in rows if any(kw in (r["Subject"] or "").lower() for kw in keywords)]
-        else:
-            rows = [r for r in rows if ticket_name_filter.lower() in (r["Subject"] or "").lower()]
-
-    if not rows:
-        st.warning(f"No tickets found for the selected filters ({range_label}).")
-        st.stop()
-
-    _stage_counts = pd.Series([r["Status"] for r in rows]).value_counts()
-    st.caption("Stage breakdown: " + " · ".join(f"**{s}**: {c:,}" for s, c in _stage_counts.items()))
-
-    # ── Step 2: ticket → contact → number object → monthly values ────────────────
-    # Path through contacts gives the consumer's personal numbers only.
-    filtered_ticket_ids = [r["ID"] for r in rows]
-    num_monthly = defaultdict(list)
-
-    # Build ticket → close month map for filtered rows
-    tid_to_close_month = {}
-    for r in rows:
-        close_dt = _parse_dt(r["Closed"])
-        if close_dt:
-            tid_to_close_month[r["ID"]] = close_dt.strftime("%Y-%m")
-
-    # Collect contact IDs for filtered tickets, tracking which close months each contact belongs to
-    cid_to_close_months = defaultdict(set)
-    for tid in filtered_ticket_ids:
-        cm = tid_to_close_month.get(tid)
-        for cid in tid_to_cids.get(tid, []):
-            if cm:
-                cid_to_close_months[cid].add(cm)
-    filtered_cids = list(cid_to_close_months.keys())
-
-    # Contact → number object IDs (v4 association)
-    cid_to_nids = defaultdict(list)
-    if filtered_cids:
-        with st.spinner(f"Looking up number objects for {len(filtered_cids)} contact(s)..."):
-            for i in range(0, len(filtered_cids), 100):
-                chunk = filtered_cids[i:i+100]
+            # Fetch numbers for fallback-found contacts not already covered
+            _new_cids = [c for c in {c for tid in _orphan_tids for c in tid_to_cids.get(str(tid), [])}
+                         if c not in cid_to_nids]
+            for i in range(0, len(_new_cids), 100):
+                chunk = _new_cids[i:i+100]
                 ar = _post_retry(
                     f"{BASE_URL}/crm/v4/associations/contacts/2-40974683/batch/read",
                     {"inputs": [{"id": cid} for cid in chunk]},
@@ -430,248 +519,183 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
                                 cid_to_nids[cid].append(nid)
                 time.sleep(0.1)
 
-    # Ticket → number object IDs (direct v4 association). Some tickets are
-    # associated straight to the Number object without a contact→number link,
-    # and HubSpot's report joins those too.
-    tid_to_nids = defaultdict(list)
-    with st.spinner(f"Looking up numbers associated directly to {len(filtered_ticket_ids)} tickets..."):
-        for i in range(0, len(filtered_ticket_ids), 100):
-            chunk = filtered_ticket_ids[i:i+100]
-            ar = _post_retry(
-                f"{BASE_URL}/crm/v4/associations/tickets/2-40974683/batch/read",
-                {"inputs": [{"id": tid} for tid in chunk]},
-            )
-            if ar.status_code == 200:
-                for result in ar.json().get("results", []):
-                    tid = str(result.get("from", {}).get("id", ""))
-                    for assoc in result.get("to", []):
-                        nid = str(assoc.get("toObjectId") or assoc.get("id") or "")
-                        if nid:
-                            tid_to_nids[tid].append(nid)
-            time.sleep(0.1)
-
-    # Last-resort fallback: tickets with no contact AND no direct number get an
-    # individual per-ticket association lookup. Batch reads can fail wholesale
-    # and lose all 100 tickets in the chunk; single GETs cannot.
-    _orphan_tids = [tid for tid in filtered_ticket_ids
-                    if not tid_to_cids.get(str(tid)) and not tid_to_nids.get(str(tid))]
-    if _orphan_tids:
-        with st.spinner(f"Individually checking {len(_orphan_tids)} tickets with no associations found..."):
-            for tid in _orphan_tids:
-                tid = str(tid)
-                for assoc_path, target in (("contacts", tid_to_cids), ("2-40974683", tid_to_nids)):
-                    try:
-                        gr = requests.get(
-                            f"{BASE_URL}/crm/v4/objects/tickets/{tid}/associations/{assoc_path}",
-                            headers=_headers, timeout=30,
-                        )
-                        if gr.status_code == 200:
-                            for result in gr.json().get("results", []):
-                                oid = str(result.get("toObjectId") or "")
-                                if oid and oid not in target[tid]:
-                                    target[tid].append(oid)
-                    except requests.exceptions.RequestException:
-                        pass
-                time.sleep(0.05)
-        # Contacts found in the fallback also need close months + email lookups
-        for tid in _orphan_tids:
-            tid = str(tid)
-            cm = tid_to_close_month.get(tid)
-            for cid in tid_to_cids.get(tid, []):
-                if cm:
-                    cid_to_close_months[cid].add(cm)
-                if cid not in filtered_cids:
-                    filtered_cids.append(cid)
-
-        # Fetch numbers for fallback-found contacts not already covered
-        _new_cids = [c for c in {c for tid in _orphan_tids for c in tid_to_cids.get(str(tid), [])}
-                     if c not in cid_to_nids]
-        for i in range(0, len(_new_cids), 100):
-            chunk = _new_cids[i:i+100]
-            ar = _post_retry(
-                f"{BASE_URL}/crm/v4/associations/contacts/2-40974683/batch/read",
-                {"inputs": [{"id": cid} for cid in chunk]},
-            )
-            if ar.status_code == 200:
-                for result in ar.json().get("results", []):
-                    cid = str(result.get("from", {}).get("id", ""))
-                    for assoc in result.get("to", []):
-                        nid = str(assoc.get("toObjectId") or assoc.get("id") or "")
-                        if nid:
-                            cid_to_nids[cid].append(nid)
-            time.sleep(0.1)
-
-    # Propagate close months from contact to number IDs
-    nid_to_close_months = defaultdict(set)
-    for cid, nids in cid_to_nids.items():
-        for nid in nids:
-            nid_to_close_months[nid].update(cid_to_close_months.get(cid, set()))
-    # ...and from directly associated tickets
-    for tid, nids in tid_to_nids.items():
-        cm = tid_to_close_month.get(tid)
-        if cm:
+        # Propagate close months from contact to number IDs
+        nid_to_close_months = defaultdict(set)
+        for cid, nids in cid_to_nids.items():
             for nid in nids:
-                nid_to_close_months[nid].add(cm)
-
-    all_num_ids = list(
-        {nid for nids in cid_to_nids.values() for nid in nids} |
-        {nid for nids in tid_to_nids.values() for nid in nids}
-    )
-
-    # Batch-read number objects to get the phone number string
-    num_id_to_number = {}
-    num_id_meta = {}  # nid → {status, language}
-    if all_num_ids:
-        with st.spinner(f"Reading {len(all_num_ids)} number objects..."):
-            for i in range(0, len(all_num_ids), 100):
-                chunk = all_num_ids[i:i+100]
-                br = _post_retry(
-                    f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
-                    {"inputs": [{"id": n} for n in chunk],
-                     "properties": ["number", "service_type", "number_status", "language_preference"]},
-                )
-                if br.status_code == 200:
-                    for obj in br.json().get("results", []):
-                        p = obj.get("properties", {})
-                        if norm(p.get("service_type") or "") != "vrs":
-                            continue
-                        if norm(p.get("number_status") or "") != "live":
-                            continue
-                        num = str(p.get("number") or "").strip()
-                        if num:
-                            nid = str(obj["id"])
-                            num_id_to_number[nid] = num
-                            num_id_meta[nid] = {
-                                "status": (p.get("number_status") or "").strip(),
-                                "language": (p.get("language_preference") or "").strip(),
-                            }
-
-    # Email fallback path: ticket/contact email → Number.email → number.
-    # Catches numbers with no association to the ticket or its contact.
-    email_to_nids = defaultdict(list)
-    ticket_emails = sorted({
-        (r["Email"] or "").strip().lower()
-        for r in rows
-        if r["Email"] and "@" in r["Email"]
-    })
-    if ticket_emails:
-        with st.spinner(f"Matching numbers by email for {len(ticket_emails):,} addresses..."):
-            for i in range(0, len(ticket_emails), 100):
-                chunk = ticket_emails[i:i+100]
-                em_recs = fetch_all(
-                    "2-40974683",
-                    ["number", "email", "service_type", "number_status", "language_preference"],
-                    filter_groups=[{"filters": [
-                        {"propertyName": "email",         "operator": "IN", "values": chunk},
-                        {"propertyName": "service_type",  "operator": "EQ", "value": "VRS"},
-                        {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
-                    ]}]
-                )
-                for obj in em_recs:
-                    p = obj.get("properties", {})
-                    nid = str(obj["id"])
-                    num = str(p.get("number") or "").strip()
-                    em  = (p.get("email") or "").strip().lower()
-                    if num and em:
-                        email_to_nids[em].append(nid)
-                        num_id_to_number.setdefault(nid, num)
-                        num_id_meta.setdefault(nid, {
-                            "status": (p.get("number_status") or "").strip(),
-                            "language": (p.get("language_preference") or "").strip(),
-                        })
-
-        # Propagate close months from tickets to email-matched numbers
-        for r in rows:
-            em = (r["Email"] or "").strip().lower()
-            cm = tid_to_close_month.get(r["ID"])
-            if cm and em in email_to_nids:
-                for nid in email_to_nids[em]:
+                nid_to_close_months[nid].update(cid_to_close_months.get(cid, set()))
+        # ...and from directly associated tickets
+        for tid, nids in tid_to_nids.items():
+            cm = tid_to_close_month.get(tid)
+            if cm:
+                for nid in nids:
                     nid_to_close_months[nid].add(cm)
 
-    vrs_num_ids = list(num_id_to_number.keys())  # all associated number object IDs
+        all_num_ids = list(
+            {nid for nids in cid_to_nids.values() for nid in nids} |
+            {nid for nids in tid_to_nids.values() for nid in nids}
+        )
 
-    # Step 3: search monthly values directly by phone number string (more reliable
-    # than v4 association → MV ID lookup which can time out at scale).
-    MV_PROPS = ["number", "month_date", "service_type",
-                "usage_minutes", "ursa_minutes", "cfz_minutes",
-                "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
-                "fcc_rate_1"]
+        # Batch-read number objects to get the phone number string
+        num_id_to_number = {}
+        num_id_meta = {}  # nid → {status, language}
+        if all_num_ids:
+            with st.spinner(f"Reading {len(all_num_ids)} number objects..."):
+                for i in range(0, len(all_num_ids), 100):
+                    chunk = all_num_ids[i:i+100]
+                    br = _post_retry(
+                        f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
+                        {"inputs": [{"id": n} for n in chunk],
+                         "properties": ["number", "service_type", "number_status", "language_preference"]},
+                    )
+                    if br.status_code == 200:
+                        for obj in br.json().get("results", []):
+                            p = obj.get("properties", {})
+                            if norm(p.get("service_type") or "") != "vrs":
+                                continue
+                            if norm(p.get("number_status") or "") != "live":
+                                continue
+                            num = str(p.get("number") or "").strip()
+                            if num:
+                                nid = str(obj["id"])
+                                num_id_to_number[nid] = num
+                                num_id_meta[nid] = {
+                                    "status": (p.get("number_status") or "").strip(),
+                                    "language": (p.get("language_preference") or "").strip(),
+                                }
 
-    if mv_all_months:
-        mv_floor = date(2000, 1, 1)  # no floor — sum every month, like HubSpot's report
-    elif filter_start:
-        mv_floor = date(filter_start.year, filter_start.month, 1)
-    else:
-        today_d = date.today()
-        mv_floor = date(today_d.year - 2, today_d.month, 1)
-    mv_floor_ms = str(int(datetime(mv_floor.year, mv_floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
-    MV_DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": mv_floor_ms}
-
-    vrs_numbers = list(num_id_to_number.values())  # phone number strings
-    num_to_nid  = {v: k for k, v in num_id_to_number.items()}  # phone → object ID
-
-    # Monthly values are matched number-to-number: MonthlyValue.number must
-    # equal Number.number. Records dedupe by monthly value record ID.
-    mv_objects = {}          # mv_id → (number_object_id, properties)
-    seen_mv_ids = set()
-
-    if vrs_numbers:
-        with st.spinner(f"Fetching monthly values for {len(vrs_numbers):,} numbers (from {mv_floor.strftime('%b %Y')})..."):
-            for i in range(0, len(vrs_numbers), 100):
-                chunk_nums = vrs_numbers[i:i+100]
-                mv_recs = fetch_all(
-                    "2-46246179",
-                    MV_PROPS,
-                    filter_groups=[{"filters": [
-                        {"propertyName": "number",       "operator": "IN", "values": chunk_nums},
-                        MV_DATE_FILTER,
-                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
-                    ]}]
-                )
-                for obj in mv_recs:
-                    mv_id = str(obj.get("id") or "")
-                    if not mv_id or mv_id in seen_mv_ids:
-                        continue
-                    seen_mv_ids.add(mv_id)
-                    p2  = obj.get("properties", {})
-                    num = str(p2.get("number") or "").strip()
-                    nid = num_to_nid.get(num)
-                    if nid is None:
-                        continue  # only count rows whose number matches a matched Number
-                    mv_objects[mv_id] = (nid, p2)
-
-    for mv_id, (nid, p2) in mv_objects.items():
-        num_monthly[nid].append({
-            "month":    p2.get("month_date") or "",
-            "ursa_min": _to_float(p2.get("ursa_minutes")),
-            "cfz_min":  _to_float(p2.get("cfz_minutes")),
-            "fcc_vrs":  _to_float(p2.get("fcc_cost_based_on_vrs_usage")),
-            "fcc_cfz":  _to_float(p2.get("fcc_cost_based_on_cfz_usage")),
+        # Email fallback path: ticket/contact email → Number.email → number.
+        # Catches numbers with no association to the ticket or its contact.
+        email_to_nids = defaultdict(list)
+        ticket_emails = sorted({
+            (r["Email"] or "").strip().lower()
+            for r in rows
+            if r["Email"] and "@" in r["Email"]
         })
+        if ticket_emails:
+            with st.spinner(f"Matching numbers by email for {len(ticket_emails):,} addresses..."):
+                for i in range(0, len(ticket_emails), 100):
+                    chunk = ticket_emails[i:i+100]
+                    em_recs = fetch_all(
+                        "2-40974683",
+                        ["number", "email", "service_type", "number_status", "language_preference"],
+                        filter_groups=[{"filters": [
+                            {"propertyName": "email",         "operator": "IN", "values": chunk},
+                            {"propertyName": "service_type",  "operator": "EQ", "value": "VRS"},
+                            {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
+                        ]}]
+                    )
+                    for obj in em_recs:
+                        p = obj.get("properties", {})
+                        nid = str(obj["id"])
+                        num = str(p.get("number") or "").strip()
+                        em  = (p.get("email") or "").strip().lower()
+                        if num and em:
+                            email_to_nids[em].append(nid)
+                            num_id_to_number.setdefault(nid, num)
+                            num_id_meta.setdefault(nid, {
+                                "status": (p.get("number_status") or "").strip(),
+                                "language": (p.get("language_preference") or "").strip(),
+                            })
 
-    # Aggregate all June 2026+ monthly values for matched numbers.
-    # HubSpot's report shows June-closed tickets with July monthly values
-    # (usage recorded the following month), so we do not restrict by close month.
-    month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "fcc_vrs": 0.0, "fcc_cfz": 0.0})
-    for nid, mv_list in num_monthly.items():
-        for mv in mv_list:
-            mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
-            if not mk:
-                continue
-            month_agg[mk]["ursa_min"] += mv["ursa_min"]
-            month_agg[mk]["cfz_min"]  += mv["cfz_min"]
-            month_agg[mk]["fcc_vrs"]  += mv["fcc_vrs"]
-            month_agg[mk]["fcc_cfz"]  += mv["fcc_cfz"]
+            # Propagate close months from tickets to email-matched numbers
+            for r in rows:
+                em = (r["Email"] or "").strip().lower()
+                cm = tid_to_close_month.get(r["ID"])
+                if cm and em in email_to_nids:
+                    for nid in email_to_nids[em]:
+                        nid_to_close_months[nid].add(cm)
 
-    # Usage Total = URSA + CfZ (derived, avoids double-counting usage_minutes field)
-    for mk in month_agg:
-        month_agg[mk]["usage_min"] = month_agg[mk]["ursa_min"] + month_agg[mk]["cfz_min"]
+        vrs_num_ids = list(num_id_to_number.keys())  # all associated number object IDs
 
-    total_ursa_min   = sum(v["ursa_min"]  for v in month_agg.values())
-    total_cfz_min    = sum(v["cfz_min"]   for v in month_agg.values())
-    total_usage_min  = sum(v["usage_min"] for v in month_agg.values())
-    # Use HubSpot's pre-calculated FCC costs (fcc_cost_based_on_vrs_usage + fcc_cost_based_on_cfz_usage)
-    total_vrs_fcc    = sum(v["fcc_vrs"] + v["fcc_cfz"] for v in month_agg.values())
+        # Step 3: search monthly values directly by phone number string (more reliable
+        # than v4 association → MV ID lookup which can time out at scale).
+        MV_PROPS = ["number", "month_date", "service_type",
+                    "usage_minutes", "ursa_minutes", "cfz_minutes",
+                    "fcc_cost_based_on_vrs_usage", "fcc_cost_based_on_cfz_usage",
+                    "fcc_rate_1"]
+
+        if mv_all_months:
+            mv_floor = date(2000, 1, 1)  # no floor — sum every month, like HubSpot's report
+        elif filter_start:
+            mv_floor = date(filter_start.year, filter_start.month, 1)
+        else:
+            today_d = date.today()
+            mv_floor = date(today_d.year - 2, today_d.month, 1)
+        mv_floor_ms = str(int(datetime(mv_floor.year, mv_floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
+        MV_DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": mv_floor_ms}
+
+        vrs_numbers = list(num_id_to_number.values())  # phone number strings
+        num_to_nid  = {v: k for k, v in num_id_to_number.items()}  # phone → object ID
+
+        # Monthly values are matched number-to-number: MonthlyValue.number must
+        # equal Number.number. Records dedupe by monthly value record ID.
+        mv_objects = {}          # mv_id → (number_object_id, properties)
+        seen_mv_ids = set()
+
+        if vrs_numbers:
+            with st.spinner(f"Fetching monthly values for {len(vrs_numbers):,} numbers (from {mv_floor.strftime('%b %Y')})..."):
+                for i in range(0, len(vrs_numbers), 100):
+                    chunk_nums = vrs_numbers[i:i+100]
+                    mv_recs = fetch_all(
+                        "2-46246179",
+                        MV_PROPS,
+                        filter_groups=[{"filters": [
+                            {"propertyName": "number",       "operator": "IN", "values": chunk_nums},
+                            MV_DATE_FILTER,
+                            {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
+                        ]}]
+                    )
+                    for obj in mv_recs:
+                        mv_id = str(obj.get("id") or "")
+                        if not mv_id or mv_id in seen_mv_ids:
+                            continue
+                        seen_mv_ids.add(mv_id)
+                        p2  = obj.get("properties", {})
+                        num = str(p2.get("number") or "").strip()
+                        nid = num_to_nid.get(num)
+                        if nid is None:
+                            continue  # only count rows whose number matches a matched Number
+                        mv_objects[mv_id] = (nid, p2)
+
+        for mv_id, (nid, p2) in mv_objects.items():
+            num_monthly[nid].append({
+                "month":    p2.get("month_date") or "",
+                "ursa_min": _to_float(p2.get("ursa_minutes")),
+                "cfz_min":  _to_float(p2.get("cfz_minutes")),
+                "fcc_vrs":  _to_float(p2.get("fcc_cost_based_on_vrs_usage")),
+                "fcc_cfz":  _to_float(p2.get("fcc_cost_based_on_cfz_usage")),
+            })
+
+        # Aggregate all June 2026+ monthly values for matched numbers.
+        # HubSpot's report shows June-closed tickets with July monthly values
+        # (usage recorded the following month), so we do not restrict by close month.
+        month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "fcc_vrs": 0.0, "fcc_cfz": 0.0})
+        for nid, mv_list in num_monthly.items():
+            for mv in mv_list:
+                mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
+                if not mk:
+                    continue
+                month_agg[mk]["ursa_min"] += mv["ursa_min"]
+                month_agg[mk]["cfz_min"]  += mv["cfz_min"]
+                month_agg[mk]["fcc_vrs"]  += mv["fcc_vrs"]
+                month_agg[mk]["fcc_cfz"]  += mv["fcc_cfz"]
+
+        # Usage Total = URSA + CfZ (derived, avoids double-counting usage_minutes field)
+        for mk in month_agg:
+            month_agg[mk]["usage_min"] = month_agg[mk]["ursa_min"] + month_agg[mk]["cfz_min"]
+
+        total_ursa_min   = sum(v["ursa_min"]  for v in month_agg.values())
+        total_cfz_min    = sum(v["cfz_min"]   for v in month_agg.values())
+        total_usage_min  = sum(v["usage_min"] for v in month_agg.values())
+        # Use HubSpot's pre-calculated FCC costs (fcc_cost_based_on_vrs_usage + fcc_cost_based_on_cfz_usage)
+        total_vrs_fcc    = sum(v["fcc_vrs"] + v["fcc_cfz"] for v in month_agg.values())
+
+        st.session_state["_cs_cache"] = {"sig": _sig,
+            "vars": {k: globals().get(k) for k in _CS_CACHE_VARS}}
+
+    _stage_counts = pd.Series([r["Status"] for r in rows]).value_counts()
+    st.caption("Stage breakdown: " + " · ".join(f"**{s}**: {c:,}" for s, c in _stage_counts.items()))
 
     # ── Association table: ticket → contact → number → monthly values ─────────
     # One row per link in the chain, with a status showing where it breaks.
