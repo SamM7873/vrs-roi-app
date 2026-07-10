@@ -148,13 +148,19 @@ mv_all_months = st.checkbox(
 
 st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
-def _post_retry(url, json_body, timeout=60, attempts=3):
-    """POST with retry on timeouts/connection errors and 429 rate limits."""
+def _post_retry(url, json_body, timeout=60, attempts=5):
+    """POST with retry on timeouts, connection errors, 429 rate limits and 5xx."""
+    r = None
     for attempt in range(attempts):
         try:
             r = requests.post(url, headers=_headers, json=json_body, timeout=timeout)
-            if r.status_code == 429:
-                time.sleep(1.5 * (attempt + 1))
+            if r.status_code == 429 or r.status_code >= 500:
+                retry_after = r.headers.get("Retry-After")
+                try:
+                    wait = float(retry_after) if retry_after else 1.5 * (attempt + 1)
+                except ValueError:
+                    wait = 1.5 * (attempt + 1)
+                time.sleep(min(wait, 15))
                 continue
             return r
         except requests.exceptions.RequestException:
@@ -283,10 +289,9 @@ if run_clicked or _use_cache:
 
         with dash_spinner(f"Looking up contact emails for {len(ticket_ids)} tickets..."):
             tid_to_cids = defaultdict(list)  # ticket_id → [contact_id, ...]
-            _failed_assoc_batches = 0
+            _failed_batches = []  # (status_code, response_excerpt)
 
             def _read_ticket_contacts(tids, chunk_size):
-                nonlocal_failed = 0
                 for i in range(0, len(tids), chunk_size):
                     chunk = tids[i:i+chunk_size]
                     ar = _post_retry(
@@ -301,22 +306,26 @@ if run_clicked or _use_cache:
                                 if cid and cid not in tid_to_cids[tid]:
                                     tid_to_cids[tid].append(cid)
                     else:
-                        nonlocal_failed += 1
-                    time.sleep(0.1)
-                return nonlocal_failed
+                        _failed_batches.append((ar.status_code, (ar.text or "")[:200]))
+                    time.sleep(0.15)
 
-            _failed_assoc_batches += _read_ticket_contacts(ticket_ids, 100)
+            _read_ticket_contacts(ticket_ids, 100)
 
             # Second pass: retry tickets that came back with no contact, in
             # smaller chunks — a single failed batch of 100 silently drops
             # associations for all 100 tickets.
             _missing = [tid for tid in ticket_ids if not tid_to_cids.get(str(tid))]
             if _missing:
-                _failed_assoc_batches += _read_ticket_contacts(_missing, 25)
+                _read_ticket_contacts(_missing, 25)
 
-            if _failed_assoc_batches:
-                st.warning(f"{_failed_assoc_batches} association batch(es) failed — "
-                           "some ticket→contact links may be missing. Re-run to retry.")
+            if _failed_batches:
+                from collections import Counter
+                _codes = Counter(code for code, _ in _failed_batches)
+                st.warning(
+                    f"{len(_failed_batches)} association batch(es) failed — "
+                    f"HTTP status counts: {dict(_codes)}. "
+                    f"First error: `{_failed_batches[0][1]}`"
+                )
 
             unique_cids = list({cid for cids in tid_to_cids.values() for cid in cids})
             if unique_cids:
