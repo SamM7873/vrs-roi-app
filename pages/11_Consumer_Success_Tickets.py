@@ -710,26 +710,41 @@ if st.button("Run Consumer Success Tickets", use_container_width=False):
     # ── Debug export: per-record reconciliation data ───────────────────────────
     _dbg_rows = []
     for mv_id, (nid, p2) in mv_objects.items():
+        mv_num  = str(p2.get("number") or "").strip()
+        obj_num = num_id_to_number.get(nid, "")
         _dbg_rows.append({
             "Monthly Value ID": mv_id,
             "Number Object ID": nid,
-            "Number": str(p2.get("number") or ""),
+            "Number (Number Object)": obj_num,
+            "Number (Monthly Value)": mv_num,
+            "Match": "✅" if mv_num and mv_num == obj_num else "⚠️",
             "Month": (p2.get("month_date") or "")[:10],
             "URSA Minutes": _to_float(p2.get("ursa_minutes")),
             "CfZ Minutes": _to_float(p2.get("cfz_minutes")),
         })
     _dbg_df = pd.DataFrame(_dbg_rows) if _dbg_rows else pd.DataFrame()
+    if not _dbg_df.empty:
+        _dbg_df = _dbg_df.sort_values(["Match", "Number (Number Object)", "Month"]).reset_index(drop=True)
     _matched_nids = pd.DataFrame({"Number Object ID": list(num_id_to_number.keys()),
                                   "Number": list(num_id_to_number.values())})
+
+    st.markdown("#### Number Match — Number Object ↔ Monthly Value")
+    if not _dbg_df.empty:
+        n_match = int((_dbg_df["Match"] == "✅").sum())
+        st.caption(f"{len(_dbg_df):,} monthly value records · **{n_match:,}** number-to-number matches ✅ · "
+                   f"**{len(_dbg_df) - n_match:,}** mismatches ⚠️")
+        st.dataframe(_dbg_df, use_container_width=True, hide_index=True, height=380)
+        st.download_button("Download number match CSV",
+                           _dbg_df.to_csv(index=False),
+                           "number_match_monthly_values.csv", "text/csv", key="dbg_mvs")
+    else:
+        st.info("No monthly value records matched.")
+
     with st.expander("🔧 Reconciliation data (debug)"):
-        st.caption(f"{len(_matched_nids):,} matched numbers · {len(_dbg_df):,} monthly value records")
+        st.caption(f"{len(_matched_nids):,} matched numbers")
         st.download_button("Download matched numbers CSV",
                            _matched_nids.to_csv(index=False),
                            "matched_numbers.csv", "text/csv", key="dbg_nums")
-        if not _dbg_df.empty:
-            st.download_button("Download monthly value records CSV",
-                               _dbg_df.to_csv(index=False),
-                               "monthly_value_records.csv", "text/csv", key="dbg_mvs")
 
     # ── Summary tiles ──────────────────────────────────────────────────────────
     total    = len(rows)
