@@ -170,7 +170,7 @@ if run or not cached:
             chunk = list(cn_emails)[i:i+100]
             all_num_objs.extend(fetch_all(
                 "2-40974683",
-                ["number", "email", "first_name", "last_name", "service_type", "number_status"],
+                ["number", "email", "first_name", "last_name", "service_type", "number_status", "age_bucket"],
                 filter_groups=[{"filters": [
                     {"propertyName": "email", "operator": "IN", "values": chunk},
                 ]}]
@@ -193,6 +193,9 @@ if run or not cached:
         all_numbers_by_email[email].add(num)
         if fn or ln:
             email_to_name.setdefault(email, f"{fn} {ln}".strip())
+        age = (p.get("age_bucket") or "").strip()
+        if age:
+            email_to_age.setdefault(email, age)
         if svc == "vrs":
             email_vrs_nums[email].add(num)
         elif svc == "convo now":
