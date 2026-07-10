@@ -37,7 +37,7 @@ report_header_close()
 # (or if the cache predates the Pendo ID column)
 cached = st.session_state.get("_vrs_zero_cache")
 if cached and (cached.get("range_label") != range_label
-               or "Pendo ID" not in cached.get("df_full", pd.DataFrame()).columns):
+               or "Age Bucket" not in cached.get("df_full", pd.DataFrame()).columns):
     del st.session_state["_vrs_zero_cache"]
     cached = None
 
@@ -106,7 +106,7 @@ if run or not cached:
             cn_obj_records.extend(fetch_all(
                 "2-40974683",
                 ["number", "email", "first_name", "last_name", "service_type",
-                 "number_status", "usage_type", "credit_plan_name"],
+                 "number_status", "usage_type", "credit_plan_name", "age_bucket"],
                 filter_groups=[{"filters": [
                     {"propertyName": "number",           "operator": "IN", "values": chunk},
                     {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
@@ -118,6 +118,7 @@ if run or not cached:
     num_to_email: dict = {}
     email_to_name: dict = {}
     email_to_pendo: dict = {}
+    email_to_age: dict = {}
     _statuses_seen: dict = defaultdict(int)
     for r in cn_obj_records:
         p = r.get("properties", {})
@@ -134,6 +135,9 @@ if run or not cached:
             num_to_email[num] = email
             if fn or ln:
                 email_to_name[email] = f"{fn} {ln}".strip()
+            age = (p.get("age_bucket") or "").strip()
+            if age:
+                email_to_age.setdefault(email, age)
 
     if not cn_emails:
         st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary + Live). "
@@ -259,6 +263,7 @@ if run or not cached:
             "Name":              email_to_name.get(email, "—"),
             "Email":             email,
             "Pendo ID":          email_to_pendo.get(email, "—"),
+            "Age Bucket":        email_to_age.get(email, "—"),
             "VRS Numbers":       ", ".join(vrs_nums) if vrs_nums else "—",
             "Convo Now Numbers": ", ".join(cn_nums)  if cn_nums  else "—",
             "VRS Minutes":       round(vrs_total,  1),
@@ -402,7 +407,7 @@ if search.strip():
     st.caption(f'{len(df_view):,} of {total_contacts:,} contacts match "{search}"')
 
 display_df = df_view[[
-    "Name", "Email", "Pendo ID", "Convo Now Numbers", "VRS Numbers",
+    "Name", "Email", "Pendo ID", "Age Bucket", "Convo Now Numbers", "VRS Numbers",
     "VRS Minutes", "URSA Minutes", "CfZ Minutes",
     "Convo Now Min", "Convo Now Cost", "Active Months", "Latest Month", "Latest Month Min"
 ]]
