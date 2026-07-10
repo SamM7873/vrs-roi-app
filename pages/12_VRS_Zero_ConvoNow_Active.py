@@ -109,6 +109,7 @@ if run or not cached:
                     {"propertyName": "number",           "operator": "IN", "values": chunk},
                     {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
                     {"propertyName": "credit_plan_name", "operator": "EQ", "value": "Convo Now: Access Complimentary"},
+                    {"propertyName": "number_status",    "operator": "EQ", "value": "Live"},
                 ]}]
             ))
 
@@ -128,7 +129,7 @@ if run or not cached:
                 email_to_name[email] = f"{fn} {ln}".strip()
 
     if not cn_emails:
-        st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary).")
+        st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary + Live).")
         st.stop()
 
     # ── Step 3: All numbers for those contacts (VRS + Convo Now) ─────────────
