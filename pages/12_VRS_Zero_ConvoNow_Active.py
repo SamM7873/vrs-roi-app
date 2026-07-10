@@ -368,21 +368,51 @@ with ch_right:
     )
     st.altair_chart(top_chart, use_container_width=True)
 
-# Active months distribution
-month_dist_df = df_full["Active Months"].value_counts().reset_index()
-month_dist_df.columns = ["Active Months", "Count"]
-month_dist_df = month_dist_df.sort_values("Active Months")
-dist_chart = (
-    alt.Chart(month_dist_df)
-    .mark_bar(color="#8B5CF6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-    .encode(
-        x=alt.X("Active Months:O", title="Active Months"),
-        y=alt.Y("Count:Q", title="# Contacts"),
-        tooltip=["Active Months", "Count"],
+ch2_left, ch2_right = st.columns(2)
+
+with ch2_left:
+    # Active months distribution
+    month_dist_df = df_full["Active Months"].value_counts().reset_index()
+    month_dist_df.columns = ["Active Months", "Count"]
+    month_dist_df = month_dist_df.sort_values("Active Months")
+    dist_chart = (
+        alt.Chart(month_dist_df)
+        .mark_bar(color="#8B5CF6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+        .encode(
+            x=alt.X("Active Months:O", title="Active Months"),
+            y=alt.Y("Count:Q", title="# Contacts"),
+            tooltip=["Active Months", "Count"],
+        )
+        .properties(height=220, title="Distribution: Active Months per Contact")
     )
-    .properties(height=180, title="Distribution: Active Months per Contact")
-)
-st.altair_chart(dist_chart, use_container_width=True)
+    st.altair_chart(dist_chart, use_container_width=True)
+
+with ch2_right:
+    # Age bucket breakdown — contacts and CN minutes per age group
+    if "Age Bucket" in df_full.columns:
+        AGE_ORDER = ["Under 18", "18-24", "25-34", "35-44", "45-54", "55-64", "65+",
+                     "18 - 35", "36 - 50", "51 - 64", "65 and Over", "—"]
+        age_df = (
+            df_full.groupby("Age Bucket", as_index=False)
+            .agg(Contacts=("Email", "count"), CN_Min=("Convo Now Min", "sum"))
+        )
+        age_df["CN_Min"] = age_df["CN_Min"].round(1)
+        order_map = {b: i for i, b in enumerate(AGE_ORDER)}
+        age_df = age_df.sort_values("Age Bucket", key=lambda s: s.map(lambda x: order_map.get(x, 998)))
+        age_chart = (
+            alt.Chart(age_df)
+            .mark_bar(color="#3B82F6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+            .encode(
+                x=alt.X("Age Bucket:N", sort=list(age_df["Age Bucket"]),
+                        axis=alt.Axis(title=None, labelAngle=-20)),
+                y=alt.Y("CN_Min:Q", title="Convo Now Minutes"),
+                tooltip=[alt.Tooltip("Age Bucket:N"),
+                         alt.Tooltip("Contacts:Q", format=","),
+                         alt.Tooltip("CN_Min:Q", title="CN Minutes", format=",.1f")],
+            )
+            .properties(height=220, title="Convo Now Usage by Age Bucket")
+        )
+        st.altair_chart(age_chart, use_container_width=True)
 
 # ── Search + table ────────────────────────────────────────────────────────────
 st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#6B7280;margin:1.25rem 0 0.5rem;'>Contact Detail</div>", unsafe_allow_html=True)
