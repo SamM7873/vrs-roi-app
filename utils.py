@@ -161,127 +161,33 @@ def require_auth():
           </div>
         <div class="login-card">
         """, unsafe_allow_html=True)
-        tab_login, tab_reset = st.tabs(["Sign in", "Set / reset password"])
-
-        with tab_login:
-            entered_email = st.text_input("Email", placeholder="you@convorelay.com", key="li_email")
-            entered_pw    = st.text_input("Password", type="password", placeholder="Your personal password", key="li_pw")
-            if st.button("Sign in", key="li_btn"):
-                email = (entered_email or "").strip().lower()
-                if _has_allowlist and not _allowed_email(email):
+        entered_email = st.text_input("Email", placeholder="you@convorelay.com", key="li_email")
+        entered_pw = None
+        if not _has_allowlist:
+            entered_pw = st.text_input("Password", type="password", placeholder="Enter password", key="li_pw")
+        if st.button("Login", key="li_btn"):
+            email = (entered_email or "").strip().lower()
+            if _has_allowlist:
+                if _allowed_email(email):
+                    st.session_state.authenticated = True
+                    st.session_state.auth_email = email
+                    st.rerun()
+                else:
                     st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
-                elif not _load_users().get(email):
-                    st.info("No password set for this email yet — use the **Set / reset password** tab first.")
-                elif _verify_user(email, entered_pw or ""):
+            else:
+                if entered_pw == APP_PASSWORD and email:
                     st.session_state.authenticated = True
                     st.session_state.auth_email = email
                     st.rerun()
                 else:
                     st.error("Incorrect password.")
-
-        with tab_reset:
-            if _smtp_configured():
-                # ── Email verification code flow (create or reset any account) ──
-                st.caption("Enter your email and we'll send a verification code, "
-                           "then choose your password.")
-                r_email = st.text_input("Email", placeholder="you@convorelay.com", key="rs_email")
-                if st.button("Send verification code", key="rs_send"):
-                    email = (r_email or "").strip().lower()
-                    if _has_allowlist and not _allowed_email(email):
-                        st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
-                    else:
-                        code, err = _send_reset_code(email)
-                        if code:
-                            st.session_state["_reset_email"] = email
-                            st.session_state["_reset_code"]  = code
-                            st.session_state["_reset_ts"]    = time.time()
-                            st.success(f"Code sent to {email} — check your inbox (and spam).")
-                        else:
-                            st.error(f"Could not send the email — {err}")
-
-                if st.session_state.get("_reset_code"):
-                    st.markdown("---")
-                    r_code = st.text_input("Verification code", placeholder="6-digit code", key="rs_code")
-                    r_new  = st.text_input("New password", type="password", key="rs_new")
-                    r_new2 = st.text_input("Confirm new password", type="password", key="rs_new2")
-                    if st.button("Set password", key="rs_btn"):
-                        expired = (time.time() - st.session_state.get("_reset_ts", 0)) > 600
-                        if expired:
-                            st.error("Code expired (10 min) — request a new one.")
-                        elif (r_code or "").strip() != st.session_state["_reset_code"]:
-                            st.error("Incorrect code.")
-                        elif len(r_new or "") < 8:
-                            st.error("New password must be at least 8 characters.")
-                        elif r_new != r_new2:
-                            st.error("Passwords don't match.")
-                        else:
-                            _set_user_password(st.session_state["_reset_email"], r_new)
-                            for k in ("_reset_code", "_reset_email", "_reset_ts"):
-                                st.session_state.pop(k, None)
-                            st.success("Password set — switch to the **Sign in** tab and log in.")
-            else:
-                # ── Fallback: team password can create new accounts only ────────
-                st.caption("First time here? Verify with the team password, then choose your own. "
-                           "(Forgot your password? Ask an admin to clear your account.)")
-                if not APP_PASSWORD:
-                    st.warning("⚠️ No team password is configured — an admin must set APP_PASSWORD "
-                               "in the app's secrets before passwords can be set.")
-                r_email = st.text_input("Email", placeholder="you@convorelay.com", key="rs_email")
-                r_team  = st.text_input("Team password", type="password",
-                                        placeholder="Shared team password", key="rs_team")
-                r_new   = st.text_input("New personal password", type="password", key="rs_new")
-                r_new2  = st.text_input("Confirm new password", type="password", key="rs_new2")
-                if st.button("Set password", key="rs_btn"):
-                    email = (r_email or "").strip().lower()
-                    if _has_allowlist and not _allowed_email(email):
-                        st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
-                    elif _load_users().get(email):
-                        st.error("An account already exists for this email. "
-                                 "Ask an admin to clear your account, then set a new password here.")
-                    elif not APP_PASSWORD or r_team != APP_PASSWORD:
-                        st.error("Team password is incorrect.")
-                    elif len(r_new or "") < 8:
-                        st.error("New password must be at least 8 characters.")
-                    elif r_new != r_new2:
-                        st.error("Passwords don't match.")
-                    else:
-                        _set_user_password(email, r_new)
-                        st.success("Password set — switch to the **Sign in** tab and log in.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
-    # signed in: identity, change-password, sign-out in the sidebar
+    # signed in: identity + sign-out in the sidebar
     if st.session_state.get("auth_email"):
         with st.sidebar:
             st.caption(f"👤 {st.session_state.auth_email}")
-            with st.expander("Change password"):
-                cur  = st.text_input("Current password", type="password", key="cp_cur")
-                new  = st.text_input("New password", type="password", key="cp_new")
-                new2 = st.text_input("Confirm new password", type="password", key="cp_new2")
-                if st.button("Update password", key="cp_btn"):
-                    email = st.session_state.auth_email
-                    if not _verify_user(email, cur or ""):
-                        st.error("Current password is incorrect.")
-                    elif len(new or "") < 8:
-                        st.error("New password must be at least 8 characters.")
-                    elif new != new2:
-                        st.error("Passwords don't match.")
-                    else:
-                        _set_user_password(email, new)
-                        st.success("Password updated.")
-            if _is_admin(st.session_state.auth_email):
-                with st.expander("👑 Manage users (admin)"):
-                    users = _load_users()
-                    if not users:
-                        st.caption("No accounts yet.")
-                    for u in sorted(users):
-                        col_u, col_b = st.columns([3, 1])
-                        col_u.caption(u)
-                        if col_b.button("Reset", key=f"adm_rm_{u}",
-                                        help="Clears this account so the user can set a new password"):
-                            users.pop(u, None)
-                            _save_users(users)
-                            st.rerun()
             if st.button("Sign out", key="_pw_logout"):
                 st.session_state.authenticated = False
                 st.session_state.auth_email = ""
