@@ -522,6 +522,51 @@ COMMON_CSS = """
 </style>
 """
 
+# Responsive rules shared by every page (including ones with their own theme)
+MOBILE_CSS = """
+<style>
+    /* ── Mobile-friendly layout ─────────────────────────────────────────── */
+    @media (max-width: 900px) {
+        /* Tile / card grids: collapse fixed multi-column grids to 2-up */
+        div[style*="grid-template-columns:repeat(7"],
+        div[style*="grid-template-columns:repeat(6"],
+        div[style*="grid-template-columns:repeat(5"],
+        div[style*="grid-template-columns:repeat(4"],
+        div[style*="grid-template-columns: repeat(7"],
+        div[style*="grid-template-columns: repeat(6"],
+        div[style*="grid-template-columns: repeat(5"],
+        div[style*="grid-template-columns: repeat(4"] {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+        div[style*="grid-template-columns:repeat(3"],
+        div[style*="grid-template-columns: repeat(3"] {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+        /* Reduce page padding so content uses the full width */
+        .block-container { padding-left: 0.9rem !important; padding-right: 0.9rem !important; }
+    }
+    @media (max-width: 540px) {
+        /* Phones: single-column grids, smaller headline numbers */
+        div[style*="grid-template-columns:repeat"],
+        div[style*="grid-template-columns: repeat"] {
+            grid-template-columns: 1fr 1fr !important;
+        }
+        div[style*="font-size:1.5rem"], div[style*="font-size:1.45rem"],
+        div[style*="font-size:1.4rem"], div[style*="font-size:1.3rem"] {
+            font-size: 1.1rem !important;
+        }
+        .block-container { padding-left: 0.6rem !important; padding-right: 0.6rem !important; }
+        /* Report header paddings */
+        div[style*="padding:1.75rem 2rem 2rem"] { padding: 1rem !important; }
+        div[style*="padding:1.25rem 1.75rem 1rem"] { padding: 1rem 1rem 0.75rem !important; }
+    }
+    /* Tables and wide charts scroll sideways inside their own container */
+    [data-testid="stDataFrame"] { overflow-x: auto; }
+</style>
+"""
+
+COMMON_CSS = COMMON_CSS + MOBILE_CSS
+
 
 def report_header(title, subtitle, section="Analytics"):
     st.markdown(f"""

@@ -8,7 +8,7 @@ import os
 import time
 from datetime import datetime
 from collections import defaultdict
-from utils import dash_spinner, vrs_rate_for_month as _vrs_rate
+from utils import dash_spinner, vrs_rate_for_month as _vrs_rate, MOBILE_CSS
 
 from utils import get_secret
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
@@ -147,6 +147,8 @@ if APP_PASSWORD:
 
 BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
+
+st.markdown(MOBILE_CSS, unsafe_allow_html=True)
 
 def list_all(object_type_id, properties):
     """Use GET /crm/v3/objects list endpoint — no filter required, no 10k cap."""
