@@ -30,13 +30,23 @@ PENDO_PROPS = [
 
 
 def _dt(v):
-    """HubSpot datetime → short date string."""
+    """HubSpot datetime → ISO date (YYYY-MM-DD) for sorting/grouping."""
     if not v:
         return ""
     try:
         return str(v)[:10]
     except Exception:
         return ""
+
+
+def _fmt_mdy(iso):
+    """ISO date → 'Jul 10, 2026' for display."""
+    if not iso:
+        return ""
+    try:
+        return datetime.strptime(iso[:10], "%Y-%m-%d").strftime("%b %d, %Y")
+    except Exception:
+        return iso
 
 
 with st.expander("ℹ️ What is Pendo, and what do these fields mean?"):
@@ -247,8 +257,11 @@ if not fv.empty or not lv2.empty:
 
 # ── Table + download ─────────────────────────────────────────────────────────
 st.markdown("#### Contact Detail")
+_df_table = df_view.sort_values("Days Active (30d)", ascending=False).reset_index(drop=True).copy()
+_df_table["First Visit"] = _df_table["First Visit"].map(_fmt_mdy)
+_df_table["Last Visit"]  = _df_table["Last Visit"].map(_fmt_mdy)
 st.dataframe(
-    df_view.sort_values("Days Active (30d)", ascending=False).reset_index(drop=True),
+    _df_table,
     use_container_width=True,
     hide_index=True,
     column_config={
@@ -260,7 +273,7 @@ st.dataframe(
 )
 st.download_button(
     "Download CSV",
-    df_view.to_csv(index=False),
+    _df_table.to_csv(index=False),
     "pendo_contacts.csv",
     "text/csv",
 )
