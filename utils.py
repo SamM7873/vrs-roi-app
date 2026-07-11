@@ -79,6 +79,11 @@ def _verify_user(email, password):
     return _hash_pw(password, rec["salt"]) == rec["hash"]
 
 
+def _is_admin(email):
+    admins = [e.strip().lower() for e in str(get_secret("ADMIN_EMAILS")).split(",") if e.strip()]
+    return (email or "").strip().lower() in admins
+
+
 def require_auth():
     """Login gate: email (allowlist) + personal password, with self-service
     reset verified by the team APP_PASSWORD. Call at the top of every page."""
@@ -154,6 +159,13 @@ def require_auth():
                 email = (r_email or "").strip().lower()
                 if _has_allowlist and not _allowed_email(email):
                     st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
+                elif _load_users().get(email):
+                    # existing accounts cannot be overwritten with the team
+                    # password — that would let any teammate take over the
+                    # account. An admin must clear it first.
+                    st.error("An account already exists for this email. "
+                             "To reset a forgotten password, ask an admin to clear your account — "
+                             "then set a new password here.")
                 elif not APP_PASSWORD or r_team != APP_PASSWORD:
                     st.error("Team password is incorrect.")
                 elif len(r_new or "") < 8:
@@ -185,6 +197,19 @@ def require_auth():
                     else:
                         _set_user_password(email, new)
                         st.success("Password updated.")
+            if _is_admin(st.session_state.auth_email):
+                with st.expander("👑 Manage users (admin)"):
+                    users = _load_users()
+                    if not users:
+                        st.caption("No accounts yet.")
+                    for u in sorted(users):
+                        col_u, col_b = st.columns([3, 1])
+                        col_u.caption(u)
+                        if col_b.button("Reset", key=f"adm_rm_{u}",
+                                        help="Clears this account so the user can set a new password"):
+                            users.pop(u, None)
+                            _save_users(users)
+                            st.rerun()
             if st.button("Sign out", key="_pw_logout"):
                 st.session_state.authenticated = False
                 st.session_state.auth_email = ""
