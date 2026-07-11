@@ -126,9 +126,8 @@ def require_auth():
         st.error("HUBSPOT_TOKEN is not set.")
         st.stop()
 
-    _has_allowlist = bool(str(get_secret("ALLOWED_EMAILS")).strip() or str(get_secret("ALLOWED_DOMAINS")).strip())
-    if not APP_PASSWORD and not _has_allowlist:
-        st.error("No access control configured — set ALLOWED_EMAILS or APP_PASSWORD in secrets.")
+    if not APP_PASSWORD:
+        st.error("No access control configured — set APP_PASSWORD in secrets.")
         st.stop()
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -157,41 +156,19 @@ def require_auth():
           <div class="login-logo-area">
             <div class="logo-mark">c</div>
             <h2>VRS / Convo Now Lookup</h2>
-            <p>Sign in with your work email to continue</p>
+            <p>Please enter your password to continue</p>
           </div>
         <div class="login-card">
         """, unsafe_allow_html=True)
-        entered_email = st.text_input("Email", placeholder="you@convorelay.com", key="li_email")
-        entered_pw = None
-        if not _has_allowlist:
-            entered_pw = st.text_input("Password", type="password", placeholder="Enter password", key="li_pw")
-        if st.button("Login", key="li_btn"):
-            email = (entered_email or "").strip().lower()
-            if _has_allowlist:
-                if _allowed_email(email):
-                    st.session_state.authenticated = True
-                    st.session_state.auth_email = email
-                    st.rerun()
-                else:
-                    st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
+        entered = st.text_input("Password", type="password", placeholder="Enter password")
+        if st.button("Login"):
+            if entered == APP_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun()
             else:
-                if entered_pw == APP_PASSWORD and email:
-                    st.session_state.authenticated = True
-                    st.session_state.auth_email = email
-                    st.rerun()
-                else:
-                    st.error("Incorrect password.")
+                st.error("Incorrect password.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
-
-    # signed in: identity + sign-out in the sidebar
-    if st.session_state.get("auth_email"):
-        with st.sidebar:
-            st.caption(f"👤 {st.session_state.auth_email}")
-            if st.button("Sign out", key="_pw_logout"):
-                st.session_state.authenticated = False
-                st.session_state.auth_email = ""
-                st.rerun()
 
 
 def list_all(object_type_id, properties, progress_label="Loading..."):
