@@ -1415,6 +1415,65 @@ if "search_results" in st.session_state:
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
+        # ── Pendo engagement (contact level, once per person) ────────────────
+        _p_email = norm(person_records[0].get("properties", {}).get("email") or "")
+        if _p_email:
+            _pk_cache = f"_pendo_lookup_{_p_email}"
+            if _pk_cache not in st.session_state:
+                _pendo = None
+                try:
+                    _pr = requests.post(
+                        f"{BASE_URL}/crm/v3/objects/contacts/search",
+                        headers=headers,
+                        json={"filterGroups": [{"filters": [
+                                  {"propertyName": "email", "operator": "EQ", "value": _p_email}]}],
+                              "properties": ["convo_now_account_id", "pendo_first_visit",
+                                             "pendo_last_visit", "pendo_events_30d",
+                                             "pendo_days_active_30d", "pendo_time_spent_on_app_30d",
+                                             "pendo_usage_trending_30d"],
+                              "limit": 1},
+                        timeout=15,
+                    )
+                    if _pr.status_code == 200 and _pr.json().get("results"):
+                        _pendo = _pr.json()["results"][0].get("properties", {})
+                except Exception:
+                    pass
+                st.session_state[_pk_cache] = _pendo
+            _pendo = st.session_state[_pk_cache]
+
+            if _pendo and (_pendo.get("convo_now_account_id") or "").strip():
+                def _pd_date(v):
+                    if not v: return "—"
+                    try: return datetime.fromisoformat(str(v).replace("Z", "+00:00")).strftime("%b %d, %Y")
+                    except Exception: return str(v)[:10]
+                _trend = _pendo.get("pendo_usage_trending_30d")
+                try:
+                    _trend_f = float(_trend)
+                    _trend_html = (f'<span style="color:{"#00A651" if _trend_f >= 0 else "#EF4444"};font-weight:700;">'
+                                   f'{"+" if _trend_f >= 0 else ""}{_trend_f:,.0f}%</span>')
+                except (TypeError, ValueError):
+                    _trend_html = "—"
+                _num = lambda v: f"{float(v):,.0f}" if v not in (None, "") else "—"
+                pendo_html = (
+                    '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;margin-bottom:1rem;">'
+                    + card_header("Pendo Engagement (App Usage)")
+                    + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0.75rem;">'
+                    + "".join(
+                        f'<div><div style="color:#6B7280;font-size:0.72rem;font-weight:600;margin-bottom:3px;">{lbl}</div>'
+                        f'<div style="color:#1F2937;font-size:0.92rem;font-weight:700;">{val}</div></div>'
+                        for lbl, val in [
+                            ("Pendo ID", (_pendo.get("convo_now_account_id") or "—")),
+                            ("First Visit", _pd_date(_pendo.get("pendo_first_visit"))),
+                            ("Last Visit", _pd_date(_pendo.get("pendo_last_visit"))),
+                            ("Events (30d)", _num(_pendo.get("pendo_events_30d"))),
+                            ("Days Active (30d)", _num(_pendo.get("pendo_days_active_30d"))),
+                            ("Time on App (30d)", _num(_pendo.get("pendo_time_spent_on_app_30d"))),
+                            ("Usage Trend (30d)", _trend_html),
+                        ])
+                    + '</div></div>'
+                )
+                st.markdown(pendo_html, unsafe_allow_html=True)
+
     if _profile_key:
         # ── PROFILE MODE: full consumer dashboard ──
         _profile_records = _person_groups[_profile_key]
