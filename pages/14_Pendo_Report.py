@@ -124,6 +124,35 @@ if search.strip():
     if q_digits:
         phone_digits = df_view["Phone"].map(lambda v: "".join(ch for ch in str(v) if ch.isdigit()))
         mask = mask | phone_digits.str.contains(q_digits, na=False, regex=False)
+
+        # Number tie: resolve the digits against Number objects (VRS / Convo
+        # Now numbers) and match their email back to the contact.
+        if len(q_digits) >= 7:
+            _nq_key = f"_pendo_numlookup_{q_digits}"
+            if _nq_key not in st.session_state:
+                num_recs = fetch_all(
+                    "2-40974683",
+                    ["number", "email"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "number", "operator": "CONTAINS_TOKEN", "value": q_digits},
+                    ]}]
+                ) or fetch_all(
+                    "2-40974683",
+                    ["number", "email"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "number", "operator": "EQ", "value": q_digits},
+                    ]}]
+                )
+                st.session_state[_nq_key] = sorted({
+                    (r.get("properties", {}).get("email") or "").strip().lower()
+                    for r in num_recs
+                    if (r.get("properties", {}).get("email") or "").strip()
+                })
+            tied_emails = st.session_state[_nq_key]
+            if tied_emails:
+                mask = mask | df_view["Email"].isin(tied_emails)
+                st.caption(f"🔗 Number tie: {q_digits} belongs to {', '.join(tied_emails)}")
+
     df_view = df_view[mask]
     st.caption(f'{len(df_view):,} of {len(df):,} contacts match "{search}"')
 
