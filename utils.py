@@ -84,6 +84,41 @@ def _is_admin(email):
     return (email or "").strip().lower() in admins
 
 
+def _smtp_configured():
+    return bool(get_secret("SMTP_USER") and get_secret("SMTP_PASSWORD"))
+
+
+def _send_reset_code(email):
+    """Email a 6-digit verification code. Returns the code, or None on failure."""
+    import smtplib
+    import secrets as _pysecrets
+    from email.mime.text import MIMEText
+
+    code = f"{_pysecrets.randbelow(1000000):06d}"
+    host = get_secret("SMTP_HOST", "smtp.gmail.com")
+    port = int(get_secret("SMTP_PORT", "587"))
+    user = get_secret("SMTP_USER")
+    pw   = get_secret("SMTP_PASSWORD")
+    sender = get_secret("SMTP_FROM", user)
+
+    msg = MIMEText(
+        f"Your VRS / Convo Now Lookup verification code is: {code}\n\n"
+        "Enter this code in the app to set your password. "
+        "If you didn't request this, you can ignore this email."
+    )
+    msg["Subject"] = "Your verification code"
+    msg["From"] = sender
+    msg["To"] = email
+    try:
+        with smtplib.SMTP(host, port, timeout=20) as s:
+            s.starttls()
+            s.login(user, pw)
+            s.sendmail(sender, [email], msg.as_string())
+        return code
+    except Exception:
+        return None
+
+
 def require_auth():
     """Login gate: email (allowlist) + personal password, with self-service
     reset verified by the team APP_PASSWORD. Call at the top of every page."""
@@ -145,36 +180,73 @@ def require_auth():
                     st.error("Incorrect password.")
 
         with tab_reset:
-            st.caption("First time here, or forgot your password? Verify with the team password, "
-                       "then choose your own.")
-            if not APP_PASSWORD:
-                st.warning("⚠️ No team password is configured — an admin must set APP_PASSWORD "
-                           "in the app's secrets before passwords can be set or reset.")
-            r_email = st.text_input("Email", placeholder="you@convorelay.com", key="rs_email")
-            r_team  = st.text_input("Team password", type="password",
-                                    placeholder="Shared team password", key="rs_team")
-            r_new   = st.text_input("New personal password", type="password", key="rs_new")
-            r_new2  = st.text_input("Confirm new password", type="password", key="rs_new2")
-            if st.button("Set password", key="rs_btn"):
-                email = (r_email or "").strip().lower()
-                if _has_allowlist and not _allowed_email(email):
-                    st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
-                elif _load_users().get(email):
-                    # existing accounts cannot be overwritten with the team
-                    # password — that would let any teammate take over the
-                    # account. An admin must clear it first.
-                    st.error("An account already exists for this email. "
-                             "To reset a forgotten password, ask an admin to clear your account — "
-                             "then set a new password here.")
-                elif not APP_PASSWORD or r_team != APP_PASSWORD:
-                    st.error("Team password is incorrect.")
-                elif len(r_new or "") < 8:
-                    st.error("New password must be at least 8 characters.")
-                elif r_new != r_new2:
-                    st.error("Passwords don't match.")
-                else:
-                    _set_user_password(email, r_new)
-                    st.success("Password set — switch to the **Sign in** tab and log in.")
+            if _smtp_configured():
+                # ── Email verification code flow (create or reset any account) ──
+                st.caption("Enter your email and we'll send a verification code, "
+                           "then choose your password.")
+                r_email = st.text_input("Email", placeholder="you@convorelay.com", key="rs_email")
+                if st.button("Send verification code", key="rs_send"):
+                    email = (r_email or "").strip().lower()
+                    if _has_allowlist and not _allowed_email(email):
+                        st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
+                    else:
+                        code = _send_reset_code(email)
+                        if code:
+                            st.session_state["_reset_email"] = email
+                            st.session_state["_reset_code"]  = code
+                            st.session_state["_reset_ts"]    = time.time()
+                            st.success(f"Code sent to {email} — check your inbox (and spam).")
+                        else:
+                            st.error("Could not send the email — check the SMTP settings in secrets.")
+
+                if st.session_state.get("_reset_code"):
+                    st.markdown("---")
+                    r_code = st.text_input("Verification code", placeholder="6-digit code", key="rs_code")
+                    r_new  = st.text_input("New password", type="password", key="rs_new")
+                    r_new2 = st.text_input("Confirm new password", type="password", key="rs_new2")
+                    if st.button("Set password", key="rs_btn"):
+                        expired = (time.time() - st.session_state.get("_reset_ts", 0)) > 600
+                        if expired:
+                            st.error("Code expired (10 min) — request a new one.")
+                        elif (r_code or "").strip() != st.session_state["_reset_code"]:
+                            st.error("Incorrect code.")
+                        elif len(r_new or "") < 8:
+                            st.error("New password must be at least 8 characters.")
+                        elif r_new != r_new2:
+                            st.error("Passwords don't match.")
+                        else:
+                            _set_user_password(st.session_state["_reset_email"], r_new)
+                            for k in ("_reset_code", "_reset_email", "_reset_ts"):
+                                st.session_state.pop(k, None)
+                            st.success("Password set — switch to the **Sign in** tab and log in.")
+            else:
+                # ── Fallback: team password can create new accounts only ────────
+                st.caption("First time here? Verify with the team password, then choose your own. "
+                           "(Forgot your password? Ask an admin to clear your account.)")
+                if not APP_PASSWORD:
+                    st.warning("⚠️ No team password is configured — an admin must set APP_PASSWORD "
+                               "in the app's secrets before passwords can be set.")
+                r_email = st.text_input("Email", placeholder="you@convorelay.com", key="rs_email")
+                r_team  = st.text_input("Team password", type="password",
+                                        placeholder="Shared team password", key="rs_team")
+                r_new   = st.text_input("New personal password", type="password", key="rs_new")
+                r_new2  = st.text_input("Confirm new password", type="password", key="rs_new2")
+                if st.button("Set password", key="rs_btn"):
+                    email = (r_email or "").strip().lower()
+                    if _has_allowlist and not _allowed_email(email):
+                        st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
+                    elif _load_users().get(email):
+                        st.error("An account already exists for this email. "
+                                 "Ask an admin to clear your account, then set a new password here.")
+                    elif not APP_PASSWORD or r_team != APP_PASSWORD:
+                        st.error("Team password is incorrect.")
+                    elif len(r_new or "") < 8:
+                        st.error("New password must be at least 8 characters.")
+                    elif r_new != r_new2:
+                        st.error("Passwords don't match.")
+                    else:
+                        _set_user_password(email, r_new)
+                        st.success("Password set — switch to the **Sign in** tab and log in.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
