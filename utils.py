@@ -140,9 +140,11 @@ def require_auth():
                 st.logout()
         return
 
-    # ── Password fallback ─────────────────────────────────────────────────────
-    if not APP_PASSWORD:
-        return
+    # ── Email / password gate ─────────────────────────────────────────────────
+    _has_allowlist = bool(str(get_secret("ALLOWED_EMAILS")).strip() or str(get_secret("ALLOWED_DOMAINS")).strip())
+    if not APP_PASSWORD and not _has_allowlist:
+        st.error("No access control configured — set ALLOWED_EMAILS or APP_PASSWORD in secrets.")
+        st.stop()
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
     if not st.session_state.authenticated:
