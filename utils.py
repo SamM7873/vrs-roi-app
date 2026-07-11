@@ -36,14 +36,56 @@ def _allowed_email(email):
     return domain in allowed_domains
 
 
+# ── User accounts (email + personal password, stored hashed on disk) ────────
+
+def _users_file():
+    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_cache")
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, "users.json")
+
+
+def _load_users():
+    import json
+    try:
+        with open(_users_file()) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_users(users):
+    import json
+    with open(_users_file(), "w") as f:
+        json.dump(users, f)
+
+
+def _hash_pw(password, salt):
+    import hashlib
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 120_000).hex()
+
+
+def _set_user_password(email, password):
+    import secrets as _pysecrets
+    users = _load_users()
+    salt = _pysecrets.token_hex(16)
+    users[email] = {"salt": salt, "hash": _hash_pw(password, salt)}
+    _save_users(users)
+
+
+def _verify_user(email, password):
+    rec = _load_users().get(email)
+    if not rec:
+        return False
+    return _hash_pw(password, rec["salt"]) == rec["hash"]
+
+
 def require_auth():
-    """Login gate: email allowlist (ALLOWED_EMAILS/ALLOWED_DOMAINS) or the
-    shared APP_PASSWORD. Call at the top of every page."""
+    """Login gate: email (allowlist) + personal password, with self-service
+    reset verified by the team APP_PASSWORD. Call at the top of every page."""
     if not HUBSPOT_TOKEN:
         st.error("HUBSPOT_TOKEN is not set.")
         st.stop()
 
-    # ── Email / password gate ─────────────────────────────────────────────────
     _has_allowlist = bool(str(get_secret("ALLOWED_EMAILS")).strip() or str(get_secret("ALLOWED_DOMAINS")).strip())
     if not APP_PASSWORD and not _has_allowlist:
         st.error("No access control configured — set ALLOWED_EMAILS or APP_PASSWORD in secrets.")
@@ -79,36 +121,67 @@ def require_auth():
           </div>
         <div class="login-card">
         """, unsafe_allow_html=True)
-        has_allowlist = bool(str(get_secret("ALLOWED_EMAILS")).strip() or str(get_secret("ALLOWED_DOMAINS")).strip())
+        tab_login, tab_reset = st.tabs(["Sign in", "Set / reset password"])
 
-        entered_email = st.text_input("Email", placeholder="you@convorelay.com")
-        entered_pw = None
-        if not has_allowlist:
-            # no allowlist configured — fall back to requiring the team password
-            entered_pw = st.text_input("Password", type="password", placeholder="Enter password")
-
-        if st.button("Login"):
-            if has_allowlist:
-                if _allowed_email(entered_email):
-                    st.session_state.authenticated = True
-                    st.session_state.auth_email = (entered_email or "").strip().lower()
-                    st.rerun()
-                else:
+        with tab_login:
+            entered_email = st.text_input("Email", placeholder="you@convorelay.com", key="li_email")
+            entered_pw    = st.text_input("Password", type="password", placeholder="Your personal password", key="li_pw")
+            if st.button("Sign in", key="li_btn"):
+                email = (entered_email or "").strip().lower()
+                if _has_allowlist and not _allowed_email(email):
                     st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
-            else:
-                if entered_pw == APP_PASSWORD and (entered_email or "").strip():
+                elif not _load_users().get(email):
+                    st.info("No password set for this email yet — use the **Set / reset password** tab first.")
+                elif _verify_user(email, entered_pw or ""):
                     st.session_state.authenticated = True
-                    st.session_state.auth_email = (entered_email or "").strip().lower()
+                    st.session_state.auth_email = email
                     st.rerun()
                 else:
                     st.error("Incorrect password.")
+
+        with tab_reset:
+            st.caption("First time here, or forgot your password? Verify with the team password, "
+                       "then choose your own.")
+            r_email = st.text_input("Email", placeholder="you@convorelay.com", key="rs_email")
+            r_team  = st.text_input("Team password", type="password",
+                                    placeholder="Shared team password", key="rs_team")
+            r_new   = st.text_input("New personal password", type="password", key="rs_new")
+            r_new2  = st.text_input("Confirm new password", type="password", key="rs_new2")
+            if st.button("Set password", key="rs_btn"):
+                email = (r_email or "").strip().lower()
+                if _has_allowlist and not _allowed_email(email):
+                    st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
+                elif not APP_PASSWORD or r_team != APP_PASSWORD:
+                    st.error("Team password is incorrect.")
+                elif len(r_new or "") < 8:
+                    st.error("New password must be at least 8 characters.")
+                elif r_new != r_new2:
+                    st.error("Passwords don't match.")
+                else:
+                    _set_user_password(email, r_new)
+                    st.success("Password set — switch to the **Sign in** tab and log in.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
-    # signed in: show identity + sign-out in the sidebar
+    # signed in: identity, change-password, sign-out in the sidebar
     if st.session_state.get("auth_email"):
         with st.sidebar:
             st.caption(f"👤 {st.session_state.auth_email}")
+            with st.expander("Change password"):
+                cur  = st.text_input("Current password", type="password", key="cp_cur")
+                new  = st.text_input("New password", type="password", key="cp_new")
+                new2 = st.text_input("Confirm new password", type="password", key="cp_new2")
+                if st.button("Update password", key="cp_btn"):
+                    email = st.session_state.auth_email
+                    if not _verify_user(email, cur or ""):
+                        st.error("Current password is incorrect.")
+                    elif len(new or "") < 8:
+                        st.error("New password must be at least 8 characters.")
+                    elif new != new2:
+                        st.error("Passwords don't match.")
+                    else:
+                        _set_user_password(email, new)
+                        st.success("Password updated.")
             if st.button("Sign out", key="_pw_logout"):
                 st.session_state.authenticated = False
                 st.session_state.auth_email = ""
