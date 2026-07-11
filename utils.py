@@ -170,23 +170,33 @@ def require_auth():
           <div class="login-logo-area">
             <div class="logo-mark">c</div>
             <h2>VRS / Convo Now Lookup</h2>
-            <p>Sign in with your email and the team password</p>
+            <p>Sign in with your work email to continue</p>
           </div>
         <div class="login-card">
         """, unsafe_allow_html=True)
+        has_allowlist = bool(str(get_secret("ALLOWED_EMAILS")).strip() or str(get_secret("ALLOWED_DOMAINS")).strip())
+
         entered_email = st.text_input("Email", placeholder="you@convorelay.com")
-        entered_pw    = st.text_input("Password", type="password", placeholder="Enter password")
+        entered_pw = None
+        if not has_allowlist:
+            # no allowlist configured — fall back to requiring the team password
+            entered_pw = st.text_input("Password", type="password", placeholder="Enter password")
+
         if st.button("Login"):
-            has_allowlist = bool(str(get_secret("ALLOWED_EMAILS")).strip() or str(get_secret("ALLOWED_DOMAINS")).strip())
-            email_ok = _allowed_email(entered_email) if has_allowlist else bool((entered_email or "").strip())
-            if not email_ok:
-                st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
-            elif entered_pw != APP_PASSWORD:
-                st.error("Incorrect password.")
+            if has_allowlist:
+                if _allowed_email(entered_email):
+                    st.session_state.authenticated = True
+                    st.session_state.auth_email = (entered_email or "").strip().lower()
+                    st.rerun()
+                else:
+                    st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
             else:
-                st.session_state.authenticated = True
-                st.session_state.auth_email = (entered_email or "").strip().lower()
-                st.rerun()
+                if entered_pw == APP_PASSWORD and (entered_email or "").strip():
+                    st.session_state.authenticated = True
+                    st.session_state.auth_email = (entered_email or "").strip().lower()
+                    st.rerun()
+                else:
+                    st.error("Incorrect password.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
