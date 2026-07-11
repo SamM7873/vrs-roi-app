@@ -170,19 +170,34 @@ def require_auth():
           <div class="login-logo-area">
             <div class="logo-mark">c</div>
             <h2>VRS / Convo Now Lookup</h2>
-            <p>Please enter your password to continue</p>
+            <p>Sign in with your email and the team password</p>
           </div>
         <div class="login-card">
         """, unsafe_allow_html=True)
-        entered = st.text_input("Password", type="password", placeholder="Enter password")
+        entered_email = st.text_input("Email", placeholder="you@convorelay.com")
+        entered_pw    = st.text_input("Password", type="password", placeholder="Enter password")
         if st.button("Login"):
-            if entered == APP_PASSWORD:
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
+            has_allowlist = bool(str(get_secret("ALLOWED_EMAILS")).strip() or str(get_secret("ALLOWED_DOMAINS")).strip())
+            email_ok = _allowed_email(entered_email) if has_allowlist else bool((entered_email or "").strip())
+            if not email_ok:
+                st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
+            elif entered_pw != APP_PASSWORD:
                 st.error("Incorrect password.")
+            else:
+                st.session_state.authenticated = True
+                st.session_state.auth_email = (entered_email or "").strip().lower()
+                st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
+
+    # signed in: show identity + sign-out in the sidebar
+    if st.session_state.get("auth_email"):
+        with st.sidebar:
+            st.caption(f"👤 {st.session_state.auth_email}")
+            if st.button("Sign out", key="_pw_logout"):
+                st.session_state.authenticated = False
+                st.session_state.auth_email = ""
+                st.rerun()
 
 
 def list_all(object_type_id, properties, progress_label="Loading..."):
