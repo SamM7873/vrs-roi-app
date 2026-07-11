@@ -142,6 +142,9 @@ def require_auth():
         with tab_reset:
             st.caption("First time here, or forgot your password? Verify with the team password, "
                        "then choose your own.")
+            if not APP_PASSWORD:
+                st.warning("⚠️ No team password is configured — an admin must set APP_PASSWORD "
+                           "in the app's secrets before passwords can be set or reset.")
             r_email = st.text_input("Email", placeholder="you@convorelay.com", key="rs_email")
             r_team  = st.text_input("Team password", type="password",
                                     placeholder="Shared team password", key="rs_team")
