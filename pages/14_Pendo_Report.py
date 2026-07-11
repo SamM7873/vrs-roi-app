@@ -215,6 +215,36 @@ with ch2:
             use_container_width=True,
         )
 
+# ── First vs Last Visit timelines ────────────────────────────────────────────
+fv = df_view[df_view["First Visit"] != ""].copy()
+lv2 = df_view[df_view["Last Visit"] != ""].copy()
+if not fv.empty or not lv2.empty:
+    fvm = fv["First Visit"].str[:7].value_counts().reset_index()
+    fvm.columns = ["Month", "Contacts"]
+    fvm["Kind"] = "First Visit (adoption)"
+    lvm2 = lv2["Last Visit"].str[:7].value_counts().reset_index()
+    lvm2.columns = ["Month", "Contacts"]
+    lvm2["Kind"] = "Last Visit (recency)"
+    both = pd.concat([fvm, lvm2]).sort_values("Month")
+
+    st.altair_chart(
+        alt.Chart(both)
+        .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+        .encode(
+            x=alt.X("Month:N", sort=sorted(both["Month"].unique()),
+                    axis=alt.Axis(labelAngle=-20, title=None)),
+            xOffset=alt.XOffset("Kind:N"),
+            y=alt.Y("Contacts:Q"),
+            color=alt.Color("Kind:N",
+                            scale=alt.Scale(domain=["First Visit (adoption)", "Last Visit (recency)"],
+                                            range=["#3B82F6", "#00A651"]),
+                            legend=alt.Legend(orient="top", title=None)),
+            tooltip=["Month", "Kind", "Contacts"],
+        )
+        .properties(height=260, title="First Visit vs Last Visit by Month — adoption in, recency out"),
+        use_container_width=True,
+    )
+
 # ── Table + download ─────────────────────────────────────────────────────────
 st.markdown("#### Contact Detail")
 st.dataframe(
