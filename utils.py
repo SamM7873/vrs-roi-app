@@ -21,14 +21,6 @@ BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
 
-def _sso_configured():
-    """True when Streamlit OIDC auth is configured in secrets ([auth] section)."""
-    try:
-        return bool(st.secrets.get("auth", {}).get("client_id"))
-    except Exception:
-        return False
-
-
 def _allowed_email(email):
     """Access requires the signed-in email to match ALLOWED_EMAILS or
     ALLOWED_DOMAINS in secrets. Deny by default: with no allowlist
@@ -45,100 +37,11 @@ def _allowed_email(email):
 
 
 def require_auth():
-    """Login gate. Uses SSO (st.login / OIDC) when [auth] is configured in
-    secrets; otherwise falls back to the shared APP_PASSWORD gate."""
+    """Login gate: email allowlist (ALLOWED_EMAILS/ALLOWED_DOMAINS) or the
+    shared APP_PASSWORD. Call at the top of every page."""
     if not HUBSPOT_TOKEN:
         st.error("HUBSPOT_TOKEN is not set.")
         st.stop()
-
-    # ── SSO path (Google / any OIDC provider via Streamlit native auth) ──────
-    if _sso_configured():
-        if not hasattr(st, "login"):
-            st.error("SSO is configured but this Streamlit version has no st.login — "
-                     "requires streamlit>=1.42. Check that requirements installed correctly.")
-            st.stop()
-        if not st.user.is_logged_in:
-            st.markdown("""
-            <style>
-                .stApp { background-color: #F6F8FA; }
-                .login-wrap { max-width:400px;margin:10vh auto 0;padding:0 1rem;text-align:center; }
-                .logo-mark {
-                    display:inline-flex;align-items:center;justify-content:center;
-                    width:52px;height:52px;background:#00A651;border-radius:12px;
-                    font-size:1.3rem;font-weight:900;color:#fff;margin-bottom:0.75rem;
-                }
-                div.stButton > button { background-color:#00A651;color:#fff;border-radius:8px;border:none;
-                    padding:0.6rem 2.2rem;font-weight:700;font-size:0.95rem;width:100%; }
-                div.stButton > button:hover { background-color:#008F46;color:#fff; }
-            </style>
-            <div class="login-wrap">
-              <div class="logo-mark">c</div>
-              <h2 style="font-size:1.3rem;font-weight:800;color:#1F2937;margin:0 0 0.25rem;">VRS / Convo Now Lookup</h2>
-              <p style="color:#6B7280;font-size:0.85rem;">Sign in with your work account to continue</p>
-            </div>
-            """, unsafe_allow_html=True)
-            _, mid, _ = st.columns([1, 1, 1])
-            with mid:
-                if st.button("🔐 Sign in with Google", use_container_width=True):
-                    st.login()
-
-            with st.expander("🔧 SSO diagnostics"):
-                import streamlit as _st_mod
-                checks = []
-                checks.append(("Streamlit version", _st_mod.__version__,
-                               "✅" if hasattr(st, "login") else "❌ needs >= 1.42"))
-                try:
-                    import authlib
-                    checks.append(("Authlib installed", authlib.__version__, "✅"))
-                except ImportError:
-                    checks.append(("Authlib installed", "MISSING", "❌ add Authlib to requirements + clear cache/reboot"))
-                try:
-                    auth_cfg = dict(st.secrets.get("auth", {}))
-                except Exception:
-                    auth_cfg = {}
-                for key in ["redirect_uri", "cookie_secret", "client_id", "client_secret", "server_metadata_url"]:
-                    val = str(auth_cfg.get(key, ""))
-                    if key in ("client_secret", "cookie_secret"):
-                        shown = f"set ({len(val)} chars)" if val else "MISSING"
-                    elif key == "client_id":
-                        shown = (val[:12] + "…") if val else "MISSING"
-                    else:
-                        shown = val or "MISSING"
-                    checks.append((f"[auth] {key}", shown, "✅" if val else "❌"))
-                ru = str(auth_cfg.get("redirect_uri", ""))
-                if ru:
-                    if not ru.startswith("https://"):
-                        checks.append(("redirect_uri scheme", ru.split(":")[0], "❌ must be https"))
-                    if not ru.endswith("/oauth2callback"):
-                        checks.append(("redirect_uri path", ru, "❌ must end with /oauth2callback"))
-                    try:
-                        cur = st.context.url
-                        cur_host = cur.split("/")[2] if "://" in cur else "?"
-                        ru_host  = ru.split("/")[2]
-                        checks.append(("URL host match",
-                                       f"app: {cur_host} · redirect: {ru_host}",
-                                       "✅" if cur_host == ru_host else "❌ open the app at the redirect_uri host"))
-                    except Exception:
-                        pass
-                allowed = str(get_secret("ALLOWED_EMAILS")) or str(get_secret("ALLOWED_DOMAINS"))
-                checks.append(("Allowlist configured", allowed or "MISSING",
-                               "✅" if allowed else "❌ set ALLOWED_EMAILS above [auth] or you'll be locked out"))
-                st.table(pd.DataFrame(checks, columns=["Check", "Value", "Status"]))
-            st.stop()
-
-        email = getattr(st.user, "email", "") or ""
-        if not _allowed_email(email):
-            st.error(f"{email} is not authorized for this app. "
-                     "Access is limited to approved emails — ask an admin to add you to ALLOWED_EMAILS.")
-            if st.button("Sign out"):
-                st.logout()
-            st.stop()
-
-        with st.sidebar:
-            st.caption(f"👤 {email}")
-            if st.button("Sign out", key="_sso_logout"):
-                st.logout()
-        return
 
     # ── Email / password gate ─────────────────────────────────────────────────
     _has_allowlist = bool(str(get_secret("ALLOWED_EMAILS")).strip() or str(get_secret("ALLOWED_DOMAINS")).strip())
