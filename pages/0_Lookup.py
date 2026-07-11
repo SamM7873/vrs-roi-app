@@ -10,12 +10,13 @@ from datetime import datetime
 from collections import defaultdict
 from utils import dash_spinner, vrs_rate_for_month as _vrs_rate
 
-HUBSPOT_TOKEN = st.secrets.get("HUBSPOT_TOKEN", os.environ.get("HUBSPOT_TOKEN", ""))
+from utils import get_secret
+HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 if not HUBSPOT_TOKEN:
     st.error("HUBSPOT_TOKEN is not set. Add it to .streamlit/secrets.toml or set it as an environment variable.")
     st.stop()
 
-APP_PASSWORD = st.secrets.get("APP_PASSWORD", os.environ.get("APP_PASSWORD", ""))
+APP_PASSWORD = get_secret("APP_PASSWORD")
 if APP_PASSWORD:
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False

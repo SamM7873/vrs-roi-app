@@ -6,7 +6,8 @@ from datetime import datetime, timezone, timedelta
 
 st.set_page_config(page_title="VRS Lookup", layout="wide", page_icon="🔍")
 
-HUBSPOT_TOKEN = st.secrets.get("HUBSPOT_TOKEN", os.environ.get("HUBSPOT_TOKEN", ""))
+from utils import get_secret
+HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 _headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 BASE_URL = "https://api.hubapi.com"
 SYNC_TTL = 300  # refresh every 5 minutes

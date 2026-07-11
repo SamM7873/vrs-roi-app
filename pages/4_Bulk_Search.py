@@ -12,7 +12,8 @@ st.set_page_config(page_title="Bulk Search", layout="wide", page_icon="🔎")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
 
-HUBSPOT_TOKEN = st.secrets.get("HUBSPOT_TOKEN", os.environ.get("HUBSPOT_TOKEN", ""))
+from utils import get_secret
+HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 

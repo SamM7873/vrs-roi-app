@@ -6,87 +6,26 @@ import time
 from datetime import datetime
 from collections import defaultdict
 
-HUBSPOT_TOKEN = st.secrets.get("HUBSPOT_TOKEN", os.environ.get("HUBSPOT_TOKEN", ""))
-APP_PASSWORD = st.secrets.get("APP_PASSWORD", os.environ.get("APP_PASSWORD", ""))
+def get_secret(key, default=""):
+    """Read a secret, tolerating a missing secrets.toml (env var fallback)."""
+    try:
+        return st.secrets.get(key, os.environ.get(key, default))
+    except Exception:
+        return os.environ.get(key, default)
+
+
+HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
+APP_PASSWORD = get_secret("APP_PASSWORD")
 
 BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
 
-def _sso_configured():
-    """True when Streamlit OIDC auth is configured in secrets ([auth] section)."""
-    try:
-        return bool(st.secrets.get("auth", {}).get("client_id"))
-    except Exception:
-        return False
-
-
-def _allowed_email(email):
-    """Access requires the signed-in email to match ALLOWED_EMAILS or
-    ALLOWED_DOMAINS in secrets. Deny by default: with no allowlist
-    configured, no one is allowed in."""
-    email = (email or "").strip().lower()
-    if not email:
-        return False
-    allowed_emails  = [e.strip().lower() for e in str(st.secrets.get("ALLOWED_EMAILS", "")).split(",") if e.strip()]
-    allowed_domains = [d.strip().lower().lstrip("@") for d in str(st.secrets.get("ALLOWED_DOMAINS", "")).split(",") if d.strip()]
-    if email in allowed_emails:
-        return True
-    domain = email.split("@")[-1]
-    return domain in allowed_domains
-
-
 def require_auth():
-    """Login gate. Uses SSO (st.login / OIDC) when [auth] is configured in
-    secrets; otherwise falls back to the shared APP_PASSWORD gate."""
+    """Show login gate if APP_PASSWORD is set. Call at the top of every page."""
     if not HUBSPOT_TOKEN:
         st.error("HUBSPOT_TOKEN is not set.")
         st.stop()
-
-    # ── SSO path (Google / any OIDC provider via Streamlit native auth) ──────
-    if _sso_configured() and hasattr(st, "login"):
-        if not st.user.is_logged_in:
-            st.markdown("""
-            <style>
-                .stApp { background-color: #F6F8FA; }
-                .login-wrap { max-width:400px;margin:10vh auto 0;padding:0 1rem;text-align:center; }
-                .logo-mark {
-                    display:inline-flex;align-items:center;justify-content:center;
-                    width:52px;height:52px;background:#00A651;border-radius:12px;
-                    font-size:1.3rem;font-weight:900;color:#fff;margin-bottom:0.75rem;
-                }
-                div.stButton > button { background-color:#00A651;color:#fff;border-radius:8px;border:none;
-                    padding:0.6rem 2.2rem;font-weight:700;font-size:0.95rem;width:100%; }
-                div.stButton > button:hover { background-color:#008F46;color:#fff; }
-            </style>
-            <div class="login-wrap">
-              <div class="logo-mark">c</div>
-              <h2 style="font-size:1.3rem;font-weight:800;color:#1F2937;margin:0 0 0.25rem;">VRS / Convo Now Lookup</h2>
-              <p style="color:#6B7280;font-size:0.85rem;">Sign in with your work account to continue</p>
-            </div>
-            """, unsafe_allow_html=True)
-            _, mid, _ = st.columns([1, 1, 1])
-            with mid:
-                if st.button("🔐 Sign in with SSO", use_container_width=True):
-                    st.login()
-            st.stop()
-
-        email = getattr(st.user, "email", "") or ""
-        if not _allowed_email(email):
-            st.error(f"{email} is not authorized for this app. "
-                     "Access is limited to approved emails — ask an admin to add you to ALLOWED_EMAILS.")
-            if st.button("Sign out"):
-                st.logout()
-            st.stop()
-
-        # signed in + authorized: show identity + sign-out in the sidebar
-        with st.sidebar:
-            st.caption(f"👤 {email}")
-            if st.button("Sign out", key="_sso_logout"):
-                st.logout()
-        return
-
-    # ── Password fallback ─────────────────────────────────────────────────────
     if not APP_PASSWORD:
         return
     if "authenticated" not in st.session_state:
