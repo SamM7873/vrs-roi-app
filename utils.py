@@ -114,9 +114,9 @@ def _send_reset_code(email):
             s.starttls()
             s.login(user, pw)
             s.sendmail(sender, [email], msg.as_string())
-        return code
-    except Exception:
-        return None
+        return code, None
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"
 
 
 def require_auth():
@@ -190,14 +190,14 @@ def require_auth():
                     if _has_allowlist and not _allowed_email(email):
                         st.error("This email is not authorized. Ask an admin to add you to ALLOWED_EMAILS.")
                     else:
-                        code = _send_reset_code(email)
+                        code, err = _send_reset_code(email)
                         if code:
                             st.session_state["_reset_email"] = email
                             st.session_state["_reset_code"]  = code
                             st.session_state["_reset_ts"]    = time.time()
                             st.success(f"Code sent to {email} — check your inbox (and spam).")
                         else:
-                            st.error("Could not send the email — check the SMTP settings in secrets.")
+                            st.error(f"Could not send the email — {err}")
 
                 if st.session_state.get("_reset_code"):
                     st.markdown("---")
