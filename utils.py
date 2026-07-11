@@ -81,6 +81,49 @@ def require_auth():
             with mid:
                 if st.button("🔐 Sign in with Google", use_container_width=True):
                     st.login()
+
+            with st.expander("🔧 SSO diagnostics"):
+                import streamlit as _st_mod
+                checks = []
+                checks.append(("Streamlit version", _st_mod.__version__,
+                               "✅" if hasattr(st, "login") else "❌ needs >= 1.42"))
+                try:
+                    import authlib
+                    checks.append(("Authlib installed", authlib.__version__, "✅"))
+                except ImportError:
+                    checks.append(("Authlib installed", "MISSING", "❌ add Authlib to requirements + clear cache/reboot"))
+                try:
+                    auth_cfg = dict(st.secrets.get("auth", {}))
+                except Exception:
+                    auth_cfg = {}
+                for key in ["redirect_uri", "cookie_secret", "client_id", "client_secret", "server_metadata_url"]:
+                    val = str(auth_cfg.get(key, ""))
+                    if key in ("client_secret", "cookie_secret"):
+                        shown = f"set ({len(val)} chars)" if val else "MISSING"
+                    elif key == "client_id":
+                        shown = (val[:12] + "…") if val else "MISSING"
+                    else:
+                        shown = val or "MISSING"
+                    checks.append((f"[auth] {key}", shown, "✅" if val else "❌"))
+                ru = str(auth_cfg.get("redirect_uri", ""))
+                if ru:
+                    if not ru.startswith("https://"):
+                        checks.append(("redirect_uri scheme", ru.split(":")[0], "❌ must be https"))
+                    if not ru.endswith("/oauth2callback"):
+                        checks.append(("redirect_uri path", ru, "❌ must end with /oauth2callback"))
+                    try:
+                        cur = st.context.url
+                        cur_host = cur.split("/")[2] if "://" in cur else "?"
+                        ru_host  = ru.split("/")[2]
+                        checks.append(("URL host match",
+                                       f"app: {cur_host} · redirect: {ru_host}",
+                                       "✅" if cur_host == ru_host else "❌ open the app at the redirect_uri host"))
+                    except Exception:
+                        pass
+                allowed = str(get_secret("ALLOWED_EMAILS")) or str(get_secret("ALLOWED_DOMAINS"))
+                checks.append(("Allowlist configured", allowed or "MISSING",
+                               "✅" if allowed else "❌ set ALLOWED_EMAILS above [auth] or you'll be locked out"))
+                st.table(pd.DataFrame(checks, columns=["Check", "Value", "Status"]))
             st.stop()
 
         email = getattr(st.user, "email", "") or ""
