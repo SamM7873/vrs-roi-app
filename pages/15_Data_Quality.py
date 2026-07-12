@@ -108,6 +108,8 @@ objects** (which carry their own `email`). Flags:
 - **Duplicate primary email** — the same primary email appears on more than one contact (likely duplicate records).
 - **Primary not on any Number** — the primary email doesn't match the `email` on any Number object, so the contact isn't tied to a live/registered number by email.
 - **Suspicious domain** — the email domain looks wrong: a misspelled provider (`gmial.com`, `iclould.com`), a cut-off domain with no `.com` (`@gami`, `@alo`, `@gmail`), or a near-match typo. The **Domain Suggestion** column shows the likely correct address.
+- **Bounced / bad address** — HubSpot's own record from **real email sends**: the address hard-bounced or is flagged invalid (`hs_email_bad_address`, `hs_email_hard_bounce_reason_enum`, `hs_email_bounce`). This is actual deliverability, not a guess — the strongest signal an email is dead. The **Deliverability** column shows the reason.
+- **Quarantined** — HubSpot blocked the address for anti-abuse reasons (spam trap, complaints).
 - **Secondary email mismatch** — the contact has additional email(s) (`hs_additional_emails`) and one or more of them **don't** match any Number object's email.
 - **Invalid secondary format** — an additional email is malformed.
 
@@ -130,7 +132,11 @@ if st.button("Run Data Quality Scan", type="primary"):
     with dash_spinner("Fetching Contacts…"):
         con_recs = list_all("contacts",
                             ["email", "hs_additional_emails", "firstname", "lastname",
-                             "phone", "createdate"],
+                             "phone", "createdate",
+                             # HubSpot's own deliverability signals from real sends
+                             "hs_email_bad_address", "hs_email_bounce",
+                             "hs_email_hard_bounce_reason_enum", "hs_email_quarantined",
+                             "hs_email_quarantined_reason", "hs_email_optout"],
                             progress_label="Fetching Contacts")
 
     # First pass: count primary email occurrences for duplicate detection
@@ -166,6 +172,28 @@ if st.button("Run Data Quality Scan", type="primary"):
             domain_suggestion = (f"{local}@{dom_fix} ({dom_reason})" if dom_fix
                                  else f"{dom_reason}")
 
+        # HubSpot deliverability signals (real send outcomes)
+        bad_addr   = str(p.get("hs_email_bad_address") or "").lower() == "true"
+        bounce_cnt = 0
+        try:
+            bounce_cnt = int(float(p.get("hs_email_bounce") or 0))
+        except (TypeError, ValueError):
+            bounce_cnt = 0
+        hard_reason = (p.get("hs_email_hard_bounce_reason_enum") or "").strip()
+        quarantined = str(p.get("hs_email_quarantined") or "").lower() == "true"
+        quar_reason = (p.get("hs_email_quarantined_reason") or "").strip()
+
+        deliver_status = "OK"
+        if bad_addr or hard_reason:
+            issues.append("Bounced / bad address")
+            deliver_status = "Hard bounce" + (f" ({hard_reason})" if hard_reason else " (invalid)")
+        elif bounce_cnt > 0:
+            issues.append("Bounced / bad address")
+            deliver_status = f"Bounced ×{bounce_cnt}"
+        if quarantined:
+            issues.append("Quarantined")
+            deliver_status = "Quarantined" + (f" ({quar_reason})" if quar_reason else "")
+
         sec_mismatch = [s for s in secondary if s not in number_emails]
         sec_invalid  = [s for s in secondary if not _valid_email(s)]
         if sec_mismatch:
@@ -181,6 +209,7 @@ if st.button("Run Data Quality Scan", type="primary"):
             "Primary Email":      primary or "—",
             "Email Domain":       _domain(primary) or "—",
             "Domain Suggestion":  domain_suggestion or "—",
+            "Deliverability":     deliver_status,
             "Primary → Number":   primary_num or "—",
             "Secondary Emails":   "; ".join(secondary) if secondary else "—",
             "Secondary Mismatch": "; ".join(sec_mismatch) if sec_mismatch else "—",
@@ -195,6 +224,8 @@ if st.button("Run Data Quality Scan", type="primary"):
             "_sec_mis":    "Secondary email mismatch" in issues,
             "_sec_inv":    "Invalid secondary format" in issues,
             "_domain":     "Suspicious domain" in issues,
+            "_bounced":    "Bounced / bad address" in issues,
+            "_quarantined":"Quarantined" in issues,
         })
 
     df = pd.DataFrame(rows)
@@ -219,6 +250,8 @@ no_num    = int(df["_no_num"].sum())
 sec_mis   = int(df["_sec_mis"].sum())
 sec_inv   = int(df["_sec_inv"].sum())
 bad_dom   = int(df["_domain"].sum())
+bounced   = int(df["_bounced"].sum()) if "_bounced" in df.columns else 0
+quaran    = int(df["_quarantined"].sum()) if "_quarantined" in df.columns else 0
 
 
 def tile(label, value, sub="", color="#1F2937"):
@@ -240,8 +273,12 @@ st.markdown(f"""
   {tile("Missing Primary", f"{missing:,}", "no email", "#EF4444")}
   {tile("Suspicious Domain", f"{bad_dom:,}", "typo / missing .com (e.g. @gami)", "#EF4444")}
 </div>
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:1.25rem;">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:0.85rem;">
+  {tile("Bounced / Bad Address", f"{bounced:,}", "HubSpot real send bounces", "#EF4444")}
+  {tile("Quarantined", f"{quaran:,}", "blocked by HubSpot", "#EF4444")}
   {tile("Primary Not on Number", f"{no_num:,}", "no email match", "#F59E0B")}
+</div>
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.85rem;margin-bottom:1.25rem;">
   {tile("Secondary Mismatch", f"{sec_mis:,}", "2nd email ≠ Number", "#F59E0B")}
   {tile("Invalid Secondary", f"{sec_inv:,}", "malformed 2nd email", "#EF4444")}
 </div>""", unsafe_allow_html=True)
@@ -261,6 +298,7 @@ fcol, scol = st.columns([1.4, 2])
 with fcol:
     view = st.selectbox("Show", [
         "All with issues", "All contacts", "Clean only",
+        "Bounced / bad address", "Quarantined",
         "Invalid primary format", "Missing primary email", "Suspicious domain",
         "Duplicate primary email", "Primary not on any Number",
         "Secondary email mismatch", "Invalid secondary format",
@@ -270,6 +308,8 @@ with scol:
                            label_visibility="visible")
 
 view_map = {
+    "Bounced / bad address": "_bounced",
+    "Quarantined": "_quarantined",
     "Invalid primary format": "_invalid_p",
     "Missing primary email": "_missing",
     "Suspicious domain": "_domain",
@@ -298,8 +338,8 @@ if search.strip():
 
 st.caption(f"Showing {len(d):,} contact(s)")
 display_cols = ["Name", "Primary Email", "Email Domain", "Domain Suggestion",
-                "Primary → Number", "Secondary Emails", "Secondary Mismatch",
-                "Phone", "Issues", "Contact ID"]
+                "Deliverability", "Primary → Number", "Secondary Emails",
+                "Secondary Mismatch", "Phone", "Issues", "Contact ID"]
 st.dataframe(
     d.sort_values("Issue Count", ascending=False)[display_cols].reset_index(drop=True),
     use_container_width=True,
