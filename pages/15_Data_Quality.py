@@ -237,9 +237,24 @@ if cached is None or cached.get("df") is None or cached["df"].empty:
     st.stop()
 
 df = cached["df"]
+
+# Backfill any columns/flags added in newer versions so a stale saved
+# report never crashes the page — re-run the scan to fully populate them.
+for _col, _default in [
+    ("Email Domain", "—"), ("Domain Suggestion", "—"), ("Deliverability", "—"),
+    ("_domain", False), ("_bounced", False), ("_quarantined", False),
+]:
+    if _col not in df.columns:
+        df[_col] = _default
+
 if cached.get("saved_at"):
     st.caption(f"📌 Data as of {saved_at_label(cached)} · scanned "
                f"{cached.get('n_number_emails', 0):,} distinct Number emails · click Run to refresh")
+
+_stale = df["Deliverability"].eq("—").all()
+if _stale:
+    st.info("This saved report predates the domain & deliverability checks — "
+            "click **Run Data Quality Scan** to populate them.")
 
 total     = len(df)
 clean     = int((df["Issue Count"] == 0).sum())
@@ -337,9 +352,11 @@ if search.strip():
     ]
 
 st.caption(f"Showing {len(d):,} contact(s)")
-display_cols = ["Name", "Primary Email", "Email Domain", "Domain Suggestion",
-                "Deliverability", "Primary → Number", "Secondary Emails",
-                "Secondary Mismatch", "Phone", "Issues", "Contact ID"]
+display_cols = [c for c in
+                ["Name", "Primary Email", "Email Domain", "Domain Suggestion",
+                 "Deliverability", "Primary → Number", "Secondary Emails",
+                 "Secondary Mismatch", "Phone", "Issues", "Contact ID"]
+                if c in d.columns]
 st.dataframe(
     d.sort_values("Issue Count", ascending=False)[display_cols].reset_index(drop=True),
     use_container_width=True,
