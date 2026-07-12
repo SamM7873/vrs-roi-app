@@ -8,7 +8,7 @@ import os
 import time
 from datetime import datetime
 from collections import defaultdict
-from utils import dash_spinner, vrs_rate_for_month as _vrs_rate, MOBILE_CSS
+from utils import dash_spinner, vrs_rate_for_month as _vrs_rate
 
 from utils import get_secret
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
@@ -148,7 +148,27 @@ if APP_PASSWORD:
 BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
-st.markdown(MOBILE_CSS, unsafe_allow_html=True)
+st.markdown("""
+<style>
+@media (max-width: 900px) {
+    div[style*="grid-template-columns:repeat(7"], div[style*="grid-template-columns: repeat(7"],
+    div[style*="grid-template-columns:repeat(6"], div[style*="grid-template-columns: repeat(6"],
+    div[style*="grid-template-columns:repeat(5"], div[style*="grid-template-columns: repeat(5"],
+    div[style*="grid-template-columns:repeat(4"], div[style*="grid-template-columns: repeat(4"],
+    div[style*="grid-template-columns:repeat(3"], div[style*="grid-template-columns: repeat(3"] {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+    .block-container { padding-left: 0.9rem !important; padding-right: 0.9rem !important; }
+}
+@media (max-width: 540px) {
+    div[style*="grid-template-columns:repeat"], div[style*="grid-template-columns: repeat"] {
+        grid-template-columns: 1fr 1fr !important;
+    }
+    .block-container { padding-left: 0.6rem !important; padding-right: 0.6rem !important; }
+}
+[data-testid="stDataFrame"] { overflow-x: auto; }
+</style>
+""", unsafe_allow_html=True)
 
 def list_all(object_type_id, properties):
     """Use GET /crm/v3/objects list endpoint — no filter required, no 10k cap."""
