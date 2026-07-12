@@ -29,14 +29,17 @@ def _lang(v):
 
 
 def _addr_key(p):
-    # Match on street + city + state only (zip ignored, so minor zip
-    # differences don't split the same physical address).
+    # Match on street + city + state (zip ignored so minor zip differences
+    # don't split the same physical address). Requires a street plus a
+    # city or state; if street is blank, city+state alone is used.
     street = norm(p.get("street1") or "")
     city   = norm(p.get("city") or "")
     state  = norm(p.get("state") or "")
-    if not street or not (city or state):
-        return ""  # need at least a street plus a city or state to compare
-    return "|".join([street, city, state])
+    if street and (city or state):
+        return "|".join([street, city, state])
+    if city and state:
+        return "|".join(["", city, state])  # no street on record — city+state fallback
+    return ""
 
 
 def _addr_display(p):
@@ -81,15 +84,22 @@ if run:
 
     # group by address
     groups = defaultdict(list)
+    _n_considered = 0
+    _n_with_addr = 0
+    _n_with_street = 0
     for r in recs:
         p = r.get("properties", {})
         if svc_filter != "All" and norm(p.get("service_type") or "") != norm(svc_filter):
             continue
         if status_filter != "All" and norm(p.get("number_status") or "") != norm(status_filter):
             continue
+        _n_considered += 1
+        if (p.get("street1") or "").strip():
+            _n_with_street += 1
         key = _addr_key(p)
         if not key:
             continue
+        _n_with_addr += 1
         groups[key].append(p)
 
     rows = []
@@ -131,7 +141,11 @@ if run:
             })
 
     df = pd.DataFrame(rows)
-    save_report("address_duplicates", {"df": df, "n_numbers": len(recs)})
+    save_report("address_duplicates", {
+        "df": df, "n_numbers": len(recs),
+        "n_considered": _n_considered, "n_with_addr": _n_with_addr,
+        "n_with_street": _n_with_street, "n_shared": sum(1 for m in groups.values() if len(m) >= 2),
+    })
 
 cached = load_report("address_duplicates")
 if cached is None or cached.get("df") is None or cached["df"].empty:
@@ -141,6 +155,21 @@ if cached is None or cached.get("df") is None or cached["df"].empty:
 df = cached["df"]
 if cached.get("saved_at"):
     st.caption(f"📌 Data as of {saved_at_label(cached)} · click Run to refresh")
+
+# Diagnostic: how many numbers actually carried an address
+st.caption(
+    f"Scanned {cached.get('n_numbers', 0):,} numbers · "
+    f"{cached.get('n_considered', 0):,} after filters · "
+    f"{cached.get('n_with_street', 0):,} have a street · "
+    f"{cached.get('n_with_addr', 0):,} have a usable address · "
+    f"{cached.get('n_shared', 0):,} addresses shared by 2+ numbers"
+)
+
+if df.empty:
+    st.warning("No addresses are shared by two or more numbers under the current filters. "
+               "If you expected results, check that Number objects have street/city/state populated "
+               "(the counts above show how many carried an address).")
+    st.stop()
 
 # unique-address level stats
 addr_level = df.drop_duplicates("_addr_key")
