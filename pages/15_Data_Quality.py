@@ -33,6 +33,71 @@ def _split_secondary(v):
     return [x.strip().lower() for x in str(v).replace(",", ";").split(";") if x.strip()]
 
 
+def _domain(e):
+    e = (e or "").strip().lower()
+    return e.split("@")[-1] if "@" in e else ""
+
+
+# Common consumer email providers and frequent misspellings that should be corrected
+KNOWN_DOMAINS = {
+    "gmail.com", "icloud.com", "yahoo.com", "hotmail.com", "outlook.com",
+    "aol.com", "comcast.net", "me.com", "live.com", "msn.com", "sbcglobal.net",
+    "verizon.net", "att.net", "protonmail.com", "proton.me", "mac.com",
+}
+DOMAIN_TYPOS = {
+    "gmial.com": "gmail.com", "gmai.com": "gmail.com", "gmail.co": "gmail.com",
+    "gmail.con": "gmail.com", "gmaill.com": "gmail.com", "gmail.cm": "gmail.com",
+    "gmailcom": "gmail.com", "gnail.com": "gmail.com", "gamil.com": "gmail.com",
+    "googlemail.com": "gmail.com",
+    "iclould.com": "icloud.com", "icloud.co": "icloud.com", "iclod.com": "icloud.com",
+    "icoud.com": "icloud.com", "icloude.com": "icloud.com",
+    "yahoo.co": "yahoo.com", "yaho.com": "yahoo.com", "yahoo.con": "yahoo.com",
+    "ymail.com": "yahoo.com", "yahooo.com": "yahoo.com",
+    "hotmial.com": "hotmail.com", "hotmai.com": "hotmail.com", "hotmail.co": "hotmail.com",
+    "hotmail.con": "hotmail.com", "hotmil.com": "hotmail.com",
+    "outlook.co": "outlook.com", "outlok.com": "outlook.com", "outloo.com": "outlook.com",
+    "aol.co": "aol.com", "aol.com": "aol.com",
+}
+
+
+# Root names of common providers, to catch cut-off domains like "@gmail", "@gami", "@icloud"
+PROVIDER_ROOTS = {
+    "gmail": "gmail.com", "googlemail": "gmail.com", "icloud": "icloud.com",
+    "yahoo": "yahoo.com", "ymail": "yahoo.com", "hotmail": "hotmail.com",
+    "outlook": "outlook.com", "aol": "aol.com", "live": "live.com",
+    "msn": "msn.com", "comcast": "comcast.net", "me": "me.com", "mac": "mac.com",
+    "proton": "proton.me", "protonmail": "protonmail.com",
+}
+
+
+def _domain_issue(e):
+    """Return (suggestion, reason) if the domain looks wrong, else ('', '')."""
+    d = _domain(e)
+    if not d:
+        return "", ""
+    # 1) known misspelling with a fix
+    if d in DOMAIN_TYPOS:
+        return DOMAIN_TYPOS[d], "typo"
+    # 2) no TLD at all — e.g. "gmail", "gami", "alo"
+    if "." not in d:
+        root = d
+        if root in PROVIDER_ROOTS:
+            return PROVIDER_ROOTS[root], "missing .com"
+        # fuzzy: cut-off of a known provider (gmai, gmial, iclou, hotmai…)
+        for pr, full in PROVIDER_ROOTS.items():
+            if root and (pr.startswith(root) or root.startswith(pr[:4])) and len(root) >= 3:
+                return full, "incomplete domain"
+        return "", "no TLD (missing .com)"
+    # 3) has a dot but the provider root is a near-match to a known one
+    root = d.split(".")[0]
+    if root not in PROVIDER_ROOTS and d not in KNOWN_DOMAINS:
+        for pr, full in PROVIDER_ROOTS.items():
+            # close but not exact (e.g. gmial, gmai, iclould)
+            if root != pr and (pr.startswith(root[:4]) or root.startswith(pr[:4])) and abs(len(root) - len(pr)) <= 3 and len(root) >= 3:
+                return full, "likely typo"
+    return "", ""
+
+
 with st.expander("ℹ️ What each check means"):
     st.markdown("""
 This report scans every **Contact** and cross-references its emails against the **Number
@@ -42,6 +107,7 @@ objects** (which carry their own `email`). Flags:
 - **Missing primary email** — the contact has no primary email at all.
 - **Duplicate primary email** — the same primary email appears on more than one contact (likely duplicate records).
 - **Primary not on any Number** — the primary email doesn't match the `email` on any Number object, so the contact isn't tied to a live/registered number by email.
+- **Suspicious domain** — the email domain looks wrong: a misspelled provider (`gmial.com`, `iclould.com`), a cut-off domain with no `.com` (`@gami`, `@alo`, `@gmail`), or a near-match typo. The **Domain Suggestion** column shows the likely correct address.
 - **Secondary email mismatch** — the contact has additional email(s) (`hs_additional_emails`) and one or more of them **don't** match any Number object's email.
 - **Invalid secondary format** — an additional email is malformed.
 
@@ -91,6 +157,15 @@ if st.button("Run Data Quality Scan", type="primary"):
         if primary and _valid_email(primary) and primary not in number_emails:
             issues.append("Primary not on any Number")
 
+        # Domain check on the primary email (typo / cut-off / missing TLD)
+        dom_fix, dom_reason = _domain_issue(primary)
+        domain_suggestion = ""
+        if dom_reason:
+            issues.append("Suspicious domain")
+            local = primary.split("@")[0] if "@" in primary else primary
+            domain_suggestion = (f"{local}@{dom_fix} ({dom_reason})" if dom_fix
+                                 else f"{dom_reason}")
+
         sec_mismatch = [s for s in secondary if s not in number_emails]
         sec_invalid  = [s for s in secondary if not _valid_email(s)]
         if sec_mismatch:
@@ -104,6 +179,8 @@ if st.button("Run Data Quality Scan", type="primary"):
             "Contact ID":         str(r.get("id") or ""),
             "Name":               name,
             "Primary Email":      primary or "—",
+            "Email Domain":       _domain(primary) or "—",
+            "Domain Suggestion":  domain_suggestion or "—",
             "Primary → Number":   primary_num or "—",
             "Secondary Emails":   "; ".join(secondary) if secondary else "—",
             "Secondary Mismatch": "; ".join(sec_mismatch) if sec_mismatch else "—",
@@ -117,6 +194,7 @@ if st.button("Run Data Quality Scan", type="primary"):
             "_no_num":     "Primary not on any Number" in issues,
             "_sec_mis":    "Secondary email mismatch" in issues,
             "_sec_inv":    "Invalid secondary format" in issues,
+            "_domain":     "Suspicious domain" in issues,
         })
 
     df = pd.DataFrame(rows)
@@ -140,6 +218,7 @@ dup       = int(df["_dup"].sum())
 no_num    = int(df["_no_num"].sum())
 sec_mis   = int(df["_sec_mis"].sum())
 sec_inv   = int(df["_sec_inv"].sum())
+bad_dom   = int(df["_domain"].sum())
 
 
 def tile(label, value, sub="", color="#1F2937"):
@@ -156,21 +235,35 @@ st.markdown(f"""
   {tile("With Issues", f"{total-clean:,}", f"{(total-clean)/total*100:.0f}% of contacts" if total else "", "#EF4444")}
   {tile("Duplicate Primary", f"{dup:,}", "same email, 2+ contacts", "#F59E0B")}
 </div>
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin-bottom:1.25rem;">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:0.85rem;">
   {tile("Invalid Primary Format", f"{invalid_p:,}", "malformed email", "#EF4444")}
   {tile("Missing Primary", f"{missing:,}", "no email", "#EF4444")}
+  {tile("Suspicious Domain", f"{bad_dom:,}", "typo / missing .com (e.g. @gami)", "#EF4444")}
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:1.25rem;">
   {tile("Primary Not on Number", f"{no_num:,}", "no email match", "#F59E0B")}
   {tile("Secondary Mismatch", f"{sec_mis:,}", "2nd email ≠ Number", "#F59E0B")}
   {tile("Invalid Secondary", f"{sec_inv:,}", "malformed 2nd email", "#EF4444")}
 </div>""", unsafe_allow_html=True)
+
+# ── Email provider breakdown ─────────────────────────────────────────────────
+with st.expander("📧 Email provider breakdown (by domain)"):
+    dom_counts = (
+        df[df["Email Domain"] != "—"]["Email Domain"]
+        .value_counts().reset_index()
+    )
+    dom_counts.columns = ["Domain", "Contacts"]
+    st.caption(f"{len(dom_counts):,} distinct domains across {int(dom_counts['Contacts'].sum()):,} contacts")
+    st.dataframe(dom_counts.head(50), use_container_width=True, hide_index=True)
 
 # ── Filter + search ───────────────────────────────────────────────────────────
 fcol, scol = st.columns([1.4, 2])
 with fcol:
     view = st.selectbox("Show", [
         "All with issues", "All contacts", "Clean only",
-        "Invalid primary format", "Missing primary email", "Duplicate primary email",
-        "Primary not on any Number", "Secondary email mismatch", "Invalid secondary format",
+        "Invalid primary format", "Missing primary email", "Suspicious domain",
+        "Duplicate primary email", "Primary not on any Number",
+        "Secondary email mismatch", "Invalid secondary format",
     ])
 with scol:
     search = st.text_input("Search", placeholder="name, email, phone, contact ID…",
@@ -179,6 +272,7 @@ with scol:
 view_map = {
     "Invalid primary format": "_invalid_p",
     "Missing primary email": "_missing",
+    "Suspicious domain": "_domain",
     "Duplicate primary email": "_dup",
     "Primary not on any Number": "_no_num",
     "Secondary email mismatch": "_sec_mis",
@@ -203,8 +297,9 @@ if search.strip():
     ]
 
 st.caption(f"Showing {len(d):,} contact(s)")
-display_cols = ["Name", "Primary Email", "Primary → Number", "Secondary Emails",
-                "Secondary Mismatch", "Phone", "Issues", "Contact ID"]
+display_cols = ["Name", "Primary Email", "Email Domain", "Domain Suggestion",
+                "Primary → Number", "Secondary Emails", "Secondary Mismatch",
+                "Phone", "Issues", "Contact ID"]
 st.dataframe(
     d.sort_values("Issue Count", ascending=False)[display_cols].reset_index(drop=True),
     use_container_width=True,
