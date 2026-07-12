@@ -29,11 +29,14 @@ def _lang(v):
 
 
 def _addr_key(p):
-    parts = [norm(p.get("street1") or ""), norm(p.get("street2") or ""),
-             norm(p.get("city") or ""), norm(p.get("state") or ""),
-             norm(p.get("zip_code") or "")]
-    key = "|".join(parts).strip("|")
-    return key if key.replace("|", "").strip() else ""
+    # Match on street + city + state only (zip ignored, so minor zip
+    # differences don't split the same physical address).
+    street = norm(p.get("street1") or "")
+    city   = norm(p.get("city") or "")
+    state  = norm(p.get("state") or "")
+    if not street or not (city or state):
+        return ""  # need at least a street plus a city or state to compare
+    return "|".join([street, city, state])
 
 
 def _addr_display(p):
@@ -45,7 +48,7 @@ def _addr_display(p):
 
 with st.expander("ℹ️ How duplicates are decided"):
     st.markdown("""
-Every **Number object** with an address is grouped by its **address** (street + city + state + zip).
+Every **Number object** with an address is grouped by its **address** (street + city + state — zip is ignored so minor zip differences don't split the same address).
 For each address that has **two or more numbers**, the language preference decides:
 
 - **🔴 Duplicate (same language)** — two or more numbers at the same address share the **same**
