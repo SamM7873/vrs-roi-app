@@ -93,14 +93,13 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 if st.button("Run Port-In Report", use_container_width=False):
 
     # Step 1: pull registrations where registration_type = port_in
-    with dash_spinner("Loading port-in registrations..."):
-        reg_records = list_all(
-            "2-58833629",
-            ["registration_type", "number", "email", "first_name", "last_name",
-             "portin_status", "submitted_at", "registered_at", "state",
-             "lex_verification_status", "urd_status", "is_cancelled"],
-            progress_label="Fetching registration records",
-        )
+    reg_records = list_all(
+        "2-58833629",
+        ["registration_type", "number", "email", "first_name", "last_name",
+         "portin_status", "submitted_at", "registered_at", "state",
+         "lex_verification_status", "urd_status", "is_cancelled"],
+        progress_label="Fetching registration records",
+    )
 
     port_in_regs = [
         r for r in reg_records

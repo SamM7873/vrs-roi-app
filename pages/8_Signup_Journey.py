@@ -122,12 +122,11 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 if st.button("Run Sign-Up Journey Report", use_container_width=False):
 
     # 1. Pull contacts
-    with dash_spinner("Loading contacts..."):
-        contact_records = list_all(
-            "contacts",
-            ["email", "firstname", "lastname", "createdate"],
-            progress_label="Fetching contacts",
-        )
+    contact_records = list_all(
+        "contacts",
+        ["email", "firstname", "lastname", "createdate"],
+        progress_label="Fetching contacts",
+    )
 
     if not contact_records:
         st.warning("No contact records found.")
@@ -161,15 +160,14 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
         st.stop()
 
     # 2. Pull ALL live VRS number objects, join in Python on email
-    with dash_spinner("Loading number objects..."):
-        num_records = list_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name",
-             "number_status", "service_type",
-             "registered_at", "number_created_at", "registration_created_at", "registration_updated_at",
-             "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
-            progress_label="Fetching number objects",
-        )
+    num_records = list_all(
+        "2-40974683",
+        ["number", "email", "first_name", "last_name",
+         "number_status", "service_type",
+         "registered_at", "number_created_at", "registration_created_at", "registration_updated_at",
+         "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
+        progress_label="Fetching number objects",
+    )
 
     # Index numbers by email; store both properties and top-level createdAt
     num_by_email = {}

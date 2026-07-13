@@ -11,20 +11,19 @@ require_auth()
 report_header("Registration Funnel", "Step-by-step conversion from Submitted → LEX → URD → Active", section="Analytics")
 
 if st.button("Load Registration Funnel", use_container_width=False):
-    with dash_spinner("Loading all registration records..."):
-        records = list_all(
-            "2-58833629",
-            [
-                "registration_id", "registration_type", "usage_type",
-                "email", "first_name", "last_name", "number",
-                "submitted_at", "registered_at",
-                "lex_verification_status", "lex_verified_at",
-                "urd_status", "urd_registration_created_at",
-                "is_cancelled", "registration_created_at",
-                "portin_status", "state",
-            ],
-            progress_label="Fetching registration records",
-        )
+    records = list_all(
+        "2-58833629",
+        [
+            "registration_id", "registration_type", "usage_type",
+            "email", "first_name", "last_name", "number",
+            "submitted_at", "registered_at",
+            "lex_verification_status", "lex_verified_at",
+            "urd_status", "urd_registration_created_at",
+            "is_cancelled", "registration_created_at",
+            "portin_status", "state",
+        ],
+        progress_label="Fetching registration records",
+    )
 
     if not records:
         st.warning("No registration records found.")

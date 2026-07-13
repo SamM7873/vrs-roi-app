@@ -147,13 +147,13 @@ secondary emails also matching Number objects.
 """)
 
 if st.button("Run Data Quality Scan", type="primary"):
-    with dash_spinner("Fetching Number objects…"):
-        num_recs = list_all(
-            "2-40974683",
-            ["number", "email", "service_type", "number_status",
-             "first_name", "last_name", "language_preference",
-             "street1", "street2", "city", "state", "zip_code"],
-            progress_label="Fetching Number objects")
+    # list_all renders its own progress card — don't wrap it in dash_spinner
+    num_recs = list_all(
+        "2-40974683",
+        ["number", "email", "service_type", "number_status",
+         "first_name", "last_name", "language_preference",
+         "street1", "street2", "city", "state", "zip_code"],
+        progress_label="Fetching Number objects")
     number_emails = defaultdict(list)   # email -> [numbers]
     for r in num_recs:
         p = r.get("properties", {})
@@ -206,15 +206,14 @@ if st.button("Run Data Quality Scan", type="primary"):
             })
     addr_df = pd.DataFrame(addr_rows)
 
-    with dash_spinner("Fetching Contacts…"):
-        con_recs = list_all("contacts",
-                            ["email", "hs_additional_emails", "firstname", "lastname",
-                             "phone", "createdate",
-                             # HubSpot's own deliverability signals from real sends
-                             "hs_email_bad_address", "hs_email_bounce",
-                             "hs_email_hard_bounce_reason_enum", "hs_email_quarantined",
-                             "hs_email_quarantined_reason", "hs_email_optout"],
-                            progress_label="Fetching Contacts")
+    con_recs = list_all("contacts",
+                        ["email", "hs_additional_emails", "firstname", "lastname",
+                         "phone", "createdate",
+                         # HubSpot's own deliverability signals from real sends
+                         "hs_email_bad_address", "hs_email_bounce",
+                         "hs_email_hard_bounce_reason_enum", "hs_email_quarantined",
+                         "hs_email_quarantined_reason", "hs_email_optout"],
+                        progress_label="Fetching Contacts")
 
     # First pass: count primary email occurrences for duplicate detection
     primary_counts = defaultdict(int)

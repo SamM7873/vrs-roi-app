@@ -25,14 +25,13 @@ def month_sort_key(m):
         return datetime.min
 
 if st.button("Run Churn Risk Analysis", use_container_width=False):
-    with dash_spinner("Loading all live VRS numbers..."):
-        records = list_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name", "number_status", "service_type",
-             "language_preference", "usage_type",
-             "number_created_at", "ursa_first_login", "ursa_last_outbound_call"],
-            progress_label="Fetching VRS number records",
-        )
+    records = list_all(
+        "2-40974683",
+        ["number", "email", "first_name", "last_name", "number_status", "service_type",
+         "language_preference", "usage_type",
+         "number_created_at", "ursa_first_login", "ursa_last_outbound_call"],
+        progress_label="Fetching VRS number records",
+    )
 
     vrs_live = [
         r for r in records

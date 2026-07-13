@@ -130,15 +130,14 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 
 if st.button("Run Port-Out Winback Report", use_container_width=False):
 
-    with dash_spinner("Loading deactivated port-out numbers..."):
-        raw = list_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name",
-             "number_status", "service_type", "usage_type",
-             "bandwidth_order_type", "deleted_reason",
-             "number_created_at", "number_deleted_at"],
-            progress_label="Fetching number objects",
-        )
+    raw = list_all(
+        "2-40974683",
+        ["number", "email", "first_name", "last_name",
+         "number_status", "service_type", "usage_type",
+         "bandwidth_order_type", "deleted_reason",
+         "number_created_at", "number_deleted_at"],
+        progress_label="Fetching number objects",
+    )
 
     # Filter: deactivated VRS port-outs
     records = []

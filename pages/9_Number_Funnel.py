@@ -105,15 +105,14 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 
 if st.button("Run Number Funnel", use_container_width=False):
 
-    with dash_spinner("Loading number objects..."):
-        raw = list_all(
-            "2-40974683",
-            ["number", "email", "first_name", "last_name",
-             "number_status", "service_type", "usage_type",
-             "registered_at", "number_created_at",
-             "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
-            progress_label="Fetching number objects",
-        )
+    raw = list_all(
+        "2-40974683",
+        ["number", "email", "first_name", "last_name",
+         "number_status", "service_type", "usage_type",
+         "registered_at", "number_created_at",
+         "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
+        progress_label="Fetching number objects",
+    )
 
     # Keep only live VRS numbers, optionally filtered by usage type
     records = []
