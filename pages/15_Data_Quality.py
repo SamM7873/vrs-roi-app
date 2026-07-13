@@ -33,6 +33,35 @@ def _split_secondary(v):
     return [x.strip().lower() for x in str(v).replace(",", ";").split(";") if x.strip()]
 
 
+def _lang(v):
+    n = norm(v)
+    if n in ("en", "english"):
+        return "EN"
+    if n in ("es", "spanish", "español", "espanol"):
+        return "ES"
+    return (v or "").strip().upper() or "—"
+
+
+def _addr_key(p):
+    """Match on street + city + state (zip ignored). Street+city/state, or
+    city+state if street is blank."""
+    street = norm(p.get("street1") or "")
+    city   = norm(p.get("city") or "")
+    state  = norm(p.get("state") or "")
+    if street and (city or state):
+        return "|".join([street, city, state])
+    if city and state:
+        return "|".join(["", city, state])
+    return ""
+
+
+def _addr_display(p):
+    line1 = " ".join(a for a in [(p.get("street1") or "").strip(), (p.get("street2") or "").strip()] if a)
+    line2 = ", ".join(a for a in [(p.get("city") or "").strip(), (p.get("state") or "").strip(),
+                                  (p.get("zip_code") or "").strip()] if a)
+    return ", ".join(a for a in [line1, line2] if a) or "—"
+
+
 def _domain(e):
     e = (e or "").strip().lower()
     return e.split("@")[-1] if "@" in e else ""
@@ -119,8 +148,12 @@ secondary emails also matching Number objects.
 
 if st.button("Run Data Quality Scan", type="primary"):
     with dash_spinner("Fetching Number objects…"):
-        num_recs = list_all("2-40974683", ["number", "email", "service_type", "number_status"],
-                            progress_label="Fetching Number objects")
+        num_recs = list_all(
+            "2-40974683",
+            ["number", "email", "service_type", "number_status",
+             "first_name", "last_name", "language_preference",
+             "street1", "street2", "city", "state", "zip_code"],
+            progress_label="Fetching Number objects")
     number_emails = defaultdict(list)   # email -> [numbers]
     for r in num_recs:
         p = r.get("properties", {})
@@ -128,6 +161,50 @@ if st.button("Run Data Quality Scan", type="primary"):
         num = str(p.get("number") or "").strip()
         if em:
             number_emails[em].append(num)
+
+    # ── Address-duplicate analysis (same address, same language = duplicate) ──
+    addr_groups = defaultdict(list)
+    for r in num_recs:
+        p = r.get("properties", {})
+        akey = _addr_key(p)
+        if akey:
+            addr_groups[akey].append(p)
+
+    addr_rows = []
+    for akey, members in addr_groups.items():
+        if len(members) < 2:
+            continue
+        lang_counts = defaultdict(int)
+        for p in members:
+            lang_counts[_lang(p.get("language_preference"))] += 1
+        dup_langs = [lg for lg, c in lang_counts.items() if c >= 2]
+        if dup_langs:
+            verdict = "🔴 Duplicate (same language)"
+        elif len(lang_counts) >= 2:
+            verdict = "🟢 Bilingual (EN + ES)"
+        else:
+            verdict = "🟢 OK"
+        addr = _addr_display(members[0])
+        lang_summary = ", ".join(f"{lg}×{c}" for lg, c in sorted(lang_counts.items()))
+        emails = sorted({(p.get("email") or "").strip().lower() for p in members if (p.get("email") or "").strip()})
+        for p in members:
+            nm = f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—"
+            addr_rows.append({
+                "Verdict":       verdict,
+                "Address":       addr,
+                "Numbers at Address": len(members),
+                "Lang Mix":      lang_summary,
+                "Number":        (p.get("number") or "").strip(),
+                "Language":      _lang(p.get("language_preference")),
+                "Name":          nm,
+                "Email":         (p.get("email") or "").strip().lower(),
+                "Service Type":  (p.get("service_type") or "").strip(),
+                "Status":        (p.get("number_status") or "").strip(),
+                "Same Email":    "Yes" if len(emails) <= 1 else "No (different people)",
+                "_dup":          verdict.startswith("🔴"),
+                "_addr_key":     akey,
+            })
+    addr_df = pd.DataFrame(addr_rows)
 
     with dash_spinner("Fetching Contacts…"):
         con_recs = list_all("contacts",
@@ -229,142 +306,207 @@ if st.button("Run Data Quality Scan", type="primary"):
         })
 
     df = pd.DataFrame(rows)
-    save_report("data_quality", {"df": df, "n_numbers": len(num_recs), "n_number_emails": len(number_emails)})
+    save_report("data_quality", {"df": df, "addr_df": addr_df,
+                                 "n_numbers": len(num_recs), "n_number_emails": len(number_emails)})
 
 cached = load_report("data_quality")
 if cached is None or cached.get("df") is None or cached["df"].empty:
     st.info("Click **Run Data Quality Scan** to analyze all contacts.")
     st.stop()
 
+tab_email, tab_addr = st.tabs(["📧 Email Quality", "🏠 Address Duplicates"])
 df = cached["df"]
 
-# Backfill any columns/flags added in newer versions so a stale saved
-# report never crashes the page — re-run the scan to fully populate them.
-for _col, _default in [
-    ("Email Domain", "—"), ("Domain Suggestion", "—"), ("Deliverability", "—"),
-    ("_domain", False), ("_bounced", False), ("_quarantined", False),
-]:
-    if _col not in df.columns:
-        df[_col] = _default
+with tab_email:
 
-if cached.get("saved_at"):
-    st.caption(f"📌 Data as of {saved_at_label(cached)} · scanned "
-               f"{cached.get('n_number_emails', 0):,} distinct Number emails · click Run to refresh")
+    # Backfill any columns/flags added in newer versions so a stale saved
+    # report never crashes the page — re-run the scan to fully populate them.
+    for _col, _default in [
+        ("Email Domain", "—"), ("Domain Suggestion", "—"), ("Deliverability", "—"),
+        ("_domain", False), ("_bounced", False), ("_quarantined", False),
+    ]:
+        if _col not in df.columns:
+            df[_col] = _default
 
-_stale = df["Deliverability"].eq("—").all()
-if _stale:
-    st.info("This saved report predates the domain & deliverability checks — "
-            "click **Run Data Quality Scan** to populate them.")
+    if cached.get("saved_at"):
+        st.caption(f"📌 Data as of {saved_at_label(cached)} · scanned "
+                   f"{cached.get('n_number_emails', 0):,} distinct Number emails · click Run to refresh")
 
-total     = len(df)
-clean     = int((df["Issue Count"] == 0).sum())
-missing   = int(df["_missing"].sum())
-invalid_p = int(df["_invalid_p"].sum())
-dup       = int(df["_dup"].sum())
-no_num    = int(df["_no_num"].sum())
-sec_mis   = int(df["_sec_mis"].sum())
-sec_inv   = int(df["_sec_inv"].sum())
-bad_dom   = int(df["_domain"].sum())
-bounced   = int(df["_bounced"].sum()) if "_bounced" in df.columns else 0
-quaran    = int(df["_quarantined"].sum()) if "_quarantined" in df.columns else 0
+    _stale = df["Deliverability"].eq("—").all()
+    if _stale:
+        st.info("This saved report predates the domain & deliverability checks — "
+                "click **Run Data Quality Scan** to populate them.")
+
+    total     = len(df)
+    clean     = int((df["Issue Count"] == 0).sum())
+    missing   = int(df["_missing"].sum())
+    invalid_p = int(df["_invalid_p"].sum())
+    dup       = int(df["_dup"].sum())
+    no_num    = int(df["_no_num"].sum())
+    sec_mis   = int(df["_sec_mis"].sum())
+    sec_inv   = int(df["_sec_inv"].sum())
+    bad_dom   = int(df["_domain"].sum())
+    bounced   = int(df["_bounced"].sum()) if "_bounced" in df.columns else 0
+    quaran    = int(df["_quarantined"].sum()) if "_quarantined" in df.columns else 0
 
 
-def tile(label, value, sub="", color="#1F2937"):
-    return f"""<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
-  <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.3rem;">{label}</div>
-  <div style="font-size:1.45rem;font-weight:800;color:{color};font-variant-numeric:tabular-nums;">{value}</div>
-  <div style="font-size:0.72rem;color:#9CA3AF;">{sub}</div>
-</div>"""
+    def tile(label, value, sub="", color="#1F2937"):
+        return f"""<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+      <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.3rem;">{label}</div>
+      <div style="font-size:1.45rem;font-weight:800;color:{color};font-variant-numeric:tabular-nums;">{value}</div>
+      <div style="font-size:0.72rem;color:#9CA3AF;">{sub}</div>
+    </div>"""
 
-st.markdown(f"""
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.85rem;margin:0.5rem 0 0.85rem;">
-  {tile("Total Contacts", f"{total:,}")}
-  {tile("Clean", f"{clean:,}", f"{clean/total*100:.0f}% of contacts" if total else "", "#00A651")}
-  {tile("With Issues", f"{total-clean:,}", f"{(total-clean)/total*100:.0f}% of contacts" if total else "", "#EF4444")}
-  {tile("Duplicate Primary", f"{dup:,}", "same email, 2+ contacts", "#F59E0B")}
-</div>
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:0.85rem;">
-  {tile("Invalid Primary Format", f"{invalid_p:,}", "malformed email", "#EF4444")}
-  {tile("Missing Primary", f"{missing:,}", "no email", "#EF4444")}
-  {tile("Suspicious Domain", f"{bad_dom:,}", "typo / missing .com (e.g. @gami)", "#EF4444")}
-</div>
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:0.85rem;">
-  {tile("Bounced / Bad Address", f"{bounced:,}", "HubSpot real send bounces", "#EF4444")}
-  {tile("Quarantined", f"{quaran:,}", "blocked by HubSpot", "#EF4444")}
-  {tile("Primary Not on Number", f"{no_num:,}", "no email match", "#F59E0B")}
-</div>
-<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.85rem;margin-bottom:1.25rem;">
-  {tile("Secondary Mismatch", f"{sec_mis:,}", "2nd email ≠ Number", "#F59E0B")}
-  {tile("Invalid Secondary", f"{sec_inv:,}", "malformed 2nd email", "#EF4444")}
+    st.markdown(f"""
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.85rem;margin:0.5rem 0 0.85rem;">
+      {tile("Total Contacts", f"{total:,}")}
+      {tile("Clean", f"{clean:,}", f"{clean/total*100:.0f}% of contacts" if total else "", "#00A651")}
+      {tile("With Issues", f"{total-clean:,}", f"{(total-clean)/total*100:.0f}% of contacts" if total else "", "#EF4444")}
+      {tile("Duplicate Primary", f"{dup:,}", "same email, 2+ contacts", "#F59E0B")}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:0.85rem;">
+      {tile("Invalid Primary Format", f"{invalid_p:,}", "malformed email", "#EF4444")}
+      {tile("Missing Primary", f"{missing:,}", "no email", "#EF4444")}
+      {tile("Suspicious Domain", f"{bad_dom:,}", "typo / missing .com (e.g. @gami)", "#EF4444")}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:0.85rem;">
+      {tile("Bounced / Bad Address", f"{bounced:,}", "HubSpot real send bounces", "#EF4444")}
+      {tile("Quarantined", f"{quaran:,}", "blocked by HubSpot", "#EF4444")}
+      {tile("Primary Not on Number", f"{no_num:,}", "no email match", "#F59E0B")}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.85rem;margin-bottom:1.25rem;">
+      {tile("Secondary Mismatch", f"{sec_mis:,}", "2nd email ≠ Number", "#F59E0B")}
+      {tile("Invalid Secondary", f"{sec_inv:,}", "malformed 2nd email", "#EF4444")}
+    </div>""", unsafe_allow_html=True)
+
+    # ── Email provider breakdown ─────────────────────────────────────────────────
+    with st.expander("📧 Email provider breakdown (by domain)"):
+        dom_counts = (
+            df[df["Email Domain"] != "—"]["Email Domain"]
+            .value_counts().reset_index()
+        )
+        dom_counts.columns = ["Domain", "Contacts"]
+        st.caption(f"{len(dom_counts):,} distinct domains across {int(dom_counts['Contacts'].sum()):,} contacts")
+        st.dataframe(dom_counts.head(50), use_container_width=True, hide_index=True)
+
+    # ── Filter + search ───────────────────────────────────────────────────────────
+    fcol, scol = st.columns([1.4, 2])
+    with fcol:
+        view = st.selectbox("Show", [
+            "All with issues", "All contacts", "Clean only",
+            "Bounced / bad address", "Quarantined",
+            "Invalid primary format", "Missing primary email", "Suspicious domain",
+            "Duplicate primary email", "Primary not on any Number",
+            "Secondary email mismatch", "Invalid secondary format",
+        ])
+    with scol:
+        search = st.text_input("Search", placeholder="name, email, phone, contact ID…",
+                               label_visibility="visible")
+
+    view_map = {
+        "Bounced / bad address": "_bounced",
+        "Quarantined": "_quarantined",
+        "Invalid primary format": "_invalid_p",
+        "Missing primary email": "_missing",
+        "Suspicious domain": "_domain",
+        "Duplicate primary email": "_dup",
+        "Primary not on any Number": "_no_num",
+        "Secondary email mismatch": "_sec_mis",
+        "Invalid secondary format": "_sec_inv",
+    }
+    d = df.copy()
+    if view == "All with issues":
+        d = d[d["Issue Count"] > 0]
+    elif view == "Clean only":
+        d = d[d["Issue Count"] == 0]
+    elif view in view_map:
+        d = d[d[view_map[view]]]
+
+    if search.strip():
+        q = search.strip().lower()
+        d = d[
+            d["Name"].str.lower().str.contains(q, na=False, regex=False) |
+            d["Primary Email"].str.lower().str.contains(q, na=False, regex=False) |
+            d["Secondary Emails"].str.lower().str.contains(q, na=False, regex=False) |
+            d["Phone"].str.lower().str.contains(q, na=False, regex=False) |
+            d["Contact ID"].str.contains(q, na=False, regex=False)
+        ]
+
+    st.caption(f"Showing {len(d):,} contact(s)")
+    display_cols = [c for c in
+                    ["Name", "Primary Email", "Email Domain", "Domain Suggestion",
+                     "Deliverability", "Primary → Number", "Secondary Emails",
+                     "Secondary Mismatch", "Phone", "Issues", "Contact ID"]
+                    if c in d.columns]
+    st.dataframe(
+        d.sort_values("Issue Count", ascending=False)[display_cols].reset_index(drop=True),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.download_button(
+        "Download CSV",
+        d[display_cols].to_csv(index=False),
+        "contact_data_quality.csv",
+        "text/csv",
+    )
+
+
+with tab_addr:
+    addr_df = cached.get("addr_df")
+    if addr_df is None or addr_df.empty:
+        st.info("No addresses are shared by two or more numbers, or this saved report "
+                "predates the address check — click **Run Data Quality Scan** to populate it.")
+    else:
+        st.markdown("""
+Numbers grouped by **address** (street + city + state, zip ignored). At an address with 2+ numbers:
+**same language repeated = 🔴 duplicate**; different languages (**EN + ES**) = 🟢 allowed.
+""")
+        a_addr_level = addr_df.drop_duplicates("_addr_key")
+        a_multi   = len(a_addr_level)
+        a_dup     = int(a_addr_level["_dup"].sum())
+        a_biling  = int((a_addr_level["Verdict"].str.startswith("🟢") &
+                         a_addr_level["Lang Mix"].str.contains("EN") &
+                         a_addr_level["Lang Mix"].str.contains("ES")).sum())
+        a_dupnums = int(addr_df["_dup"].sum())
+
+        st.markdown(f"""
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.85rem;margin:0.5rem 0 1.25rem;">
+  {tile("Shared Addresses", f"{a_multi:,}", "2+ numbers at one address")}
+  {tile("Duplicate Addresses", f"{a_dup:,}", "same language repeated", "#EF4444")}
+  {tile("Bilingual (EN + ES)", f"{a_biling:,}", "allowed — not duplicates", "#00A651")}
+  {tile("Duplicate Numbers", f"{a_dupnums:,}", "numbers in duplicate addresses", "#EF4444")}
 </div>""", unsafe_allow_html=True)
 
-# ── Email provider breakdown ─────────────────────────────────────────────────
-with st.expander("📧 Email provider breakdown (by domain)"):
-    dom_counts = (
-        df[df["Email Domain"] != "—"]["Email Domain"]
-        .value_counts().reset_index()
-    )
-    dom_counts.columns = ["Domain", "Contacts"]
-    st.caption(f"{len(dom_counts):,} distinct domains across {int(dom_counts['Contacts'].sum()):,} contacts")
-    st.dataframe(dom_counts.head(50), use_container_width=True, hide_index=True)
+        afc, asc = st.columns([1.2, 2])
+        with afc:
+            a_view = st.selectbox("Show", ["Duplicates only (same language)",
+                                           "Bilingual (EN + ES)", "All shared addresses"],
+                                  key="addr_view")
+        with asc:
+            a_search = st.text_input("Search", placeholder="address, number, name, email…",
+                                     key="addr_search")
 
-# ── Filter + search ───────────────────────────────────────────────────────────
-fcol, scol = st.columns([1.4, 2])
-with fcol:
-    view = st.selectbox("Show", [
-        "All with issues", "All contacts", "Clean only",
-        "Bounced / bad address", "Quarantined",
-        "Invalid primary format", "Missing primary email", "Suspicious domain",
-        "Duplicate primary email", "Primary not on any Number",
-        "Secondary email mismatch", "Invalid secondary format",
-    ])
-with scol:
-    search = st.text_input("Search", placeholder="name, email, phone, contact ID…",
-                           label_visibility="visible")
+        ad = addr_df.copy()
+        if a_view == "Duplicates only (same language)":
+            ad = ad[ad["_dup"]]
+        elif a_view == "Bilingual (EN + ES)":
+            ad = ad[ad["Verdict"].str.startswith("🟢") &
+                    ad["Lang Mix"].str.contains("EN") & ad["Lang Mix"].str.contains("ES")]
+        if a_search.strip():
+            q = a_search.strip().lower()
+            ad = ad[
+                ad["Address"].str.lower().str.contains(q, na=False, regex=False) |
+                ad["Number"].str.lower().str.contains(q, na=False, regex=False) |
+                ad["Name"].str.lower().str.contains(q, na=False, regex=False) |
+                ad["Email"].str.lower().str.contains(q, na=False, regex=False)
+            ]
 
-view_map = {
-    "Bounced / bad address": "_bounced",
-    "Quarantined": "_quarantined",
-    "Invalid primary format": "_invalid_p",
-    "Missing primary email": "_missing",
-    "Suspicious domain": "_domain",
-    "Duplicate primary email": "_dup",
-    "Primary not on any Number": "_no_num",
-    "Secondary email mismatch": "_sec_mis",
-    "Invalid secondary format": "_sec_inv",
-}
-d = df.copy()
-if view == "All with issues":
-    d = d[d["Issue Count"] > 0]
-elif view == "Clean only":
-    d = d[d["Issue Count"] == 0]
-elif view in view_map:
-    d = d[d[view_map[view]]]
-
-if search.strip():
-    q = search.strip().lower()
-    d = d[
-        d["Name"].str.lower().str.contains(q, na=False, regex=False) |
-        d["Primary Email"].str.lower().str.contains(q, na=False, regex=False) |
-        d["Secondary Emails"].str.lower().str.contains(q, na=False, regex=False) |
-        d["Phone"].str.lower().str.contains(q, na=False, regex=False) |
-        d["Contact ID"].str.contains(q, na=False, regex=False)
-    ]
-
-st.caption(f"Showing {len(d):,} contact(s)")
-display_cols = [c for c in
-                ["Name", "Primary Email", "Email Domain", "Domain Suggestion",
-                 "Deliverability", "Primary → Number", "Secondary Emails",
-                 "Secondary Mismatch", "Phone", "Issues", "Contact ID"]
-                if c in d.columns]
-st.dataframe(
-    d.sort_values("Issue Count", ascending=False)[display_cols].reset_index(drop=True),
-    use_container_width=True,
-    hide_index=True,
-)
-st.download_button(
-    "Download CSV",
-    d[display_cols].to_csv(index=False),
-    "contact_data_quality.csv",
-    "text/csv",
-)
+        st.caption(f"Showing {ad['_addr_key'].nunique():,} address(es), {len(ad):,} number(s)")
+        a_cols = ["Verdict", "Address", "Lang Mix", "Number", "Language",
+                  "Name", "Email", "Service Type", "Status", "Same Email"]
+        st.dataframe(
+            ad.sort_values(["_dup", "Address"], ascending=[False, True])[a_cols].reset_index(drop=True),
+            use_container_width=True, hide_index=True,
+        )
+        st.download_button("Download CSV", ad[a_cols].to_csv(index=False),
+                           "address_duplicates.csv", "text/csv", key="addr_dl")
