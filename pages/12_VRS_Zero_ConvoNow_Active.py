@@ -35,7 +35,7 @@ report_header_close()
 
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
-_CACHE_VERSION = 3  # bump when columns/fetch logic change
+_CACHE_VERSION = 4  # bump when columns/fetch logic change
 cached = st.session_state.get("_vrs_zero_cache")
 if cached and (cached.get("range_label") != range_label
                or cached.get("version") != _CACHE_VERSION):
@@ -146,23 +146,32 @@ if run or not cached:
         st.stop()
 
     # ── Step 2b: Pendo ID (convo_now_account_id) from the Contact records ────
+    # Map the Pendo ID under EVERY email a contact has (primary + additional),
+    # because the report keys rows by the number's email, which may be the
+    # contact's secondary email rather than its primary.
     with dash_spinner(f"Fetching Pendo IDs for {len(cn_emails):,} contacts…"):
         _email_list = sorted(cn_emails)
         for i in range(0, len(_email_list), 100):
             chunk = _email_list[i:i+100]
             c_recs = fetch_all(
                 "contacts",
-                ["email", "convo_now_account_id"],
+                ["email", "hs_additional_emails", "convo_now_account_id"],
                 filter_groups=[{"filters": [
                     {"propertyName": "email", "operator": "IN", "values": chunk},
                 ]}]
             )
             for c in c_recs:
                 cp = c.get("properties", {})
-                em = (cp.get("email") or "").strip().lower()
                 pendo = (cp.get("convo_now_account_id") or "").strip()
-                if em and pendo:
-                    email_to_pendo.setdefault(em, pendo)
+                if not pendo:
+                    continue
+                all_emails = [(cp.get("email") or "").strip().lower()]
+                all_emails += [x.strip().lower() for x in
+                               str(cp.get("hs_additional_emails") or "").replace(",", ";").split(";")
+                               if x.strip()]
+                for _e in all_emails:
+                    if _e:
+                        email_to_pendo.setdefault(_e, pendo)
 
     # ── Step 3: All numbers for those contacts (VRS + Convo Now) ─────────────
     with dash_spinner(f"Fetching all numbers for {len(cn_emails):,} contacts…"):
