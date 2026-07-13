@@ -284,55 +284,84 @@ def fetch_all(object_type_id, properties, filter_groups=None):
 
 
 # ── Dash loading animation (shared across all pages) ────────────────────────
-# Circuit-chip loader (Uiverse.io by Vosoone). Rendered as an <img> data-URI
-# so it survives Streamlit's HTML sanitizer (raw <svg> tags get stripped);
-# CSS animation lives in the SVG's own <style> and still runs inside an <img>.
-_DASH_CSS = ""  # kept for backward-compat imports
-
-_CHIP_SVG_DOC = """<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'>
+# Steampunk brutalist loader (Uiverse.io by Vivekray898). Pure CSS + divs,
+# so it renders through Streamlit's HTML sanitizer (unlike raw <svg>).
+_DASH_CSS = """
 <style>
-.trace-bg{fill:none;stroke:#2a2a2a;stroke-width:4}
-.trace-flow{fill:none;stroke-width:4;stroke-linecap:round;stroke-dasharray:16 24;animation:flow .8s linear infinite}
-.purple{stroke:#a855f7}.blue{stroke:#3b82f6;animation-delay:.15s}.yellow{stroke:#eab308;animation-delay:.3s}
-.green{stroke:#22c55e;animation-delay:.45s}.red{stroke:#ef4444;animation-delay:.25s}
-@keyframes flow{to{stroke-dashoffset:-40}}
+.spbl {
+  --primary-color:#8b4513; --secondary-color:#b87333; --bg-color:#f5deb3;
+  --text-color:#2f1e0e; --border-width:0.25em;
+  font-size:8px; width:22em; height:22em; position:relative;
+  font-family:"Courier New",Courier,monospace; margin:0.5em auto 0.75em;
+}
+.spbl .loader-container { width:100%; height:100%; position:relative; transform:rotate(-2deg); }
+.spbl .comic-panel {
+  width:100%; height:100%; background-color:var(--bg-color);
+  border:var(--border-width) solid black; box-shadow:0.5em 0.5em 0 black;
+  position:relative; overflow:hidden;
+  background-image:radial-gradient(rgba(0,0,0,0.1) 1px,transparent 1px); background-size:10px 10px;
+}
+.spbl .engine { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  z-index:2; animation:spbl-rumble 0.5s infinite alternate; }
+.spbl .engine-body { width:10em; height:8em; background:var(--primary-color);
+  border:var(--border-width) solid black; border-radius:1em; position:relative; }
+.spbl .engine-rivet { position:absolute; width:0.5em; height:0.5em; background:#5c2e0e; border-radius:50%; }
+.spbl .engine-rivet.tl{top:0.5em;left:0.5em}.spbl .engine-rivet.tr{top:0.5em;right:0.5em}
+.spbl .engine-rivet.bl{bottom:0.5em;left:0.5em}.spbl .engine-rivet.br{bottom:0.5em;right:0.5em}
+.spbl .loading-plate { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  background:var(--secondary-color); border:var(--border-width) solid black; padding:0.5em 1.5em; z-index:3; }
+.spbl .loading-text { font-size:1.5em; font-weight:bold; color:var(--text-color);
+  text-transform:uppercase; letter-spacing:0.1em; white-space:nowrap; }
+.spbl .gear-container { position:absolute; width:5em; height:5em; z-index:1; }
+.spbl .gear { position:absolute; width:100%; height:100%; background:#7a7a7a;
+  border:var(--border-width) solid black; border-radius:50%; }
+.spbl .gear-tooth { position:absolute; width:1.5em; height:6em; background:#7a7a7a;
+  border-top:var(--border-width) solid black; border-bottom:var(--border-width) solid black;
+  top:-0.5em; left:1.75em; }
+.spbl .gear-tooth:nth-child(2){transform:rotate(60deg)} .spbl .gear-tooth:nth-child(3){transform:rotate(120deg)}
+.spbl .gear-container.one { top:2em; left:2em; animation:spbl-cw 4s linear infinite; }
+.spbl .gear-container.two { bottom:2em; right:2em; transform:scale(0.8); animation:spbl-ccw 4s linear infinite; }
+.spbl .pressure-gauge { position:absolute; top:1.5em; right:1.5em; width:6em; height:3em;
+  border:var(--border-width) solid black; border-bottom:none; border-radius:6em 6em 0 0; background:#fff; z-index:3; }
+.spbl .gauge-needle { position:absolute; bottom:0; left:50%; width:0.2em; height:2.5em; background:red;
+  transform-origin:bottom center; animation:spbl-gauge 2s infinite ease-in-out; }
+.spbl .steam-pipe { position:absolute; bottom:0; left:2em; width:2em; height:4em; background:#5c2e0e;
+  border:var(--border-width) solid black; }
+.spbl .steam-puff { position:absolute; bottom:3.5em; left:1.5em; width:3em; height:3em;
+  background:rgba(255,255,255,0.8); border-radius:50%; opacity:0; animation:spbl-puff 3s infinite; }
+.spbl .steam-puff:nth-child(2){animation-delay:1.5s}
+.spbl .comic-panel::after { content:"HOLD ON!"; position:absolute; bottom:0.5em; left:0.5em;
+  background:var(--secondary-color); color:var(--text-color); font-weight:bold; padding:0.3em 0.6em;
+  transform:rotate(-5deg); border:var(--border-width) solid black; z-index:4; font-size:0.9em; }
+@keyframes spbl-rumble { 0%{transform:translate(-50%,-50%) rotate(0.5deg)} 100%{transform:translate(-50.5%,-49.5%) rotate(-0.5deg)} }
+@keyframes spbl-cw { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+@keyframes spbl-ccw { from{transform:rotate(0)} to{transform:rotate(-360deg)} }
+@keyframes spbl-gauge { 0%,100%{transform:rotate(-45deg)} 50%{transform:rotate(45deg)} }
+@keyframes spbl-puff { 0%{transform:scale(0.5) translateY(0);opacity:1} 100%{transform:scale(1.5) translateY(-3em);opacity:0} }
 </style>
-<defs>
-<linearGradient id='cg' x1='0' y1='0' x2='0' y2='1'><stop offset='0%' stop-color='#2d2d2d'/><stop offset='100%' stop-color='#0f0f0f'/></linearGradient>
-<linearGradient id='tg' x1='0' y1='0' x2='0' y2='1'><stop offset='0%' stop-color='#eee'/><stop offset='100%' stop-color='#888'/></linearGradient>
-<linearGradient id='pg' x1='1' y1='0' x2='0' y2='0'><stop offset='0%' stop-color='#bbb'/><stop offset='50%' stop-color='#888'/><stop offset='100%' stop-color='#555'/></linearGradient>
-</defs>
-<path d='M100 100 H200 V210 H326' class='trace-bg'/><path d='M100 100 H200 V210 H326' class='trace-flow purple'/>
-<path d='M80 180 H180 V230 H326' class='trace-bg'/><path d='M80 180 H180 V230 H326' class='trace-flow blue'/>
-<path d='M60 260 H150 V250 H326' class='trace-bg'/><path d='M60 260 H150 V250 H326' class='trace-flow yellow'/>
-<path d='M100 350 H200 V270 H326' class='trace-bg'/><path d='M100 350 H200 V270 H326' class='trace-flow green'/>
-<path d='M700 90 H560 V210 H474' class='trace-bg'/><path d='M700 90 H560 V210 H474' class='trace-flow blue'/>
-<path d='M740 160 H580 V230 H474' class='trace-bg'/><path d='M740 160 H580 V230 H474' class='trace-flow green'/>
-<path d='M720 250 H590 V250 H474' class='trace-bg'/><path d='M720 250 H590 V250 H474' class='trace-flow red'/>
-<path d='M680 340 H570 V270 H474' class='trace-bg'/><path d='M680 340 H570 V270 H474' class='trace-flow yellow'/>
-<rect x='330' y='190' width='140' height='100' rx='20' fill='url(#cg)' stroke='#222' stroke-width='3'/>
-<rect x='322' y='205' width='8' height='10' fill='url(#pg)' rx='2'/><rect x='322' y='225' width='8' height='10' fill='url(#pg)' rx='2'/>
-<rect x='322' y='245' width='8' height='10' fill='url(#pg)' rx='2'/><rect x='322' y='265' width='8' height='10' fill='url(#pg)' rx='2'/>
-<rect x='470' y='205' width='8' height='10' fill='url(#pg)' rx='2'/><rect x='470' y='225' width='8' height='10' fill='url(#pg)' rx='2'/>
-<rect x='470' y='245' width='8' height='10' fill='url(#pg)' rx='2'/><rect x='470' y='265' width='8' height='10' fill='url(#pg)' rx='2'/>
-<text x='400' y='240' font-family='Arial' font-size='22' fill='url(#tg)' text-anchor='middle'>Loading</text>
-<circle cx='100' cy='100' r='5' fill='#111'/><circle cx='80' cy='180' r='5' fill='#111'/>
-<circle cx='60' cy='260' r='5' fill='#111'/><circle cx='100' cy='350' r='5' fill='#111'/>
-<circle cx='700' cy='90' r='5' fill='#111'/><circle cx='740' cy='160' r='5' fill='#111'/>
-<circle cx='720' cy='250' r='5' fill='#111'/><circle cx='680' cy='340' r='5' fill='#111'/>
-</svg>"""
+"""
 
-from urllib.parse import quote as _urlquote
-_CHIP_IMG = ("data:image/svg+xml;charset=utf-8,"
-             + _urlquote(_CHIP_SVG_DOC.replace("\n", "")))
+_LOADER_HTML = """
+<div class="spbl"><div class="loader-container"><div class="comic-panel">
+  <div class="gear-container one"><div class="gear"></div><div class="gear-tooth"></div><div class="gear-tooth"></div><div class="gear-tooth"></div></div>
+  <div class="gear-container two"><div class="gear"></div><div class="gear-tooth"></div><div class="gear-tooth"></div><div class="gear-tooth"></div></div>
+  <div class="pressure-gauge"><div class="gauge-needle"></div></div>
+  <div class="steam-pipe"><div class="steam-puff"></div><div class="steam-puff"></div></div>
+  <div class="engine"><div class="engine-body">
+    <div class="engine-rivet tl"></div><div class="engine-rivet tr"></div>
+    <div class="engine-rivet bl"></div><div class="engine-rivet br"></div>
+    <div class="loading-plate"><span class="loading-text">LOADING...</span></div>
+  </div></div>
+</div></div></div>
+"""
 
 
 def _dash_card_html(label, sub="", extra=""):
     sub_html = f'<div style="color:#6B7280;font-size:0.82rem;margin-top:0.15rem;">{sub}</div>' if sub else ""
-    return f"""
+    return f"""{_DASH_CSS}
 <div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;
             padding:1rem 1.5rem 1.2rem;margin:0.5rem 0;box-shadow:0 2px 8px rgba(0,0,0,0.06);text-align:center;">
-  <img src="{_CHIP_IMG}" alt="Loading" style="width:100%;max-width:240px;height:auto;display:block;margin:0 auto;" />
+  {_LOADER_HTML}
   <div style="font-weight:700;color:#111827;font-size:0.95rem;margin-top:0.5rem;">{label}</div>
   {sub_html}
   {extra}
