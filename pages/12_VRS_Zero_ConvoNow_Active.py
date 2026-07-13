@@ -35,7 +35,7 @@ report_header_close()
 
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
-_CACHE_VERSION = 4  # bump when columns/fetch logic change
+_CACHE_VERSION = 5  # bump when columns/fetch logic change
 cached = st.session_state.get("_vrs_zero_cache")
 if cached and (cached.get("range_label") != range_label
                or cached.get("version") != _CACHE_VERSION):
@@ -288,6 +288,33 @@ if run or not cached:
             "Latest Month":      latest_month,
             "Latest Month Min":  round(latest_cn_min, 1),
         })
+
+    # ── Step 6b: recover Pendo ID for rows still missing it ──────────────────
+    # These are contacts whose number-email is their SECONDARY email; a batch
+    # `email IN` search returns the contact but only its primary email, so the
+    # row keyed by the secondary email missed. Search each missing email
+    # individually (HubSpot's email search matches secondary emails) and tie
+    # the Pendo ID directly to that email.
+    _missing_pendo = [r["Email"] for r in rows if r["Pendo ID"] in ("", "—", None)]
+    if _missing_pendo:
+        with dash_spinner(f"Recovering Pendo IDs for {len(_missing_pendo):,} contacts…"):
+            for em in _missing_pendo:
+                recs = fetch_all(
+                    "contacts",
+                    ["email", "convo_now_account_id"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "email", "operator": "EQ", "value": em},
+                    ]}]
+                )
+                for c in recs:
+                    pid = (c.get("properties", {}).get("convo_now_account_id") or "").strip()
+                    if pid:
+                        email_to_pendo[em] = pid
+                        break
+        # re-apply to rows
+        for r in rows:
+            if r["Pendo ID"] in ("", "—", None):
+                r["Pendo ID"] = email_to_pendo.get(r["Email"], "—")
 
     if not rows:
         st.success("No contacts found matching VRS = 0, CfZ = 0, Convo Now > 0 in this period.")
