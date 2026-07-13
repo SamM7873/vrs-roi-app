@@ -192,25 +192,18 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
 </div>""", unsafe_allow_html=True)
         else:
             filled = int(pct / 5)
-            bar_html = "".join(
-                f'<div style="width:14px;height:14px;border-radius:3px;background:{"#2DB84B" if i < filled else "#D1FAE5"};"></div>'
-                for i in range(20)
+            bar_html = (
+                '<div style="display:flex;gap:3px;justify-content:center;margin-top:0.6rem;">'
+                + "".join(
+                    f'<div style="width:14px;height:14px;border-radius:3px;background:{"#2DB84B" if i < filled else "#D1FAE5"};"></div>'
+                    for i in range(20)
+                )
+                + "</div>"
             )
-            loader.markdown(f"""{_DASH_CSS}
-<div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;
-            padding:1.1rem 1.5rem;margin:0.5rem 0;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-  <div style="display:flex;align-items:center;gap:1.25rem;margin-bottom:0.75rem;">
-    <div class="dash-wrap">
-      <div class="dash uno"></div><div class="dash dos"></div>
-      <div class="dash tres"></div><div class="dash cuatro"></div>
-    </div>
-    <div>
-      <div style="font-weight:700;color:#111827;font-size:0.95rem;">{progress_label}</div>
-      <div style="color:#6B7280;font-size:0.82rem;">{fetched:,} records fetched</div>
-    </div>
-  </div>
-  <div style="display:flex;gap:3px;">{bar_html}</div>
-</div>""", unsafe_allow_html=True)
+            loader.markdown(
+                _dash_card_html(progress_label, f"{fetched:,} records fetched", extra=bar_html),
+                unsafe_allow_html=True,
+            )
 
     _show(0, 0)
     page_num = 0
@@ -291,57 +284,89 @@ def fetch_all(object_type_id, properties, filter_groups=None):
 
 
 # ── Dash loading animation (shared across all pages) ────────────────────────
+# Circuit-chip loader (Uiverse.io by Vosoone) — flowing traces into a chip
 _DASH_CSS = """
 <style>
-.dash-wrap { display:flex; align-items:center; padding:0 10px; }
-.dash {
-  margin: 0 15px; width: 35px; height: 15px; border-radius: 8px;
-  background: #FF2CBD; box-shadow: 0 0 10px 0 #FECDFF;
-}
-.dash.uno   { margin-right: -18px; transform-origin: center left;  animation: dspin  3s linear infinite; }
-.dash.dos   { transform-origin: center right; animation: dspin2 3s linear infinite; animation-delay: .2s; }
-.dash.tres  { transform-origin: center right; animation: dspin3 3s linear infinite; animation-delay: .3s; }
-.dash.cuatro{ transform-origin: center right; animation: dspin4 3s linear infinite; animation-delay: .4s; }
-@keyframes dspin {
-  0% { transform: rotate(0deg); } 25% { transform: rotate(360deg); }
-  30% { transform: rotate(370deg); } 35% { transform: rotate(360deg); }
-  100% { transform: rotate(360deg); }
-}
-@keyframes dspin2 {
-  0% { transform: rotate(0deg); } 20% { transform: rotate(0deg); }
-  30% { transform: rotate(-180deg); } 35% { transform: rotate(-190deg); }
-  40% { transform: rotate(-180deg); } 78% { transform: rotate(-180deg); }
-  95% { transform: rotate(-360deg); } 98% { transform: rotate(-370deg); }
-  100% { transform: rotate(-360deg); }
-}
-@keyframes dspin3 {
-  0% { transform: rotate(0deg); } 27% { transform: rotate(0deg); }
-  40% { transform: rotate(180deg); } 45% { transform: rotate(190deg); }
-  50% { transform: rotate(180deg); } 62% { transform: rotate(180deg); }
-  75% { transform: rotate(360deg); } 80% { transform: rotate(370deg); }
-  85% { transform: rotate(360deg); } 100% { transform: rotate(360deg); }
-}
-@keyframes dspin4 {
-  0% { transform: rotate(0deg); } 38% { transform: rotate(0deg); }
-  60% { transform: rotate(-360deg); } 65% { transform: rotate(-370deg); }
-  75% { transform: rotate(-360deg); } 100% { transform: rotate(-360deg); }
-}
+.chip-loader svg { width: 100%; max-width: 260px; height: auto; display:block; margin:0 auto; }
+.chip-loader .trace-bg   { fill:none; stroke:#2a2a2a; stroke-width:4; }
+.chip-loader .trace-flow { fill:none; stroke-width:4; stroke-linecap:round;
+                           stroke-dasharray:16 24; animation: chipflow .8s linear infinite; }
+.chip-loader .trace-flow.purple { stroke:#a855f7; }
+.chip-loader .trace-flow.blue   { stroke:#3b82f6; animation-delay:.15s; }
+.chip-loader .trace-flow.yellow { stroke:#eab308; animation-delay:.30s; }
+.chip-loader .trace-flow.green  { stroke:#22c55e; animation-delay:.45s; }
+.chip-loader .trace-flow.red    { stroke:#ef4444; animation-delay:.25s; }
+@keyframes chipflow { to { stroke-dashoffset:-40; } }
 </style>
 """
 
-def _dash_card_html(label, sub=""):
-    sub_html = f'<div style="color:#6B7280;font-size:0.82rem;">{sub}</div>' if sub else ""
+_CHIP_SVG = """
+<div class="chip-loader">
+<svg viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="chipGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2d2d2d"></stop><stop offset="100%" stop-color="#0f0f0f"></stop>
+    </linearGradient>
+    <linearGradient id="textGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#eeeeee"></stop><stop offset="100%" stop-color="#888888"></stop>
+    </linearGradient>
+    <linearGradient id="pinGradient" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0%" stop-color="#bbbbbb"></stop><stop offset="50%" stop-color="#888888"></stop>
+      <stop offset="100%" stop-color="#555555"></stop>
+    </linearGradient>
+  </defs>
+  <g id="traces">
+    <path d="M100 100 H200 V210 H326" class="trace-bg"></path>
+    <path d="M100 100 H200 V210 H326" class="trace-flow purple"></path>
+    <path d="M80 180 H180 V230 H326" class="trace-bg"></path>
+    <path d="M80 180 H180 V230 H326" class="trace-flow blue"></path>
+    <path d="M60 260 H150 V250 H326" class="trace-bg"></path>
+    <path d="M60 260 H150 V250 H326" class="trace-flow yellow"></path>
+    <path d="M100 350 H200 V270 H326" class="trace-bg"></path>
+    <path d="M100 350 H200 V270 H326" class="trace-flow green"></path>
+    <path d="M700 90 H560 V210 H474" class="trace-bg"></path>
+    <path d="M700 90 H560 V210 H474" class="trace-flow blue"></path>
+    <path d="M740 160 H580 V230 H474" class="trace-bg"></path>
+    <path d="M740 160 H580 V230 H474" class="trace-flow green"></path>
+    <path d="M720 250 H590 V250 H474" class="trace-bg"></path>
+    <path d="M720 250 H590 V250 H474" class="trace-flow red"></path>
+    <path d="M680 340 H570 V270 H474" class="trace-bg"></path>
+    <path d="M680 340 H570 V270 H474" class="trace-flow yellow"></path>
+  </g>
+  <rect x="330" y="190" width="140" height="100" rx="20" ry="20" fill="url(#chipGradient)"
+        stroke="#222" stroke-width="3"></rect>
+  <g>
+    <rect x="322" y="205" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
+    <rect x="322" y="225" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
+    <rect x="322" y="245" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
+    <rect x="322" y="265" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
+  </g>
+  <g>
+    <rect x="470" y="205" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
+    <rect x="470" y="225" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
+    <rect x="470" y="245" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
+    <rect x="470" y="265" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
+  </g>
+  <text x="400" y="240" font-family="Arial, sans-serif" font-size="22" fill="url(#textGradient)"
+        text-anchor="middle" alignment-baseline="middle">Loading</text>
+  <circle cx="100" cy="100" r="5" fill="#111"></circle><circle cx="80" cy="180" r="5" fill="#111"></circle>
+  <circle cx="60" cy="260" r="5" fill="#111"></circle><circle cx="100" cy="350" r="5" fill="#111"></circle>
+  <circle cx="700" cy="90" r="5" fill="#111"></circle><circle cx="740" cy="160" r="5" fill="#111"></circle>
+  <circle cx="720" cy="250" r="5" fill="#111"></circle><circle cx="680" cy="340" r="5" fill="#111"></circle>
+</svg>
+</div>
+"""
+
+
+def _dash_card_html(label, sub="", extra=""):
+    sub_html = f'<div style="color:#6B7280;font-size:0.82rem;margin-top:0.15rem;">{sub}</div>' if sub else ""
     return f"""{_DASH_CSS}
-<div style="display:flex;align-items:center;gap:1.5rem;background:#fff;border:1.5px solid #E5E7EB;
-            border-radius:14px;padding:1.1rem 1.5rem;margin:0.5rem 0;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-  <div class="dash-wrap">
-    <div class="dash uno"></div><div class="dash dos"></div>
-    <div class="dash tres"></div><div class="dash cuatro"></div>
-  </div>
-  <div>
-    <div style="font-weight:700;color:#111827;font-size:0.95rem;">{label}</div>
-    {sub_html}
-  </div>
+<div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;
+            padding:1rem 1.5rem 1.2rem;margin:0.5rem 0;box-shadow:0 2px 8px rgba(0,0,0,0.06);text-align:center;">
+  {_CHIP_SVG}
+  <div style="font-weight:700;color:#111827;font-size:0.95rem;margin-top:0.5rem;">{label}</div>
+  {sub_html}
+  {extra}
 </div>"""
 
 
