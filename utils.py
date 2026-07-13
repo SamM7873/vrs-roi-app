@@ -284,86 +284,55 @@ def fetch_all(object_type_id, properties, filter_groups=None):
 
 
 # ── Dash loading animation (shared across all pages) ────────────────────────
-# Circuit-chip loader (Uiverse.io by Vosoone) — flowing traces into a chip
-_DASH_CSS = """
-<style>
-.chip-loader svg { width: 100%; max-width: 260px; height: auto; display:block; margin:0 auto; }
-.chip-loader .trace-bg   { fill:none; stroke:#2a2a2a; stroke-width:4; }
-.chip-loader .trace-flow { fill:none; stroke-width:4; stroke-linecap:round;
-                           stroke-dasharray:16 24; animation: chipflow .8s linear infinite; }
-.chip-loader .trace-flow.purple { stroke:#a855f7; }
-.chip-loader .trace-flow.blue   { stroke:#3b82f6; animation-delay:.15s; }
-.chip-loader .trace-flow.yellow { stroke:#eab308; animation-delay:.30s; }
-.chip-loader .trace-flow.green  { stroke:#22c55e; animation-delay:.45s; }
-.chip-loader .trace-flow.red    { stroke:#ef4444; animation-delay:.25s; }
-@keyframes chipflow { to { stroke-dashoffset:-40; } }
-</style>
-"""
+# Circuit-chip loader (Uiverse.io by Vosoone). Rendered as an <img> data-URI
+# so it survives Streamlit's HTML sanitizer (raw <svg> tags get stripped);
+# CSS animation lives in the SVG's own <style> and still runs inside an <img>.
+_DASH_CSS = ""  # kept for backward-compat imports
 
-_CHIP_SVG = """
-<div class="chip-loader">
-<svg viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="chipGradient" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#2d2d2d"></stop><stop offset="100%" stop-color="#0f0f0f"></stop>
-    </linearGradient>
-    <linearGradient id="textGradient" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#eeeeee"></stop><stop offset="100%" stop-color="#888888"></stop>
-    </linearGradient>
-    <linearGradient id="pinGradient" x1="1" y1="0" x2="0" y2="0">
-      <stop offset="0%" stop-color="#bbbbbb"></stop><stop offset="50%" stop-color="#888888"></stop>
-      <stop offset="100%" stop-color="#555555"></stop>
-    </linearGradient>
-  </defs>
-  <g id="traces">
-    <path d="M100 100 H200 V210 H326" class="trace-bg"></path>
-    <path d="M100 100 H200 V210 H326" class="trace-flow purple"></path>
-    <path d="M80 180 H180 V230 H326" class="trace-bg"></path>
-    <path d="M80 180 H180 V230 H326" class="trace-flow blue"></path>
-    <path d="M60 260 H150 V250 H326" class="trace-bg"></path>
-    <path d="M60 260 H150 V250 H326" class="trace-flow yellow"></path>
-    <path d="M100 350 H200 V270 H326" class="trace-bg"></path>
-    <path d="M100 350 H200 V270 H326" class="trace-flow green"></path>
-    <path d="M700 90 H560 V210 H474" class="trace-bg"></path>
-    <path d="M700 90 H560 V210 H474" class="trace-flow blue"></path>
-    <path d="M740 160 H580 V230 H474" class="trace-bg"></path>
-    <path d="M740 160 H580 V230 H474" class="trace-flow green"></path>
-    <path d="M720 250 H590 V250 H474" class="trace-bg"></path>
-    <path d="M720 250 H590 V250 H474" class="trace-flow red"></path>
-    <path d="M680 340 H570 V270 H474" class="trace-bg"></path>
-    <path d="M680 340 H570 V270 H474" class="trace-flow yellow"></path>
-  </g>
-  <rect x="330" y="190" width="140" height="100" rx="20" ry="20" fill="url(#chipGradient)"
-        stroke="#222" stroke-width="3"></rect>
-  <g>
-    <rect x="322" y="205" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-    <rect x="322" y="225" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-    <rect x="322" y="245" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-    <rect x="322" y="265" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-  </g>
-  <g>
-    <rect x="470" y="205" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-    <rect x="470" y="225" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-    <rect x="470" y="245" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-    <rect x="470" y="265" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-  </g>
-  <text x="400" y="240" font-family="Arial, sans-serif" font-size="22" fill="url(#textGradient)"
-        text-anchor="middle" alignment-baseline="middle">Loading</text>
-  <circle cx="100" cy="100" r="5" fill="#111"></circle><circle cx="80" cy="180" r="5" fill="#111"></circle>
-  <circle cx="60" cy="260" r="5" fill="#111"></circle><circle cx="100" cy="350" r="5" fill="#111"></circle>
-  <circle cx="700" cy="90" r="5" fill="#111"></circle><circle cx="740" cy="160" r="5" fill="#111"></circle>
-  <circle cx="720" cy="250" r="5" fill="#111"></circle><circle cx="680" cy="340" r="5" fill="#111"></circle>
-</svg>
-</div>
-"""
+_CHIP_SVG_DOC = """<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'>
+<style>
+.trace-bg{fill:none;stroke:#2a2a2a;stroke-width:4}
+.trace-flow{fill:none;stroke-width:4;stroke-linecap:round;stroke-dasharray:16 24;animation:flow .8s linear infinite}
+.purple{stroke:#a855f7}.blue{stroke:#3b82f6;animation-delay:.15s}.yellow{stroke:#eab308;animation-delay:.3s}
+.green{stroke:#22c55e;animation-delay:.45s}.red{stroke:#ef4444;animation-delay:.25s}
+@keyframes flow{to{stroke-dashoffset:-40}}
+</style>
+<defs>
+<linearGradient id='cg' x1='0' y1='0' x2='0' y2='1'><stop offset='0%' stop-color='#2d2d2d'/><stop offset='100%' stop-color='#0f0f0f'/></linearGradient>
+<linearGradient id='tg' x1='0' y1='0' x2='0' y2='1'><stop offset='0%' stop-color='#eee'/><stop offset='100%' stop-color='#888'/></linearGradient>
+<linearGradient id='pg' x1='1' y1='0' x2='0' y2='0'><stop offset='0%' stop-color='#bbb'/><stop offset='50%' stop-color='#888'/><stop offset='100%' stop-color='#555'/></linearGradient>
+</defs>
+<path d='M100 100 H200 V210 H326' class='trace-bg'/><path d='M100 100 H200 V210 H326' class='trace-flow purple'/>
+<path d='M80 180 H180 V230 H326' class='trace-bg'/><path d='M80 180 H180 V230 H326' class='trace-flow blue'/>
+<path d='M60 260 H150 V250 H326' class='trace-bg'/><path d='M60 260 H150 V250 H326' class='trace-flow yellow'/>
+<path d='M100 350 H200 V270 H326' class='trace-bg'/><path d='M100 350 H200 V270 H326' class='trace-flow green'/>
+<path d='M700 90 H560 V210 H474' class='trace-bg'/><path d='M700 90 H560 V210 H474' class='trace-flow blue'/>
+<path d='M740 160 H580 V230 H474' class='trace-bg'/><path d='M740 160 H580 V230 H474' class='trace-flow green'/>
+<path d='M720 250 H590 V250 H474' class='trace-bg'/><path d='M720 250 H590 V250 H474' class='trace-flow red'/>
+<path d='M680 340 H570 V270 H474' class='trace-bg'/><path d='M680 340 H570 V270 H474' class='trace-flow yellow'/>
+<rect x='330' y='190' width='140' height='100' rx='20' fill='url(#cg)' stroke='#222' stroke-width='3'/>
+<rect x='322' y='205' width='8' height='10' fill='url(#pg)' rx='2'/><rect x='322' y='225' width='8' height='10' fill='url(#pg)' rx='2'/>
+<rect x='322' y='245' width='8' height='10' fill='url(#pg)' rx='2'/><rect x='322' y='265' width='8' height='10' fill='url(#pg)' rx='2'/>
+<rect x='470' y='205' width='8' height='10' fill='url(#pg)' rx='2'/><rect x='470' y='225' width='8' height='10' fill='url(#pg)' rx='2'/>
+<rect x='470' y='245' width='8' height='10' fill='url(#pg)' rx='2'/><rect x='470' y='265' width='8' height='10' fill='url(#pg)' rx='2'/>
+<text x='400' y='240' font-family='Arial' font-size='22' fill='url(#tg)' text-anchor='middle'>Loading</text>
+<circle cx='100' cy='100' r='5' fill='#111'/><circle cx='80' cy='180' r='5' fill='#111'/>
+<circle cx='60' cy='260' r='5' fill='#111'/><circle cx='100' cy='350' r='5' fill='#111'/>
+<circle cx='700' cy='90' r='5' fill='#111'/><circle cx='740' cy='160' r='5' fill='#111'/>
+<circle cx='720' cy='250' r='5' fill='#111'/><circle cx='680' cy='340' r='5' fill='#111'/>
+</svg>"""
+
+from urllib.parse import quote as _urlquote
+_CHIP_IMG = ("data:image/svg+xml;charset=utf-8,"
+             + _urlquote(_CHIP_SVG_DOC.replace("\n", "")))
 
 
 def _dash_card_html(label, sub="", extra=""):
     sub_html = f'<div style="color:#6B7280;font-size:0.82rem;margin-top:0.15rem;">{sub}</div>' if sub else ""
-    return f"""{_DASH_CSS}
+    return f"""
 <div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;
             padding:1rem 1.5rem 1.2rem;margin:0.5rem 0;box-shadow:0 2px 8px rgba(0,0,0,0.06);text-align:center;">
-  {_CHIP_SVG}
+  <img src="{_CHIP_IMG}" alt="Loading" style="width:100%;max-width:240px;height:auto;display:block;margin:0 auto;" />
   <div style="font-weight:700;color:#111827;font-size:0.95rem;margin-top:0.5rem;">{label}</div>
   {sub_html}
   {extra}
