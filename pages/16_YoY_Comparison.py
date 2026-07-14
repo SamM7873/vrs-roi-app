@@ -64,10 +64,11 @@ report_header_close()
 MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
+# URSA Minutes = iOS + Android + Web (computed), so it equals the platform sum.
 METRICS = {
     "CfZ Minutes":          "cfz_minutes",
     "Usage Minutes":        "usage_minutes",
-    "URSA Minutes":         "ursa_minutes",
+    "URSA Minutes":         "ursa_sum",
     "URSA iOS Minutes":     "ursa_ios_minutes",
     "URSA Android Minutes": "ursa_android_minutes",
     "URSA Web Minutes":     "ursa_web_minutes",
@@ -124,8 +125,13 @@ if run:
             a[f] += to_float(p.get(f)) or 0.0
         a["records"] += 1
 
-    rows = [{"Month": mk, **{k: round(v, 1) for k, v in vals.items()}}
-            for mk, vals in sorted(agg.items())]
+    rows = []
+    for mk, vals in sorted(agg.items()):
+        row = {"Month": mk, **{k: round(v, 1) for k, v in vals.items()}}
+        # URSA Minutes = iOS + Android + Web
+        row["ursa_sum"] = round(vals["ursa_ios_minutes"] + vals["ursa_android_minutes"]
+                                + vals["ursa_web_minutes"], 1)
+        rows.append(row)
     df = pd.DataFrame(rows)
     save_report(cache_key, {"df": df, "svc": svc, "start_year": start_year, "version": _CACHE_VERSION})
 
@@ -135,6 +141,10 @@ if cached is None or cached.get("df") is None or cached["df"].empty:
     st.stop()
 
 df = cached["df"]
+# Backfill computed URSA Minutes (= iOS+Android+Web) for reports saved before it existed
+if "ursa_sum" not in df.columns and {"ursa_ios_minutes", "ursa_android_minutes", "ursa_web_minutes"} <= set(df.columns):
+    df = df.copy()
+    df["ursa_sum"] = (df["ursa_ios_minutes"] + df["ursa_android_minutes"] + df["ursa_web_minutes"]).round(1)
 metric_col = METRICS[metric_label]
 if metric_col not in df.columns:
     st.info("This saved report predates the selected metric — click **Run Comparison** to refresh.")
@@ -177,7 +187,7 @@ _cards = [
     metric_card("URSA iOS",        "ursa_ios_minutes",     "#3B82F6"),
     metric_card("URSA Android",    "ursa_android_minutes", "#8B5CF6"),
     metric_card("URSA Web",        "ursa_web_minutes",     "#06B6D4"),
-    metric_card("URSA Minutes",    "ursa_minutes",         "#00A651"),
+    metric_card("URSA Minutes",    "ursa_sum",             "#00A651"),
 ]
 st.markdown(f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin:0.25rem 0 1.5rem;">{"".join(_cards)}</div>',
             unsafe_allow_html=True)
