@@ -146,6 +146,13 @@ mv_all_months = st.checkbox(
          "usage for contacts whose tickets closed in the period. Unchecked, only usage that "
          "occurred within the report period is counted.",
 )
+mv_close_month = st.checkbox(
+    "Tie usage to ticket close month only (close month = month_date)",
+    value=False,
+    help="Count only the monthly value whose month_date matches the ticket's close month — "
+         "a June-closed ticket counts June usage only, a July-closed ticket counts July only. "
+         "Overrides the all-months option.",
+)
 
 st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
@@ -185,13 +192,14 @@ run_clicked = st.button("Run Consumer Success Tickets", use_container_width=Fals
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
 _sig = [preset, str(filter_start), str(filter_end), date_field, status_filter,
-        ticket_name_filter, bool(mv_all_months)]
+        ticket_name_filter, bool(mv_all_months), bool(mv_close_month)]
 _CS_CACHE_VARS = [
     "rows", "num_monthly", "mv_objects", "month_agg",
     "total_ursa_min", "total_cfz_min", "total_usage_min", "total_vrs_fcc",
     "vrs_numbers", "vrs_num_ids", "num_id_to_number", "num_id_meta", "num_to_nid",
     "tid_to_cids", "cid_to_nids", "tid_to_nids", "email_to_nids",
     "contact_email_map", "unique_cids", "tid_to_close_month", "cid_to_close_months",
+    "nid_to_close_months",
     "range_label", "mv_floor", "stage_labels", "owner_names",
     "ticket_contact_email", "filtered_ticket_ids",
 ]
@@ -556,7 +564,8 @@ if run_clicked or _use_cache:
                     br = _post_retry(
                         f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
                         {"inputs": [{"id": n} for n in chunk],
-                         "properties": ["number", "service_type", "number_status", "language_preference"]},
+                         "properties": ["number", "service_type", "number_status",
+                                        "language_preference", "ursa_first_login"]},
                     )
                     if br.status_code == 200:
                         for obj in br.json().get("results", []):
@@ -572,6 +581,7 @@ if run_clicked or _use_cache:
                                 num_id_meta[nid] = {
                                     "status": (p.get("number_status") or "").strip(),
                                     "language": (p.get("language_preference") or "").strip(),
+                                    "ursa_first_login": (p.get("ursa_first_login") or "").strip(),
                                 }
 
         # Email fallback path: ticket/contact email → Number.email → number.
@@ -588,7 +598,8 @@ if run_clicked or _use_cache:
                     chunk = ticket_emails[i:i+100]
                     em_recs = fetch_all(
                         "2-40974683",
-                        ["number", "email", "service_type", "number_status", "language_preference"],
+                        ["number", "email", "service_type", "number_status",
+                         "language_preference", "ursa_first_login"],
                         filter_groups=[{"filters": [
                             {"propertyName": "email",         "operator": "IN", "values": chunk},
                             {"propertyName": "service_type",  "operator": "EQ", "value": "VRS"},
@@ -606,6 +617,7 @@ if run_clicked or _use_cache:
                             num_id_meta.setdefault(nid, {
                                 "status": (p.get("number_status") or "").strip(),
                                 "language": (p.get("language_preference") or "").strip(),
+                                "ursa_first_login": (p.get("ursa_first_login") or "").strip(),
                             })
 
             # Propagate close months from tickets to email-matched numbers
@@ -677,14 +689,19 @@ if run_clicked or _use_cache:
                 "fcc_cfz":  _to_float(p2.get("fcc_cost_based_on_cfz_usage")),
             })
 
-        # Aggregate all June 2026+ monthly values for matched numbers.
-        # HubSpot's report shows June-closed tickets with July monthly values
-        # (usage recorded the following month), so we do not restrict by close month.
+        # Aggregate monthly values for matched numbers.
+        # When mv_close_month is on, count a month only if it matches the close
+        # month of a ticket tied to that number (close month = month_date).
+        def _mv_counts(nid, mk):
+            if not mv_close_month:
+                return True
+            return mk in nid_to_close_months.get(nid, set())
+
         month_agg = defaultdict(lambda: {"ursa_min": 0.0, "cfz_min": 0.0, "fcc_vrs": 0.0, "fcc_cfz": 0.0})
         for nid, mv_list in num_monthly.items():
             for mv in mv_list:
                 mk = mv["month"][:7] if mv["month"] else None  # YYYY-MM
-                if not mk:
+                if not mk or not _mv_counts(nid, mk):
                     continue
                 month_agg[mk]["ursa_min"] += mv["ursa_min"]
                 month_agg[mk]["cfz_min"]  += mv["cfz_min"]
@@ -709,12 +726,19 @@ if run_clicked or _use_cache:
 
     # ── Association table: ticket → contact → number → monthly values ─────────
     # One row per link in the chain, with a status showing where it breaks.
+    def _mv_in_scope(nid, mv):
+        if not mv_close_month:
+            return True
+        mk = (mv.get("month") or "")[:7]
+        return bool(mk) and mk in nid_to_close_months.get(nid, set())
+
     nid_mv_totals = {}
     for nid, mv_list in num_monthly.items():
+        scoped = [m for m in mv_list if _mv_in_scope(nid, m)]
         nid_mv_totals[nid] = {
-            "ursa": sum(m["ursa_min"] for m in mv_list),
-            "cfz":  sum(m["cfz_min"] for m in mv_list),
-            "months": len(mv_list),
+            "ursa": sum(m["ursa_min"] for m in scoped),
+            "cfz":  sum(m["cfz_min"] for m in scoped),
+            "months": len(scoped),
         }
 
     assoc_rows = []
@@ -739,6 +763,7 @@ if run_clicked or _use_cache:
                 "Number ID": nid, "Number": num_id_to_number.get(nid, ""),
                 "Number Status": num_id_meta.get(nid, {}).get("status", ""),
                 "Language": num_id_meta.get(nid, {}).get("language", ""),
+                "URSA First Login": (num_id_meta.get(nid, {}).get("ursa_first_login", "") or "")[:10],
                 "MV Records": mv["months"] if mv else 0,
                 "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
                 "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
@@ -760,6 +785,7 @@ if run_clicked or _use_cache:
                 "Number ID": nid, "Number": num_id_to_number.get(nid, ""),
                 "Number Status": num_id_meta.get(nid, {}).get("status", ""),
                 "Language": num_id_meta.get(nid, {}).get("language", ""),
+                "URSA First Login": (num_id_meta.get(nid, {}).get("ursa_first_login", "") or "")[:10],
                 "MV Records": mv["months"] if mv else 0,
                 "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
                 "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
@@ -769,7 +795,7 @@ if run_clicked or _use_cache:
         if not cids and not seen_nids_for_ticket:
             assoc_rows.append({**base, "Contact ID": "", "Contact Email": "",
                                "Number ID": "", "Number": "",
-                               "Number Status": "", "Language": "", "MV Records": 0,
+                               "Number Status": "", "Language": "", "URSA First Login": "", "MV Records": 0,
                                "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "❌ No contact"})
             continue
         for cid in cids:
@@ -782,7 +808,7 @@ if run_clicked or _use_cache:
             if not nids:
                 if not all_contact_nids:
                     assoc_rows.append({**cbase, "Number ID": "", "Number": "",
-                                       "Number Status": "", "Language": "", "MV Records": 0,
+                                       "Number Status": "", "Language": "", "URSA First Login": "", "MV Records": 0,
                                        "URSA Min": 0.0, "CfZ Min": 0.0, "Chain": "⚠️ No VRS number"})
                 continue
             for nid in nids:
@@ -794,6 +820,7 @@ if run_clicked or _use_cache:
                     "Number":    num_id_to_number.get(nid, ""),
                     "Number Status": num_id_meta.get(nid, {}).get("status", ""),
                     "Language": num_id_meta.get(nid, {}).get("language", ""),
+                    "URSA First Login": (num_id_meta.get(nid, {}).get("ursa_first_login", "") or "")[:10],
                     "MV Records": mv["months"] if mv else 0,
                     "URSA Min":  round(mv["ursa"], 1) if mv else 0.0,
                     "CfZ Min":   round(mv["cfz"], 1) if mv else 0.0,
