@@ -1,13 +1,54 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import requests
+import time
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from utils import (
-    require_auth, fetch_all, dash_spinner, norm, to_float,
+    require_auth, dash_spinner, norm, to_float,
+    headers as _hs_headers, BASE_URL as _BASE_URL,
     save_report, load_report, saved_at_label,
     COMMON_CSS, report_header, report_header_close,
 )
+
+
+def _search_seek(object_type, properties, base_filters, progress_label="Fetching…"):
+    """Search past HubSpot's 10k cap using hs_object_id seek pagination."""
+    url = f"{_BASE_URL}/crm/v3/objects/{object_type}/search"
+    results = []
+    last_id = "0"
+    ph = st.empty()
+    while True:
+        filters = list(base_filters) + [
+            {"propertyName": "hs_object_id", "operator": "GT", "value": last_id}
+        ]
+        payload = {
+            "limit": 100, "properties": properties,
+            "filterGroups": [{"filters": filters}],
+            "sorts": [{"propertyName": "hs_object_id", "direction": "ASCENDING"}],
+        }
+        for attempt in range(4):
+            resp = requests.post(url, headers=_hs_headers, json=payload, timeout=30)
+            if resp.status_code == 429:
+                time.sleep(1.5 * (attempt + 1)); continue
+            break
+        if resp.status_code != 200:
+            ph.empty()
+            st.error(f"HubSpot error {resp.status_code}: {resp.text[:200]}")
+            break
+        batch = resp.json().get("results", [])
+        if not batch:
+            break
+        results.extend(batch)
+        last_id = str(batch[-1]["id"])
+        ph.markdown(f"<div style='color:#6B7280;font-size:0.85rem;'>{progress_label} {len(results):,} records…</div>",
+                    unsafe_allow_html=True)
+        if len(batch) < 100:
+            break
+        time.sleep(0.05)
+    ph.empty()
+    return results
 
 st.set_page_config(page_title="Year-over-Year Comparison", layout="wide", page_icon="📆")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -43,6 +84,15 @@ with c2:
 with c3:
     start_year = st.selectbox("Compare from year", [2024, 2025, 2026], index=1)
 
+# URSA fields only exist in the new app (from March 2026), so they have no
+# pre-Mar-2026 data. CfZ and Usage span both eras.
+_URSA_ONLY = {"VRS Minutes (Legacy)", "URSA iOS Minutes", "URSA Android Minutes", "URSA Web Minutes"}
+if metric_label in _URSA_ONLY:
+    st.warning("⚠️ **New-app metric** — URSA iOS/Android/Web and URSA (VRS Legacy) minutes "
+               "only exist from **March 2026** onward. Months before that show zero, so a "
+               "Jul 2025 vs Jul 2026 comparison on this metric will look like all growth. "
+               "For a true year-over-year, use **CfZ Minutes** or **Usage Minutes**, which span both eras.")
+
 run = st.button("Run Comparison", type="primary")
 
 _CACHE_VERSION = 1
@@ -59,10 +109,11 @@ if run:
         filters.append({"propertyName": "service_type", "operator": "EQ", "value": svc})
 
     with dash_spinner("Fetching monthly values…"):
-        recs = fetch_all(
+        recs = _search_seek(
             "2-46246179",
             ["month_date", "service_type"] + _MV_FIELDS,
-            filter_groups=[{"filters": filters}],
+            filters,
+            progress_label="Fetching monthly values —",
         )
 
     # aggregate every metric by YYYY-MM so switching metric is instant
