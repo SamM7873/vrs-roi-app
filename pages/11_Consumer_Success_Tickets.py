@@ -112,7 +112,7 @@ def _date_range(preset):
 
 # ── filter UI ─────────────────────────────────────────────────────────────────
 
-col_preset, col_from, col_to, col_field, col_status = st.columns([2, 1, 1, 1.5, 1.5])
+col_preset, col_from, col_to, col_field, col_status, col_lang = st.columns([2, 1, 1, 1.5, 1.5, 1.2])
 
 with col_preset:
     preset = st.selectbox("Date range", PRESETS, index=0)  # default Jun 2026–Present
@@ -121,6 +121,18 @@ with col_field:
     date_field = "closed_date" if date_field_label == "Close Date" else "createdate"
 with col_status:
     status_filter = st.selectbox("Status", ["All", "Open", "Closed"], index=0)
+with col_lang:
+    lang_filter = st.selectbox("Language", ["EN only", "All", "ES only"], index=0,
+                               help="Filter matched numbers by language preference. "
+                                    "EN only excludes Spanish (ES) numbers from all counts and usage.")
+
+def _lang_ok(v):
+    n = norm(v)
+    if lang_filter == "All":
+        return True
+    if lang_filter == "EN only":
+        return n in ("en", "english", "")  # treat blank as English
+    return n in ("es", "spanish", "español", "espanol")
 
 if preset == "Custom Range":
     with col_from:
@@ -192,7 +204,7 @@ run_clicked = st.button("Run Consumer Success Tickets", use_container_width=Fals
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
 _sig = [preset, str(filter_start), str(filter_end), date_field, status_filter,
-        ticket_name_filter, bool(mv_all_months), bool(mv_close_month)]
+        ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
 _CS_CACHE_VARS = [
     "rows", "num_monthly", "mv_objects", "month_agg",
     "total_ursa_min", "total_cfz_min", "total_usage_min", "total_vrs_fcc",
@@ -574,6 +586,8 @@ if run_clicked or _use_cache:
                                 continue
                             if norm(p.get("number_status") or "") != "live":
                                 continue
+                            if not _lang_ok(p.get("language_preference")):
+                                continue
                             num = str(p.get("number") or "").strip()
                             if num:
                                 nid = str(obj["id"])
@@ -608,6 +622,8 @@ if run_clicked or _use_cache:
                     )
                     for obj in em_recs:
                         p = obj.get("properties", {})
+                        if not _lang_ok(p.get("language_preference")):
+                            continue
                         nid = str(obj["id"])
                         num = str(p.get("number") or "").strip()
                         em  = (p.get("email") or "").strip().lower()
