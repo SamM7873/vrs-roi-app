@@ -219,12 +219,22 @@ if len(years) >= 2:
                           (f"{'+' if delta>=0 else ''}{delta:,.0f}"),
                           (f"{'+' if (pct or 0)>=0 else ''}{pct:.0f}% vs last year" if pct is not None else "—"),
                           dcolor))
-    # full-year totals
-    tot_new = df[df["Year"] == y_new][metric_col].sum()
-    tot_old = df[df["Year"] == y_old][metric_col].sum()
-    tiles.append(tile(f"{y_new} YTD total", f"{tot_new:,.0f}", f"vs {tot_old:,.0f} in {y_old}"))
+    # Same-period totals: only the month numbers present in BOTH years, so the
+    # comparison is apples-to-apples (not full-year vs partial-year).
+    months_new = set(df[df["Year"] == y_new]["MonthNum"])
+    months_old = set(df[df["Year"] == y_old]["MonthNum"])
+    shared_months = sorted(months_new & months_old)
+    if shared_months:
+        tot_new = df[(df["Year"] == y_new) & (df["MonthNum"].isin(shared_months))][metric_col].sum()
+        tot_old = df[(df["Year"] == y_old) & (df["MonthNum"].isin(shared_months))][metric_col].sum()
+        span = f"{MONTH_NAMES[shared_months[0]-1]}–{MONTH_NAMES[shared_months[-1]-1]}"
+        tiles.append(tile(f"{span} total", f"{tot_new:,.0f}",
+                          f"{y_new} vs {tot_old:,.0f} in {y_old} (same months)"))
     st.markdown(f'<div style="display:grid;grid-template-columns:repeat({len(tiles)},1fr);gap:0.85rem;margin:0.5rem 0 1.25rem;">{"".join(tiles)}</div>',
                 unsafe_allow_html=True)
+    st.caption("⚠️ The current month may be partial (still accumulating), and 2025 usage "
+               "used legacy VRS minutes while 2026 uses URSA — so a drop can reflect the "
+               "metric change or an incomplete month, not only real decline.")
 
 # ── Grouped bar chart: month on x, one bar per year ──────────────────────────
 st.markdown(f"#### {metric_label} by Month — Year over Year")
