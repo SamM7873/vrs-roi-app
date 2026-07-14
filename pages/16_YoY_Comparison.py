@@ -272,14 +272,24 @@ year_cols = [str(y) for y in years]
 if len(years) >= 2:
     a, b = str(years[-2]), str(years[-1])
     disp[f"Δ {b} vs {a}"] = disp[b].fillna(0) - disp[a].fillna(0)
-    disp[f"Δ %"] = disp.apply(
-        lambda r: (f"{((r[b]-r[a])/r[a]*100):+.0f}%" if r.get(a) else "—"), axis=1)
+
+    def _pct(r):
+        old, new = r.get(a), r.get(b)
+        old = 0.0 if pd.isna(old) else float(old)
+        new = 0.0 if pd.isna(new) else float(new)
+        if old == 0 and new == 0:
+            return "—"
+        if old == 0:
+            return "New"          # no prior-year value to compare against
+        return f"{((new - old) / old * 100):+.0f}%"
+
+    disp["Δ %"] = disp.apply(_pct, axis=1)
 for yc in year_cols:
     if yc in disp.columns:
         disp[yc] = disp[yc].map(lambda x: f"{x:,.1f}" if pd.notna(x) else "—")
 if f"Δ {str(years[-1])} vs {str(years[-2])}" in disp.columns:
     dcol = f"Δ {str(years[-1])} vs {str(years[-2])}"
-    disp[dcol] = disp[dcol].map(lambda x: f"{x:+,.1f}")
+    disp[dcol] = disp[dcol].map(lambda x: f"{x:+,.1f}" if pd.notna(x) else "—")
 st.dataframe(disp, use_container_width=True, hide_index=True)
 st.download_button("Download CSV", disp.to_csv(index=False),
                    f"yoy_{metric_col}.csv", "text/csv")
