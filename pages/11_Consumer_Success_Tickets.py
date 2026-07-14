@@ -307,7 +307,7 @@ if run_clicked or _use_cache:
                         f"{BASE_URL}/crm/v4/associations/tickets/contacts/batch/read",
                         {"inputs": [{"id": tid} for tid in chunk]},
                     )
-                    if ar.status_code == 200:
+                    if ar.status_code in (200, 207):
                         for result in ar.json().get("results", []):
                             tid = str(result.get("from", {}).get("id", ""))
                             for assoc in result.get("to", []):
@@ -345,7 +345,7 @@ if run_clicked or _use_cache:
                         f"{BASE_URL}/crm/v3/objects/contacts/batch/read",
                         {"inputs": [{"id": c} for c in chunk], "properties": ["email"]},
                     )
-                    if br.status_code == 200:
+                    if br.status_code in (200, 207):
                         for c in br.json().get("results", []):
                             cid = str(c["id"])
                             email = (c.get("properties", {}).get("email") or "").strip().lower()
@@ -457,7 +457,7 @@ if run_clicked or _use_cache:
                         f"{BASE_URL}/crm/v4/associations/contacts/2-40974683/batch/read",
                         {"inputs": [{"id": cid} for cid in chunk]},
                     )
-                    if ar.status_code == 200:
+                    if ar.status_code in (200, 207):
                         for result in ar.json().get("results", []):
                             cid = str(result.get("from", {}).get("id", ""))
                             for assoc in result.get("to", []):
@@ -477,7 +477,7 @@ if run_clicked or _use_cache:
                     f"{BASE_URL}/crm/v4/associations/tickets/2-40974683/batch/read",
                     {"inputs": [{"id": tid} for tid in chunk]},
                 )
-                if ar.status_code == 200:
+                if ar.status_code in (200, 207):
                     for result in ar.json().get("results", []):
                         tid = str(result.get("from", {}).get("id", ""))
                         for assoc in result.get("to", []):
@@ -501,7 +501,7 @@ if run_clicked or _use_cache:
                                 f"{BASE_URL}/crm/v4/objects/tickets/{tid}/associations/{assoc_path}",
                                 headers=_headers, timeout=30,
                             )
-                            if gr.status_code == 200:
+                            if gr.status_code in (200, 207):
                                 for result in gr.json().get("results", []):
                                     oid = str(result.get("toObjectId") or "")
                                     if oid and oid not in target[tid]:
@@ -528,7 +528,7 @@ if run_clicked or _use_cache:
                     f"{BASE_URL}/crm/v4/associations/contacts/2-40974683/batch/read",
                     {"inputs": [{"id": cid} for cid in chunk]},
                 )
-                if ar.status_code == 200:
+                if ar.status_code in (200, 207):
                     for result in ar.json().get("results", []):
                         cid = str(result.get("from", {}).get("id", ""))
                         for assoc in result.get("to", []):
@@ -567,7 +567,7 @@ if run_clicked or _use_cache:
                          "properties": ["number", "service_type", "number_status",
                                         "language_preference", "ursa_first_login"]},
                     )
-                    if br.status_code == 200:
+                    if br.status_code in (200, 207):
                         for obj in br.json().get("results", []):
                             p = obj.get("properties", {})
                             if norm(p.get("service_type") or "") != "vrs":
@@ -917,14 +917,25 @@ if run_clicked or _use_cache:
   </div>
 </div>""", unsafe_allow_html=True)
 
+    # Count numbers that have a URSA first login recorded
+    _ursa_login_count = sum(
+        1 for _nid in num_id_to_number
+        if (num_id_meta.get(_nid, {}).get("ursa_first_login") or "").strip()
+    )
+
     # ── Monthly Values section ─────────────────────────────────────────────────
     if vrs_numbers or num_monthly:
         st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.5rem 0 0.75rem;'>Monthly Values — VRS Numbers</div>", unsafe_allow_html=True)
         st.markdown(f"""
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin-bottom:1.5rem;">
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0.85rem;margin-bottom:1.5rem;">
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Numbers Matched</div>
     <div style="font-size:1.4rem;font-weight:800;color:#1F2937;">{len(vrs_numbers):,}</div>
+  </div>
+  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">URSA First Login</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#3B82F6;font-variant-numeric:tabular-nums;">{_ursa_login_count:,}</div>
+    <div style="font-size:0.72rem;color:#93b7f6;">numbers logged in</div>
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">URSA Minutes</div>
