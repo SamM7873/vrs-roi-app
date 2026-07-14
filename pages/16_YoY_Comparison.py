@@ -169,6 +169,45 @@ df["MonthName"] = df["MonthNum"].map(lambda m: MONTH_NAMES[m - 1])
 
 years = sorted(df["Year"].unique())
 
+# ── Metric cards: all metrics at a glance for the current month, YoY ─────────
+def _mval(field, year, mnum):
+    row = df[(df["Year"] == year) & (df["MonthNum"] == mnum)]
+    return float(row[field].sum()) if not row.empty and field in df.columns else 0.0
+
+def metric_card(label, field, color):
+    mnum = date.today().month
+    y_new = years[-1] if years else date.today().year
+    y_old = years[-2] if len(years) >= 2 else None
+    cur = _mval(field, y_new, mnum)
+    prev = _mval(field, y_old, mnum) if y_old else None
+    if prev is not None and prev > 0:
+        pct = (cur - prev) / prev * 100
+        delta_html = (f'<span style="color:{"#00A651" if pct>=0 else "#EF4444"};font-weight:700;">'
+                      f'{"▲" if pct>=0 else "▼"} {abs(pct):.0f}%</span>'
+                      f'<span style="color:#9CA3AF;"> vs {y_old}</span>')
+    elif prev is not None:
+        delta_html = f'<span style="color:#9CA3AF;">new vs {y_old}</span>'
+    else:
+        delta_html = '<span style="color:#9CA3AF;">—</span>'
+    return f"""<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;
+        padding:1rem 1.1rem;border-top:3px solid {color};">
+      <div style="font-size:0.66rem;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6B7280;margin-bottom:0.35rem;">{label}</div>
+      <div style="font-size:1.5rem;font-weight:800;color:#1F2937;font-variant-numeric:tabular-nums;line-height:1.1;">{cur:,.0f}</div>
+      <div style="font-size:0.72rem;margin-top:0.2rem;">{delta_html}</div>
+    </div>"""
+
+_mn = MONTH_NAMES[date.today().month - 1]
+st.markdown(f"#### {_mn} {years[-1] if years else ''} — All Metrics at a Glance")
+_cards = [
+    metric_card("CfZ Minutes",     "cfz_minutes",          "#F59E0B"),
+    metric_card("URSA iOS",        "ursa_ios_minutes",     "#3B82F6"),
+    metric_card("URSA Android",    "ursa_android_minutes", "#8B5CF6"),
+    metric_card("URSA Web",        "ursa_web_minutes",     "#06B6D4"),
+    metric_card("URSA Minutes",    "ursa_minutes",         "#00A651"),
+]
+st.markdown(f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin:0.25rem 0 1.5rem;">{"".join(_cards)}</div>',
+            unsafe_allow_html=True)
+
 # ── Pivot: rows = calendar month, columns = year ─────────────────────────────
 pivot = (
     df.pivot_table(index=["MonthNum", "MonthName"], columns="Year",
