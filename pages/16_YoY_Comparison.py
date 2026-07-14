@@ -64,17 +64,12 @@ report_header_close()
 MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-# Era model: Usage = CfZ + VRS-side, where VRS-side is legacy VRS minutes
-# before May 2026 and URSA minutes after. So "VRS-side" = usage − cfz works
-# across BOTH eras. URSA iOS/Android/Web only exist from May 2026 onward.
 METRICS = {
-    "VRS Minutes (Legacy + URSA)":  "vrs_side_minutes",   # computed = usage − cfz, cross-era
-    "CfZ Minutes":                  "cfz_minutes",
-    "Usage Minutes (VRS + CfZ)":    "usage_minutes",
-    "URSA iOS Minutes":             "ursa_ios_minutes",
-    "URSA Android Minutes":         "ursa_android_minutes",
-    "URSA Web Minutes":             "ursa_web_minutes",
-    "URSA Minutes (new app)":       "ursa_minutes",
+    "CfZ Minutes":          "cfz_minutes",
+    "URSA Minutes":         "ursa_minutes",
+    "URSA iOS Minutes":     "ursa_ios_minutes",
+    "URSA Android Minutes": "ursa_android_minutes",
+    "URSA Web Minutes":     "ursa_web_minutes",
 }
 _MV_FIELDS = ["ursa_minutes", "ursa_ios_minutes", "ursa_android_minutes",
               "ursa_web_minutes", "cfz_minutes", "usage_minutes"]
@@ -87,17 +82,11 @@ with c2:
 with c3:
     start_year = st.selectbox("Compare from year", [2024, 2025, 2026], index=1)
 
-# URSA platform fields only exist in the new app (from May 2026). The
-# VRS-side (usage − cfz), CfZ, and Usage metrics all span both eras.
-_URSA_ONLY = {"URSA iOS Minutes", "URSA Android Minutes", "URSA Web Minutes", "URSA Minutes (new app)"}
+# URSA metrics only exist in the new app (from May 2026). CfZ spans both eras.
+_URSA_ONLY = {"URSA Minutes", "URSA iOS Minutes", "URSA Android Minutes", "URSA Web Minutes"}
 if metric_label in _URSA_ONLY:
-    st.warning("⚠️ **New-app metric** — URSA iOS/Android/Web and URSA minutes only exist from "
-               "**May 2026** onward. Earlier months show zero, so a Jul 2025 vs Jul 2026 "
-               "comparison on this metric will look like all growth. For a true year-over-year "
-               "use **VRS Minutes (Legacy + URSA)**, **CfZ Minutes**, or **Usage Minutes** — all span both eras.")
-elif metric_label == "VRS Minutes (Legacy + URSA)":
-    st.caption("VRS-side minutes = Usage − CfZ. This equals legacy VRS minutes before May 2026 "
-               "and URSA minutes after, so it compares cleanly across years.")
+    st.caption("URSA metrics only exist from May 2026, so earlier months show no data. "
+               "For a full year-over-year comparison, use **CfZ Minutes**.")
 
 run = st.button("Run Comparison", type="primary")
 
@@ -134,12 +123,8 @@ if run:
             a[f] += to_float(p.get(f)) or 0.0
         a["records"] += 1
 
-    rows = []
-    for mk, vals in sorted(agg.items()):
-        row = {"Month": mk, **{k: round(v, 1) for k, v in vals.items()}}
-        # cross-era VRS-side minutes = usage − cfz
-        row["vrs_side_minutes"] = round(vals["usage_minutes"] - vals["cfz_minutes"], 1)
-        rows.append(row)
+    rows = [{"Month": mk, **{k: round(v, 1) for k, v in vals.items()}}
+            for mk, vals in sorted(agg.items())]
     df = pd.DataFrame(rows)
     save_report(cache_key, {"df": df, "svc": svc, "start_year": start_year, "version": _CACHE_VERSION})
 
@@ -149,10 +134,6 @@ if cached is None or cached.get("df") is None or cached["df"].empty:
     st.stop()
 
 df = cached["df"]
-# Backfill computed column for reports saved before it existed
-if "vrs_side_minutes" not in df.columns and {"usage_minutes", "cfz_minutes"} <= set(df.columns):
-    df = df.copy()
-    df["vrs_side_minutes"] = (df["usage_minutes"] - df["cfz_minutes"]).round(1)
 metric_col = METRICS[metric_label]
 if metric_col not in df.columns:
     st.info("This saved report predates the selected metric — click **Run Comparison** to refresh.")
