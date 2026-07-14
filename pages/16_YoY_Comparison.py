@@ -66,6 +66,7 @@ MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 METRICS = {
     "CfZ Minutes":          "cfz_minutes",
+    "Usage Minutes":        "usage_minutes",
     "URSA Minutes":         "ursa_minutes",
     "URSA iOS Minutes":     "ursa_ios_minutes",
     "URSA Android Minutes": "ursa_android_minutes",
