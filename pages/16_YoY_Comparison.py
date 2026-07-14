@@ -67,7 +67,7 @@ MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 # URSA Minutes = iOS + Android + Web (computed), so it equals the platform sum.
 METRICS = {
     "CfZ Minutes":          "cfz_minutes",
-    "Usage Minutes":        "usage_minutes",
+    "Usage Minutes":        "usage_calc",
     "URSA Minutes":         "ursa_sum",
     "URSA iOS Minutes":     "ursa_ios_minutes",
     "URSA Android Minutes": "ursa_android_minutes",
@@ -128,9 +128,13 @@ if run:
     rows = []
     for mk, vals in sorted(agg.items()):
         row = {"Month": mk, **{k: round(v, 1) for k, v in vals.items()}}
-        # URSA Minutes = iOS + Android + Web
-        row["ursa_sum"] = round(vals["ursa_ios_minutes"] + vals["ursa_android_minutes"]
-                                + vals["ursa_web_minutes"], 1)
+        # URSA Minutes = iOS + Android + Web (platform sum)
+        ursa_sum = vals["ursa_ios_minutes"] + vals["ursa_android_minutes"] + vals["ursa_web_minutes"]
+        row["ursa_sum"] = round(ursa_sum, 1)
+        # Usage = CfZ + platform-summed URSA. Replace the raw URSA in usage_minutes
+        # with the platform sum so untagged URSA minutes are excluded. For legacy
+        # 2025 months (no URSA platforms) this equals the raw usage_minutes.
+        row["usage_calc"] = round(vals["usage_minutes"] - vals["ursa_minutes"] + ursa_sum, 1)
         rows.append(row)
     df = pd.DataFrame(rows)
     save_report(cache_key, {"df": df, "svc": svc, "start_year": start_year, "version": _CACHE_VERSION})
@@ -145,6 +149,9 @@ df = cached["df"]
 if "ursa_sum" not in df.columns and {"ursa_ios_minutes", "ursa_android_minutes", "ursa_web_minutes"} <= set(df.columns):
     df = df.copy()
     df["ursa_sum"] = (df["ursa_ios_minutes"] + df["ursa_android_minutes"] + df["ursa_web_minutes"]).round(1)
+if "usage_calc" not in df.columns and {"usage_minutes", "ursa_minutes", "ursa_sum"} <= set(df.columns):
+    df = df.copy()
+    df["usage_calc"] = (df["usage_minutes"] - df["ursa_minutes"] + df["ursa_sum"]).round(1)
 metric_col = METRICS[metric_label]
 if metric_col not in df.columns:
     st.info("This saved report predates the selected metric — click **Run Comparison** to refresh.")
