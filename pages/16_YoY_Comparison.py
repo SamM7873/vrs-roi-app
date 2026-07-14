@@ -174,30 +174,22 @@ def _mval(field, year, mnum):
     row = df[(df["Year"] == year) & (df["MonthNum"] == mnum)]
     return float(row[field].sum()) if not row.empty and field in df.columns else 0.0
 
+# Focus on the latest month that actually has data (the current data month)
+_latest = df["Month"].max()              # YYYY-MM
+_cur_year = int(_latest[:4])
+_cur_mnum = int(_latest[5:7])
+
 def metric_card(label, field, color):
-    mnum = date.today().month
-    y_new = years[-1] if years else date.today().year
-    y_old = years[-2] if len(years) >= 2 else None
-    cur = _mval(field, y_new, mnum)
-    prev = _mval(field, y_old, mnum) if y_old else None
-    if prev is not None and prev > 0:
-        pct = (cur - prev) / prev * 100
-        delta_html = (f'<span style="color:{"#00A651" if pct>=0 else "#EF4444"};font-weight:700;">'
-                      f'{"▲" if pct>=0 else "▼"} {abs(pct):.0f}%</span>'
-                      f'<span style="color:#9CA3AF;"> vs {y_old}</span>')
-    elif prev is not None:
-        delta_html = f'<span style="color:#9CA3AF;">new vs {y_old}</span>'
-    else:
-        delta_html = '<span style="color:#9CA3AF;">—</span>'
+    cur = _mval(field, _cur_year, _cur_mnum)
     return f"""<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;
-        padding:1rem 1.1rem;border-top:3px solid {color};">
-      <div style="font-size:0.66rem;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6B7280;margin-bottom:0.35rem;">{label}</div>
-      <div style="font-size:1.5rem;font-weight:800;color:#1F2937;font-variant-numeric:tabular-nums;line-height:1.1;">{cur:,.0f}</div>
-      <div style="font-size:0.72rem;margin-top:0.2rem;">{delta_html}</div>
+        padding:1.1rem 1.15rem;border-top:3px solid {color};">
+      <div style="font-size:0.66rem;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#6B7280;margin-bottom:0.4rem;">{label}</div>
+      <div style="font-size:1.6rem;font-weight:800;color:#1F2937;font-variant-numeric:tabular-nums;line-height:1.1;">{cur:,.0f}</div>
+      <div style="font-size:0.72rem;color:#9CA3AF;margin-top:0.2rem;">minutes</div>
     </div>"""
 
-_mn = MONTH_NAMES[date.today().month - 1]
-st.markdown(f"#### {_mn} {years[-1] if years else ''} — All Metrics at a Glance")
+_mn = MONTH_NAMES[_cur_mnum - 1]
+st.markdown(f"#### {_mn} {_cur_year} — Current Month")
 _cards = [
     metric_card("CfZ Minutes",     "cfz_minutes",          "#F59E0B"),
     metric_card("URSA iOS",        "ursa_ios_minutes",     "#3B82F6"),
