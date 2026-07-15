@@ -206,25 +206,47 @@ def _lookup_number(phone):
     return None
 
 def _lookup_by_email(email):
-    """Lookup a VRS number by email."""
+    """Lookup a VRS number by contact email."""
     if not email or not email.strip():
         return None
     email = email.strip().lower()
     try:
-        resp = requests.post(
-            f"{BASE_URL}/crm/v3/objects/2-40974683/search",
+        # First, find the contact by email
+        contact_resp = requests.post(
+            f"{BASE_URL}/crm/v3/objects/contacts/search",
             headers=_headers,
             json={
                 "filterGroups": [[{"propertyName": "email", "operator": "EQ", "value": email}]],
-                "properties": ["number_", "contact_name", "email", "number_status", "service_type", "organization"],
+                "properties": ["firstname", "lastname", "email"],
                 "limit": 1,
             },
             timeout=10,
         )
-        if resp.status_code == 200:
-            results = resp.json().get("results", [])
-            if results:
-                return results[0]
+        if contact_resp.status_code == 200:
+            contacts = contact_resp.json().get("results", [])
+            if not contacts:
+                return None
+            contact_id = contacts[0]["id"]
+            # Get associated VRS numbers
+            assoc_resp = requests.get(
+                f"{BASE_URL}/crm/v4/objects/contacts/{contact_id}/associations/2-40974683",
+                headers=_headers,
+                timeout=10,
+            )
+            if assoc_resp.status_code == 200:
+                associations = assoc_resp.json().get("results", [])
+                if not associations:
+                    return None
+                number_id = associations[0]["id"]
+                # Fetch the number details
+                num_resp = requests.get(
+                    f"{BASE_URL}/crm/v3/objects/2-40974683/{number_id}",
+                    headers=_headers,
+                    params={"properties": ["number_", "contact_name", "email", "number_status", "service_type", "organization"]},
+                    timeout=10,
+                )
+                if num_resp.status_code == 200:
+                    return num_resp.json()
     except Exception as e:
         st.error(f"Error looking up email: {e}")
     return None
@@ -235,30 +257,58 @@ def _lookup_by_name(name):
         return None
     name = name.strip()
     try:
-        resp = requests.post(
-            f"{BASE_URL}/crm/v3/objects/2-40974683/search",
+        # Search contacts by name
+        contact_resp = requests.post(
+            f"{BASE_URL}/crm/v3/objects/contacts/search",
             headers=_headers,
             json={
-                "filterGroups": [[{"propertyName": "contact_name", "operator": "CONTAINS", "value": name}]],
-                "properties": ["number_", "contact_name", "email", "number_status", "service_type", "organization"],
-                "limit": 10,
+                "filterGroups": [[{"propertyName": "firstname", "operator": "CONTAINS", "value": name}]],
+                "properties": ["firstname", "lastname", "email"],
+                "limit": 50,
             },
             timeout=10,
         )
-        if resp.status_code == 200:
-            results = resp.json().get("results", [])
-            if not results:
-                return None
-            if len(results) == 1:
-                return results[0]
-            # Multiple matches - show selector
-            st.write(f"**Found {len(results)} matches:**")
-            selected_idx = st.selectbox(
-                "Select a customer",
-                range(len(results)),
-                format_func=lambda i: f"{results[i]['properties'].get('contact_name', '—')} ({results[i]['properties'].get('number_', '—')})"
+        if contact_resp.status_code != 200:
+            return None
+        contacts = contact_resp.json().get("results", [])
+        if not contacts:
+            return None
+
+        # For each contact, try to find associated VRS number
+        vrs_numbers = []
+        for contact in contacts:
+            contact_id = contact["id"]
+            assoc_resp = requests.get(
+                f"{BASE_URL}/crm/v4/objects/contacts/{contact_id}/associations/2-40974683",
+                headers=_headers,
+                timeout=10,
             )
-            return results[selected_idx]
+            if assoc_resp.status_code == 200:
+                associations = assoc_resp.json().get("results", [])
+                if associations:
+                    number_id = associations[0]["id"]
+                    num_resp = requests.get(
+                        f"{BASE_URL}/crm/v3/objects/2-40974683/{number_id}",
+                        headers=_headers,
+                        params={"properties": ["number_", "contact_name", "email", "number_status", "service_type", "organization"]},
+                        timeout=10,
+                    )
+                    if num_resp.status_code == 200:
+                        vrs_numbers.append(num_resp.json())
+
+        if not vrs_numbers:
+            return None
+        if len(vrs_numbers) == 1:
+            return vrs_numbers[0]
+
+        # Multiple matches - show selector
+        st.write(f"**Found {len(vrs_numbers)} matches:**")
+        selected_idx = st.selectbox(
+            "Select a customer",
+            range(len(vrs_numbers)),
+            format_func=lambda i: f"{vrs_numbers[i]['properties'].get('contact_name', '—')} ({vrs_numbers[i]['properties'].get('number_', '—')})"
+        )
+        return vrs_numbers[selected_idx]
     except Exception as e:
         st.error(f"Error looking up name: {e}")
     return None
