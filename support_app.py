@@ -181,13 +181,12 @@ def _fmt_datetime(v):
     dt = _parse_dt(v)
     return dt.strftime("%b %d, %Y at %I:%M %p") if dt else "—"
 
-def _lookup_number(phone):
-    """Lookup a VRS number by phone number."""
-    if not phone or not phone.strip():
-        return None
-    phone = phone.strip()
+def _lookup_customer(search_term):
+    """Lookup all VRS and Convo Now numbers for a customer."""
+    if not search_term or not search_term.strip():
+        return []
+    search_term = search_term.strip()
     try:
-        # Try exact match first
         resp = requests.post(
             f"{BASE_URL}/crm/v3/objects/2-40974683/search",
             headers=_headers,
@@ -195,36 +194,35 @@ def _lookup_number(phone):
                 "filterGroups": [
                     {
                         "filters": [
-                            {"propertyName": "number", "operator": "EQ", "value": phone},
+                            {"propertyName": "number", "operator": "EQ", "value": search_term},
                             {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
                             {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
                         ]
                     },
                     {
                         "filters": [
-                            {"propertyName": "email", "operator": "EQ", "value": phone},
+                            {"propertyName": "email", "operator": "EQ", "value": search_term},
                             {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
                             {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
                         ]
                     }
                 ],
                 "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
-                "limit": 1,
+                "limit": 100,
             },
             timeout=10,
         )
         if resp.status_code == 200:
             results = resp.json().get("results", [])
-            if results:
-                return results[0]
+            return results
     except Exception as e:
-        st.error(f"Error looking up number: {e}")
-    return None
+        st.error(f"Error looking up customer: {e}")
+    return []
 
-def _lookup_by_email(email):
-    """Lookup a VRS number by email."""
+def _lookup_by_email(email, return_all=False):
+    """Lookup VRS/Convo Now numbers by email."""
     if not email or not email.strip():
-        return None
+        return [] if return_all else None
     email = email.strip()
     try:
         resp = requests.post(
@@ -241,12 +239,14 @@ def _lookup_by_email(email):
                     }
                 ],
                 "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
-                "limit": 10,
+                "limit": 100,
             },
             timeout=10,
         )
         if resp.status_code == 200:
             results = resp.json().get("results", [])
+            if return_all:
+                return results
             if not results:
                 return None
             if len(results) == 1:
@@ -261,12 +261,12 @@ def _lookup_by_email(email):
             return results[selected_idx]
     except Exception as e:
         st.error(f"Error looking up email: {e}")
-    return None
+    return [] if return_all else None
 
-def _lookup_by_name(name):
-    """Lookup a VRS number by first/last name (partial match)."""
+def _lookup_by_name(name, return_all=False):
+    """Lookup VRS/Convo Now numbers by first/last name (partial match)."""
     if not name or not name.strip():
-        return None
+        return [] if return_all else None
     name = name.strip()
     try:
         # Search by first_name or last_name containing the input
@@ -289,12 +289,14 @@ def _lookup_by_name(name):
                     },
                 ],
                 "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
-                "limit": 10,
+                "limit": 100,
             },
             timeout=10,
         )
         if resp.status_code == 200:
             results = resp.json().get("results", [])
+            if return_all:
+                return results
             if not results:
                 return None
             if len(results) == 1:
@@ -309,7 +311,7 @@ def _lookup_by_name(name):
             return results[selected_idx]
     except Exception as e:
         st.error(f"Error looking up name: {e}")
-    return None
+    return [] if return_all else None
 
 def _get_number_tickets(number_id):
     """Fetch all tickets associated with a VRS number."""
@@ -393,7 +395,7 @@ def _create_ticket(number_id, subject, description, priority="MEDIUM", pipeline_
 
 # ── VRS Lookup Section ────────────────────────────────────────────────────────
 
-st.subheader("🔍 VRS Lookup")
+st.subheader("🔍 Customer Account Lookup")
 
 # Search type selector
 search_type = st.radio(
@@ -429,134 +431,172 @@ with col1:
 with col2:
     lookup_btn = st.button("Search", use_container_width=True, type="primary")
 
-number_obj = None
+customer_numbers = []
+selected_number = None
+
 if lookup_btn or search_input:
     if search_input:
-        with st.spinner("Looking up..."):
+        with st.spinner("Looking up customer accounts..."):
             if search_type == "Phone Number":
-                number_obj = _lookup_number(search_input)
+                customer_numbers = _lookup_customer(search_input)
             elif search_type == "Email":
-                number_obj = _lookup_by_email(search_input)
+                customer_numbers = _lookup_by_email(search_input, return_all=True)
             else:  # Contact Name
-                number_obj = _lookup_by_name(search_input)
-        if number_obj:
-            st.success("✓ VRS number found")
+                customer_numbers = _lookup_by_name(search_input, return_all=True)
+
+        if customer_numbers:
+            st.success(f"✓ Found {len(customer_numbers)} account(s)")
         else:
-            st.warning(f"⚠️ No VRS number found. Check the {search_type.lower()} and try again.")
+            st.warning(f"⚠️ No VRS or Convo Now accounts found. Check the {search_type.lower()} and try again.")
 
-# Display number details if found
-if number_obj:
-    props = number_obj.get("properties", {})
-    nid = number_obj.get("id")
-    first_name = props.get("first_name", "")
-    last_name = props.get("last_name", "")
-    contact_name = f"{first_name} {last_name}".strip() or "—"
-    email = props.get("email", "—")
-    phone = props.get("number", "—")
-    status = props.get("number_status", "—")
-    service_type = props.get("service_type", "—")
-    usage_type = props.get("usage_type", "—")
-
+# Display all customer accounts in card format
+if customer_numbers:
     st.divider()
+    st.subheader("📋 Customer Accounts")
 
-    # Customer info
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown('<div class="metric-card"><small style="color:#6b7280;">Contact Name</small><br><strong>' + contact_name + '</strong></div>', unsafe_allow_html=True)
-    with col2:
-        st.markdown('<div class="metric-card"><small style="color:#6b7280;">Email</small><br><strong>' + email + '</strong></div>', unsafe_allow_html=True)
-    with col3:
-        st.markdown('<div class="metric-card"><small style="color:#6b7280;">Phone</small><br><strong>' + phone + '</strong></div>', unsafe_allow_html=True)
+    # Get customer info from first account
+    first_account = customer_numbers[0].get("properties", {})
+    customer_name = f"{first_account.get('first_name', '')} {first_account.get('last_name', '')}".strip() or "—"
+    customer_email = first_account.get("email", "—")
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown('<div class="metric-card"><small style="color:#6b7280;">Status</small><br><strong>' + status + '</strong></div>', unsafe_allow_html=True)
-    with col2:
-        st.markdown('<div class="metric-card"><small style="color:#6b7280;">Service Type</small><br><strong>' + service_type + '</strong></div>', unsafe_allow_html=True)
-    with col3:
-        st.markdown('<div class="metric-card"><small style="color:#6b7280;">Usage Type</small><br><strong>' + usage_type + '</strong></div>', unsafe_allow_html=True)
+    st.write(f"**Customer:** {customer_name} | **Email:** {customer_email}")
 
-    # Ticket creation form
-    st.divider()
-    st.subheader("📝 Create Support Ticket")
-    with st.form("ticket_form"):
-        subject = st.text_input("Ticket Subject *", placeholder="Brief description of the issue")
-        description = st.text_area("Description *", placeholder="Detailed description of the issue", height=120)
+    # Display accounts in grid
+    cols = st.columns(min(3, len(customer_numbers)))
+    for idx, account in enumerate(customer_numbers):
+        props = account.get("properties", {})
+        nid = account.get("id")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            priority = st.selectbox("Priority", ["MEDIUM", "HIGH", "LOW"], index=0)
-        with col2:
-            # Fetch and display pipelines
-            pipelines = _get_ticket_pipelines()
-            if pipelines:
-                selected_pipeline = st.selectbox("Pipeline", list(pipelines.keys()))
-                pipeline_id = pipelines[selected_pipeline]
-            else:
-                st.warning("No pipelines available")
-                pipeline_id = None
+        number = props.get("number", "—")
+        status = props.get("number_status", "—")
+        service_type = props.get("service_type", "—")
+        usage_type = props.get("usage_type", "—")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            submitted = st.form_submit_button("✓ Create Ticket", use_container_width=True, type="primary")
-        with col2:
-            st.form_submit_button("Cancel", use_container_width=True)
+        # Color code by service type
+        service_color = "#667eea" if service_type == "VRS" else "#764ba2"
+        status_color = "#2DB84B" if status == "Live" else "#EF4444"
 
-        if submitted:
-            if not subject or not description:
-                st.error("❌ Subject and Description are required.")
-            else:
-                with st.spinner("Creating ticket..."):
-                    ticket = _create_ticket(nid, subject, description, priority, pipeline_id)
-                    if ticket:
-                        st.success("✓ Ticket created successfully!")
-                        st.markdown(f"""
-                        <div class="metric-card">
-                            <strong>Ticket ID:</strong> <code>{ticket["id"]}</code><br>
-                            <strong>Subject:</strong> {ticket["properties"]["subject"]}<br>
-                            <strong>Pipeline:</strong> {selected_pipeline if 'pipeline_id' in locals() and pipeline_id else '—'}
-                        </div>
-                        """, unsafe_allow_html=True)
+        with cols[idx % len(cols)]:
+            st.markdown(f"""
+            <div class="metric-card" style="border-left: 4px solid {service_color};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <div>
+                        <strong style="font-size:1.1rem;">{service_type}</strong><br>
+                        <small style="color:#6b7280;">{number}</small>
+                    </div>
+                    <div style="background:{status_color};color:white;padding:4px 12px;border-radius:4px;font-size:0.75rem;font-weight:700;">
+                        {status}
+                    </div>
+                </div>
+                <div style="border-top:1px solid #e5e7eb;padding-top:0.75rem;font-size:0.85rem;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+                        <div><small style="color:#6b7280;">Usage Type</small><br>{usage_type}</div>
+                    </div>
+                    <button onclick="document.querySelector('[data-testid=\\\"stButton\\\"]').click();"
+                            style="width:100%;margin-top:0.75rem;padding:6px;background:#667eea;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.85rem;">
+                        Select Account
+                    </button>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Store account reference when clicked
+            if st.button(f"Select {service_type} - {number}", key=f"account_{nid}", use_container_width=False):
+                st.session_state.selected_account = {"id": nid, "number": number, "service_type": service_type}
+
+    # Use selected account if available
+    if "selected_account" in st.session_state:
+        selected_number = st.session_state.selected_account
+
+    # Ticket creation form (only show if account is selected)
+    if selected_number:
+        st.divider()
+        st.subheader("📝 Create Support Ticket")
+        st.info(f"Creating ticket for: **{selected_number['service_type']}** - {selected_number['number']}")
+
+        with st.form("ticket_form"):
+            subject = st.text_input("Ticket Subject *", placeholder="Brief description of the issue")
+            description = st.text_area("Description *", placeholder="Detailed description of the issue", height=120)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                priority = st.selectbox("Priority", ["MEDIUM", "HIGH", "LOW"], index=0)
+            with col2:
+                # Fetch and display pipelines
+                pipelines = _get_ticket_pipelines()
+                if pipelines:
+                    selected_pipeline = st.selectbox("Pipeline", list(pipelines.keys()))
+                    pipeline_id = pipelines[selected_pipeline]
+                else:
+                    st.warning("No pipelines available")
+                    pipeline_id = None
+
+            col1, col2 = st.columns(2)
+            with col1:
+                submitted = st.form_submit_button("✓ Create Ticket", use_container_width=True, type="primary")
+            with col2:
+                st.form_submit_button("Cancel", use_container_width=True)
+
+            if submitted:
+                if not subject or not description:
+                    st.error("❌ Subject and Description are required.")
+                else:
+                    with st.spinner("Creating ticket..."):
+                        ticket = _create_ticket(selected_number["id"], subject, description, priority, pipeline_id)
+                        if ticket:
+                            st.success("✓ Ticket created successfully!")
+                            st.markdown(f"""
+                            <div class="metric-card">
+                                <strong>Ticket ID:</strong> <code>{ticket["id"]}</code><br>
+                                <strong>Subject:</strong> {ticket["properties"]["subject"]}<br>
+                                <strong>For Account:</strong> {selected_number['service_type']} - {selected_number['number']}<br>
+                                <strong>Pipeline:</strong> {selected_pipeline if 'pipeline_id' in locals() and pipeline_id else '—'}
+                            </div>
+                            """, unsafe_allow_html=True)
+    else:
+        if customer_numbers:
+            st.info("👆 Select an account above to create a ticket")
 
     # Display existing tickets
-    st.divider()
-    st.subheader("🎫 Associated Tickets")
-    with st.spinner("Loading tickets..."):
-        tickets = _get_number_tickets(nid)
+    if selected_number:
+        st.divider()
+        st.subheader("🎫 Tickets")
+        with st.spinner("Loading tickets..."):
+            tickets = _get_number_tickets(selected_number["id"])
 
-    if not tickets:
-        st.info("No tickets found for this number.")
-    else:
-        st.write(f"**{len(tickets)} ticket(s)**")
-        for ticket in tickets:
-            tid = ticket["id"]
-            props = ticket.get("properties", {})
-            subject = props.get("subject", "—")
-            priority = props.get("hs_ticket_priority", "—")
-            stage = props.get("hs_pipeline_stage", "—")
-            created = _fmt_datetime(props.get("createdate"))
-            closed = _fmt_date(props.get("closed_date"))
-            content = props.get("content", "—")
+        if not tickets:
+            st.info(f"No tickets found for {selected_number['service_type']} - {selected_number['number']}")
+        else:
+            st.write(f"**{len(tickets)} ticket(s)** for {selected_number['service_type']} - {selected_number['number']}")
+            for ticket in tickets:
+                tid = ticket["id"]
+                props = ticket.get("properties", {})
+                subject = props.get("subject", "—")
+                priority = props.get("hs_ticket_priority", "—")
+                stage = props.get("hs_pipeline_stage", "—")
+                created = _fmt_datetime(props.get("createdate"))
+                closed = _fmt_date(props.get("closed_date"))
+                content = props.get("content", "—")
 
-            # Color code priority
-            priority_color = {"HIGH": "#ef4444", "MEDIUM": "#f59e0b", "LOW": "#10b981"}.get(priority, "#6b7280")
+                # Color code priority
+                priority_color = {"HIGH": "#ef4444", "MEDIUM": "#f59e0b", "LOW": "#10b981"}.get(priority, "#6b7280")
 
-            with st.expander(f"🎫 {subject} · <span style='color:{priority_color};font-weight:700;'>{priority}</span> · {created}", unsafe_allow_html=True):
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Ticket ID</small><br><code>{tid}</code></div>', unsafe_allow_html=True)
-                with col2:
-                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Priority</small><br><strong>{priority}</strong></div>', unsafe_allow_html=True)
-                with col3:
-                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Stage</small><br><strong>{stage}</strong></div>', unsafe_allow_html=True)
+                with st.expander(f"🎫 {subject} · <span style='color:{priority_color};font-weight:700;'>{priority}</span> · {created}", unsafe_allow_html=True):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Ticket ID</small><br><code>{tid}</code></div>', unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Priority</small><br><strong>{priority}</strong></div>', unsafe_allow_html=True)
+                    with col3:
+                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Stage</small><br><strong>{stage}</strong></div>', unsafe_allow_html=True)
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Created</small><br>{created}</div>', unsafe_allow_html=True)
-                with col2:
-                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Closed</small><br>{closed}</div>', unsafe_allow_html=True)
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Created</small><br>{created}</div>', unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Closed</small><br>{closed}</div>', unsafe_allow_html=True)
 
-                st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Description</small><br>{content if content and content != "—" else "<em>(No description)</em>"}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Description</small><br>{content if content and content != "—" else "<em>(No description)</em>"}</div>', unsafe_allow_html=True)
 
 # Logout button
 st.divider()
