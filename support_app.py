@@ -390,7 +390,7 @@ if number_obj:
                 with col2:
                     st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Closed</small><br>{closed}</div>', unsafe_allow_html=True)
 
-                st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Description</small><br>{content if content and content != "—" else "<em>(No description)</em>"}</div>', unsafe_allow_html=True, unsafe_allow_html=True)
+                st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Description</small><br>{content if content and content != "—" else "<em>(No description)</em>"}</div>', unsafe_allow_html=True)
 
 # Logout button
 st.divider()
