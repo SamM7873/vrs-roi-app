@@ -393,61 +393,32 @@ def _create_ticket(number_id, subject, description, priority="MEDIUM", pipeline_
         st.error(f"Error creating ticket: {e}")
     return None
 
-# ── VRS Lookup Section ────────────────────────────────────────────────────────
+# ── Customer Lookup Section ────────────────────────────────────────────────────
 
-st.subheader("🔍 Customer Account Lookup")
-
-# Search type selector
-search_type = st.radio(
-    "Search by",
-    ["Phone Number", "Email", "Contact Name"],
-    horizontal=True,
-    label_visibility="collapsed"
-)
+st.subheader("🔍 Customer Lookup")
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    if search_type == "Phone Number":
-        search_input = st.text_input(
-            "Phone Number",
-            placeholder="e.g., +1-555-123-4567 or (555) 123-4567",
-            key="phone_lookup",
-            label_visibility="collapsed"
-        )
-    elif search_type == "Email":
-        search_input = st.text_input(
-            "Email",
-            placeholder="e.g., customer@example.com",
-            key="email_lookup",
-            label_visibility="collapsed"
-        )
-    else:  # Contact Name
-        search_input = st.text_input(
-            "Contact Name",
-            placeholder="e.g., John Doe",
-            key="name_lookup",
-            label_visibility="collapsed"
-        )
+    search_input = st.text_input(
+        "Search",
+        placeholder="Phone number, email, or name...",
+        key="customer_search",
+        label_visibility="collapsed"
+    )
 with col2:
     lookup_btn = st.button("Search", use_container_width=True, type="primary")
 
 customer_numbers = []
-selected_number = None
 
 if lookup_btn or search_input:
     if search_input:
-        with st.spinner("Looking up customer accounts..."):
-            if search_type == "Phone Number":
-                customer_numbers = _lookup_customer(search_input)
-            elif search_type == "Email":
-                customer_numbers = _lookup_by_email(search_input, return_all=True)
-            else:  # Contact Name
-                customer_numbers = _lookup_by_name(search_input, return_all=True)
+        with st.spinner("Looking up customer..."):
+            customer_numbers = _lookup_customer(search_input)
 
         if customer_numbers:
             st.success(f"✓ Found {len(customer_numbers)} account(s)")
         else:
-            st.warning(f"⚠️ No VRS or Convo Now accounts found. Check the {search_type.lower()} and try again.")
+            st.warning("⚠️ No VRS or Convo Now accounts found.")
 
 # Display all customer accounts in card format
 if customer_numbers:
@@ -465,8 +436,6 @@ if customer_numbers:
     cols = st.columns(min(3, len(customer_numbers)))
     for idx, account in enumerate(customer_numbers):
         props = account.get("properties", {})
-        nid = account.get("id")
-
         number = props.get("number", "—")
         status = props.get("number_status", "—")
         service_type = props.get("service_type", "—")
@@ -489,85 +458,73 @@ if customer_numbers:
                     </div>
                 </div>
                 <div style="border-top:1px solid #e5e7eb;padding-top:0.75rem;font-size:0.85rem;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
-                        <div><small style="color:#6b7280;">Usage Type</small><br>{usage_type}</div>
-                    </div>
-                    <button onclick="document.querySelector('[data-testid=\\\"stButton\\\"]').click();"
-                            style="width:100%;margin-top:0.75rem;padding:6px;background:#667eea;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.85rem;">
-                        Select Account
-                    </button>
+                    <div><small style="color:#6b7280;">Usage Type</small><br>{usage_type}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            # Store account reference when clicked
-            if st.button(f"Select {service_type} - {number}", key=f"account_{nid}", use_container_width=False):
-                st.session_state.selected_account = {"id": nid, "number": number, "service_type": service_type}
+    # Ticket creation form
+    st.divider()
+    st.subheader("📝 Create Support Ticket")
 
-    # Use selected account if available
-    if "selected_account" in st.session_state:
-        selected_number = st.session_state.selected_account
+    # Create a dropdown to select which number to create a ticket for
+    number_options = [
+        f"{acc.get('properties', {}).get('service_type', '—')} - {acc.get('properties', {}).get('number', '—')}"
+        for acc in customer_numbers
+    ]
+    selected_idx = st.selectbox("Select account for ticket:", range(len(customer_numbers)), format_func=lambda i: number_options[i])
+    selected_number = customer_numbers[selected_idx]
 
-    # Ticket creation form (only show if account is selected)
-    if selected_number:
-        st.divider()
-        st.subheader("📝 Create Support Ticket")
-        st.info(f"Creating ticket for: **{selected_number['service_type']}** - {selected_number['number']}")
+    with st.form("ticket_form"):
+        subject = st.text_input("Ticket Subject *", placeholder="Brief description of the issue")
+        description = st.text_area("Description *", placeholder="Detailed description of the issue", height=120)
 
-        with st.form("ticket_form"):
-            subject = st.text_input("Ticket Subject *", placeholder="Brief description of the issue")
-            description = st.text_area("Description *", placeholder="Detailed description of the issue", height=120)
+        col1, col2 = st.columns(2)
+        with col1:
+            priority = st.selectbox("Priority", ["MEDIUM", "HIGH", "LOW"], index=0)
+        with col2:
+            # Fetch and display pipelines
+            pipelines = _get_ticket_pipelines()
+            if pipelines:
+                selected_pipeline = st.selectbox("Pipeline", list(pipelines.keys()))
+                pipeline_id = pipelines[selected_pipeline]
+            else:
+                st.warning("No pipelines available")
+                pipeline_id = None
 
-            col1, col2 = st.columns(2)
-            with col1:
-                priority = st.selectbox("Priority", ["MEDIUM", "HIGH", "LOW"], index=0)
-            with col2:
-                # Fetch and display pipelines
-                pipelines = _get_ticket_pipelines()
-                if pipelines:
-                    selected_pipeline = st.selectbox("Pipeline", list(pipelines.keys()))
-                    pipeline_id = pipelines[selected_pipeline]
-                else:
-                    st.warning("No pipelines available")
-                    pipeline_id = None
+        col1, col2 = st.columns(2)
+        with col1:
+            submitted = st.form_submit_button("✓ Create Ticket", use_container_width=True, type="primary")
+        with col2:
+            st.form_submit_button("Cancel", use_container_width=True)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                submitted = st.form_submit_button("✓ Create Ticket", use_container_width=True, type="primary")
-            with col2:
-                st.form_submit_button("Cancel", use_container_width=True)
-
-            if submitted:
-                if not subject or not description:
-                    st.error("❌ Subject and Description are required.")
-                else:
-                    with st.spinner("Creating ticket..."):
-                        ticket = _create_ticket(selected_number["id"], subject, description, priority, pipeline_id)
-                        if ticket:
-                            st.success("✓ Ticket created successfully!")
-                            st.markdown(f"""
-                            <div class="metric-card">
-                                <strong>Ticket ID:</strong> <code>{ticket["id"]}</code><br>
-                                <strong>Subject:</strong> {ticket["properties"]["subject"]}<br>
-                                <strong>For Account:</strong> {selected_number['service_type']} - {selected_number['number']}<br>
-                                <strong>Pipeline:</strong> {selected_pipeline if 'pipeline_id' in locals() and pipeline_id else '—'}
-                            </div>
-                            """, unsafe_allow_html=True)
-    else:
-        if customer_numbers:
-            st.info("👆 Select an account above to create a ticket")
+        if submitted:
+            if not subject or not description:
+                st.error("❌ Subject and Description are required.")
+            else:
+                with st.spinner("Creating ticket..."):
+                    ticket = _create_ticket(selected_number["id"], subject, description, priority, pipeline_id)
+                    if ticket:
+                        st.success("✓ Ticket created successfully!")
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <strong>Ticket ID:</strong> <code>{ticket["id"]}</code><br>
+                            <strong>Subject:</strong> {ticket["properties"]["subject"]}<br>
+                            <strong>For Account:</strong> {selected_number['properties']['service_type']} - {selected_number['properties']['number']}<br>
+                            <strong>Pipeline:</strong> {selected_pipeline if 'pipeline_id' in locals() and pipeline_id else '—'}
+                        </div>
+                        """, unsafe_allow_html=True)
 
     # Display existing tickets
-    if selected_number:
-        st.divider()
-        st.subheader("🎫 Tickets")
-        with st.spinner("Loading tickets..."):
-            tickets = _get_number_tickets(selected_number["id"])
+    st.divider()
+    st.subheader("🎫 Tickets")
+    with st.spinner("Loading tickets..."):
+        tickets = _get_number_tickets(selected_number["id"])
 
-        if not tickets:
-            st.info(f"No tickets found for {selected_number['service_type']} - {selected_number['number']}")
-        else:
-            st.write(f"**{len(tickets)} ticket(s)** for {selected_number['service_type']} - {selected_number['number']}")
+    if not tickets:
+        st.info(f"No tickets found for {selected_number['properties']['service_type']} - {selected_number['properties']['number']}")
+    else:
+        st.write(f"**{len(tickets)} ticket(s)** for {selected_number['properties']['service_type']} - {selected_number['properties']['number']}")
             for ticket in tickets:
                 tid = ticket["id"]
                 props = ticket.get("properties", {})
