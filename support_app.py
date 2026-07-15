@@ -219,99 +219,32 @@ def _lookup_customer(search_term):
         st.error(f"Error looking up customer: {e}")
     return []
 
-def _lookup_by_email(email, return_all=False):
-    """Lookup VRS/Convo Now numbers by email."""
+def _lookup_number_by_email(email):
+    """Lookup VRS/Convo Now number by email."""
     if not email or not email.strip():
-        return [] if return_all else None
-    email = email.strip()
+        return None
     try:
         resp = requests.post(
             f"{BASE_URL}/crm/v3/objects/2-40974683/search",
             headers=_headers,
             json={
-                "filterGroups": [
-                    {
-                        "filters": [
-                            {"propertyName": "email", "operator": "EQ", "value": email},
-                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
-                            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                        ]
-                    }
-                ],
-                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
-                "limit": 100,
+                "filterGroups": [[
+                    {"propertyName": "email", "operator": "EQ", "value": email.strip()},
+                    {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
+                ]],
+                "properties": ["number", "email", "first_name", "last_name", "service_type"],
+                "limit": 1,
             },
             timeout=10,
         )
         if resp.status_code == 200:
             results = resp.json().get("results", [])
-            if return_all:
-                return results
-            if not results:
-                return None
-            if len(results) == 1:
+            if results:
                 return results[0]
-            # Multiple matches - show selector
-            st.write(f"**Found {len(results)} matches:**")
-            selected_idx = st.selectbox(
-                "Select a customer",
-                range(len(results)),
-                format_func=lambda i: f"{results[i]['properties'].get('first_name', '')} {results[i]['properties'].get('last_name', '')} ({results[i]['properties'].get('number', '—')})"
-            )
-            return results[selected_idx]
     except Exception as e:
-        st.error(f"Error looking up email: {e}")
-    return [] if return_all else None
+        st.error(f"Error: {e}")
+    return None
 
-def _lookup_by_name(name, return_all=False):
-    """Lookup VRS/Convo Now numbers by first/last name (partial match)."""
-    if not name or not name.strip():
-        return [] if return_all else None
-    name = name.strip()
-    try:
-        # Search by first_name or last_name containing the input
-        resp = requests.post(
-            f"{BASE_URL}/crm/v3/objects/2-40974683/search",
-            headers=_headers,
-            json={
-                "filterGroups": [
-                    {
-                        "filters": [
-                            {"propertyName": "first_name", "operator": "CONTAINS", "value": name},
-                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
-                        ]
-                    },
-                    {
-                        "filters": [
-                            {"propertyName": "last_name", "operator": "CONTAINS", "value": name},
-                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
-                        ]
-                    },
-                ],
-                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
-                "limit": 100,
-            },
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            results = resp.json().get("results", [])
-            if return_all:
-                return results
-            if not results:
-                return None
-            if len(results) == 1:
-                return results[0]
-            # Multiple matches - show selector
-            st.write(f"**Found {len(results)} matches:**")
-            selected_idx = st.selectbox(
-                "Select a customer",
-                range(len(results)),
-                format_func=lambda i: f"{results[i]['properties'].get('first_name', '')} {results[i]['properties'].get('last_name', '')} ({results[i]['properties'].get('number', '—')})"
-            )
-            return results[selected_idx]
-    except Exception as e:
-        st.error(f"Error looking up name: {e}")
-    return [] if return_all else None
 
 def _get_number_tickets(number_id):
     """Fetch all tickets associated with a VRS number."""
@@ -464,7 +397,7 @@ with st.form("ticket_form"):
             st.error("Email, Subject, and Description are required.")
         else:
             with st.spinner("Looking up customer and creating ticket..."):
-                account = _lookup_by_email(customer_email, return_all=False)
+                account = _lookup_number_by_email(customer_email)
                 if not account:
                     st.error(f"No VRS or Convo Now account found for {customer_email}")
                 else:
