@@ -205,6 +205,64 @@ def _lookup_number(phone):
         st.error(f"Error looking up number: {e}")
     return None
 
+def _lookup_by_email(email):
+    """Lookup a VRS number by email."""
+    if not email or not email.strip():
+        return None
+    email = email.strip().lower()
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/crm/v3/objects/2-40974683/search",
+            headers=_headers,
+            json={
+                "filterGroups": [[{"propertyName": "email", "operator": "EQ", "value": email}]],
+                "properties": ["number_", "contact_name", "email", "number_status", "service_type", "organization"],
+                "limit": 1,
+            },
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            results = resp.json().get("results", [])
+            if results:
+                return results[0]
+    except Exception as e:
+        st.error(f"Error looking up email: {e}")
+    return None
+
+def _lookup_by_name(name):
+    """Lookup a VRS number by contact name (partial match)."""
+    if not name or not name.strip():
+        return None
+    name = name.strip()
+    try:
+        resp = requests.post(
+            f"{BASE_URL}/crm/v3/objects/2-40974683/search",
+            headers=_headers,
+            json={
+                "filterGroups": [[{"propertyName": "contact_name", "operator": "CONTAINS", "value": name}]],
+                "properties": ["number_", "contact_name", "email", "number_status", "service_type", "organization"],
+                "limit": 10,
+            },
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            results = resp.json().get("results", [])
+            if not results:
+                return None
+            if len(results) == 1:
+                return results[0]
+            # Multiple matches - show selector
+            st.write(f"**Found {len(results)} matches:**")
+            selected_idx = st.selectbox(
+                "Select a customer",
+                range(len(results)),
+                format_func=lambda i: f"{results[i]['properties'].get('contact_name', '—')} ({results[i]['properties'].get('number_', '—')})"
+            )
+            return results[selected_idx]
+    except Exception as e:
+        st.error(f"Error looking up name: {e}")
+    return None
+
 def _get_number_tickets(number_id):
     """Fetch all tickets associated with a VRS number."""
     try:
@@ -270,28 +328,56 @@ def _create_ticket(number_id, subject, description, priority="MEDIUM"):
 
 # ── VRS Lookup Section ────────────────────────────────────────────────────────
 
-st.subheader("🔍 VRS Number Lookup")
+st.subheader("🔍 VRS Lookup")
+
+# Search type selector
+search_type = st.radio(
+    "Search by",
+    ["Phone Number", "Email", "Contact Name"],
+    horizontal=True,
+    label_visibility="collapsed"
+)
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    phone_input = st.text_input(
-        "Phone Number",
-        placeholder="e.g., +1-555-123-4567 or (555) 123-4567",
-        key="phone_lookup",
-        label_visibility="collapsed"
-    )
+    if search_type == "Phone Number":
+        search_input = st.text_input(
+            "Phone Number",
+            placeholder="e.g., +1-555-123-4567 or (555) 123-4567",
+            key="phone_lookup",
+            label_visibility="collapsed"
+        )
+    elif search_type == "Email":
+        search_input = st.text_input(
+            "Email",
+            placeholder="e.g., customer@example.com",
+            key="email_lookup",
+            label_visibility="collapsed"
+        )
+    else:  # Contact Name
+        search_input = st.text_input(
+            "Contact Name",
+            placeholder="e.g., John Doe",
+            key="name_lookup",
+            label_visibility="collapsed"
+        )
 with col2:
     lookup_btn = st.button("Search", use_container_width=True, type="primary")
 
 number_obj = None
-if lookup_btn or phone_input:
-    if phone_input:
-        with st.spinner("Looking up number..."):
-            number_obj = _lookup_number(phone_input)
+if lookup_btn or search_input:
+    if search_input:
+        with st.spinner("Looking up..."):
+            if search_type == "Phone Number":
+                number_obj = _lookup_number(search_input)
+            elif search_type == "Email":
+                number_obj = _lookup_by_email(search_input)
+            else:  # Contact Name
+                number_obj = _lookup_by_name(search_input)
         if number_obj:
             st.success("✓ VRS number found")
         else:
-            st.warning("⚠️ No VRS number found. Check the phone number and try again.")
+            st.warning(f"⚠️ No VRS number found. Check the {search_type.lower()} and try again.")
 
 # Display number details if found
 if number_obj:
