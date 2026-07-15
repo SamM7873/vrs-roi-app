@@ -181,44 +181,6 @@ def _fmt_datetime(v):
     dt = _parse_dt(v)
     return dt.strftime("%b %d, %Y at %I:%M %p") if dt else "—"
 
-def _lookup_customer(search_term):
-    """Lookup all VRS and Convo Now numbers for a customer."""
-    if not search_term or not search_term.strip():
-        return []
-    search_term = search_term.strip()
-    try:
-        resp = requests.post(
-            f"{BASE_URL}/crm/v3/objects/2-40974683/search",
-            headers=_headers,
-            json={
-                "filterGroups": [
-                    {
-                        "filters": [
-                            {"propertyName": "number", "operator": "EQ", "value": search_term},
-                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
-                            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                        ]
-                    },
-                    {
-                        "filters": [
-                            {"propertyName": "email", "operator": "EQ", "value": search_term},
-                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
-                            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
-                        ]
-                    }
-                ],
-                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
-                "limit": 100,
-            },
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            results = resp.json().get("results", [])
-            return results
-    except Exception as e:
-        st.error(f"Error looking up customer: {e}")
-    return []
-
 def _lookup_number_by_email(email):
     """Lookup VRS/Convo Now number by email."""
     if not email or not email.strip():
@@ -326,46 +288,8 @@ def _create_ticket(number_id, subject, description, priority="MEDIUM", pipeline_
         st.error(f"Error creating ticket: {e}")
     return None
 
-# ── Customer Lookup Section ────────────────────────────────────────────────────
+# ── Ticket Creation Form ──────────────────────────────────────────────────────
 
-st.subheader("🔍 Customer Lookup")
-
-col1, col2 = st.columns([3, 1])
-with col1:
-    search_input = st.text_input(
-        "Search",
-        placeholder="Phone number, email, or name...",
-        key="customer_search",
-        label_visibility="collapsed"
-    )
-with col2:
-    lookup_btn = st.button("Search", use_container_width=True, type="primary")
-
-customer_numbers = []
-
-if lookup_btn or search_input:
-    if search_input:
-        with st.spinner("Looking up customer..."):
-            customer_numbers = _lookup_customer(search_input)
-
-        if customer_numbers:
-            st.success(f"✓ Found {len(customer_numbers)} account(s)")
-        else:
-            st.warning("⚠️ No VRS or Convo Now accounts found.")
-
-# Display all customer accounts in card format
-if customer_numbers:
-    st.divider()
-    st.subheader("📋 Customer Accounts")
-
-    # Get customer info from first account
-    first_account = customer_numbers[0].get("properties", {})
-    customer_name = f"{first_account.get('first_name', '')} {first_account.get('last_name', '')}".strip() or "—"
-    customer_email = first_account.get("email", "—")
-
-    st.write(f"**Customer:** {customer_name} | **Email:** {customer_email}")
-
-# Ticket creation form
 st.divider()
 st.subheader("📝 Create Support Ticket")
 
