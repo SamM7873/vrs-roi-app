@@ -525,35 +525,35 @@ if customer_numbers:
         st.info(f"No tickets found for {selected_number['properties']['service_type']} - {selected_number['properties']['number']}")
     else:
         st.write(f"**{len(tickets)} ticket(s)** for {selected_number['properties']['service_type']} - {selected_number['properties']['number']}")
-            for ticket in tickets:
-                tid = ticket["id"]
-                props = ticket.get("properties", {})
-                subject = props.get("subject", "—")
-                priority = props.get("hs_ticket_priority", "—")
-                stage = props.get("hs_pipeline_stage", "—")
-                created = _fmt_datetime(props.get("createdate"))
-                closed = _fmt_date(props.get("closed_date"))
-                content = props.get("content", "—")
+        for ticket in tickets:
+            tid = ticket["id"]
+            props = ticket.get("properties", {})
+            subject = props.get("subject", "—")
+            priority = props.get("hs_ticket_priority", "—")
+            stage = props.get("hs_pipeline_stage", "—")
+            created = _fmt_datetime(props.get("createdate"))
+            closed = _fmt_date(props.get("closed_date"))
+            content = props.get("content", "—")
 
-                # Color code priority
-                priority_color = {"HIGH": "#ef4444", "MEDIUM": "#f59e0b", "LOW": "#10b981"}.get(priority, "#6b7280")
+            # Color code priority
+            priority_color = {"HIGH": "#ef4444", "MEDIUM": "#f59e0b", "LOW": "#10b981"}.get(priority, "#6b7280")
 
-                with st.expander(f"🎫 {subject} · <span style='color:{priority_color};font-weight:700;'>{priority}</span> · {created}", unsafe_allow_html=True):
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Ticket ID</small><br><code>{tid}</code></div>', unsafe_allow_html=True)
-                    with col2:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Priority</small><br><strong>{priority}</strong></div>', unsafe_allow_html=True)
-                    with col3:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Stage</small><br><strong>{stage}</strong></div>', unsafe_allow_html=True)
+            with st.expander(f"🎫 {subject} · <span style='color:{priority_color};font-weight:700;'>{priority}</span> · {created}", unsafe_allow_html=True):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Ticket ID</small><br><code>{tid}</code></div>', unsafe_allow_html=True)
+                with col2:
+                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Priority</small><br><strong>{priority}</strong></div>', unsafe_allow_html=True)
+                with col3:
+                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Stage</small><br><strong>{stage}</strong></div>', unsafe_allow_html=True)
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Created</small><br>{created}</div>', unsafe_allow_html=True)
-                    with col2:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Closed</small><br>{closed}</div>', unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Created</small><br>{created}</div>', unsafe_allow_html=True)
+                with col2:
+                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Closed</small><br>{closed}</div>', unsafe_allow_html=True)
 
-                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Description</small><br>{content if content and content != "—" else "<em>(No description)</em>"}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Description</small><br>{content if content and content != "—" else "<em>(No description)</em>"}</div>', unsafe_allow_html=True)
 
 # Logout button
 st.divider()
