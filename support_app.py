@@ -196,12 +196,14 @@ def _lookup_number(phone):
                     {
                         "filters": [
                             {"propertyName": "number", "operator": "EQ", "value": phone},
+                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
                             {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
                         ]
                     },
                     {
                         "filters": [
                             {"propertyName": "email", "operator": "EQ", "value": phone},
+                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
                             {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
                         ]
                     }
@@ -233,6 +235,7 @@ def _lookup_by_email(email):
                     {
                         "filters": [
                             {"propertyName": "email", "operator": "EQ", "value": email},
+                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
                             {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
                         ]
                     }
@@ -272,10 +275,20 @@ def _lookup_by_name(name):
             headers=_headers,
             json={
                 "filterGroups": [
-                    [{"propertyName": "first_name", "operator": "CONTAINS", "value": name}],
-                    [{"propertyName": "last_name", "operator": "CONTAINS", "value": name}],
+                    {
+                        "filters": [
+                            {"propertyName": "first_name", "operator": "CONTAINS", "value": name},
+                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
+                        ]
+                    },
+                    {
+                        "filters": [
+                            {"propertyName": "last_name", "operator": "CONTAINS", "value": name},
+                            {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
+                        ]
+                    },
                 ],
-                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type"],
+                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
                 "limit": 10,
             },
             timeout=10,
@@ -326,7 +339,22 @@ def _get_number_tickets(number_id):
         st.error(f"Error fetching tickets: {e}")
     return []
 
-def _create_ticket(number_id, subject, description, priority="MEDIUM"):
+def _get_ticket_pipelines():
+    """Fetch available ticket pipelines."""
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/crm/v3/pipelines/tickets",
+            headers=_headers,
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            pipelines = resp.json().get("results", [])
+            return {p["label"]: p["id"] for p in pipelines}
+    except Exception as e:
+        st.error(f"Error fetching pipelines: {e}")
+    return {}
+
+def _create_ticket(number_id, subject, description, priority="MEDIUM", pipeline_id=None):
     """Create a new ticket linked to a VRS number."""
     try:
         payload = {
@@ -336,6 +364,8 @@ def _create_ticket(number_id, subject, description, priority="MEDIUM"):
                 "hs_ticket_priority": priority,
             }
         }
+        if pipeline_id:
+            payload["properties"]["hs_pipeline"] = pipeline_id
         resp = requests.post(
             f"{BASE_URL}/crm/v3/objects/tickets",
             headers=_headers,
@@ -452,7 +482,19 @@ if number_obj:
     with st.form("ticket_form"):
         subject = st.text_input("Ticket Subject *", placeholder="Brief description of the issue")
         description = st.text_area("Description *", placeholder="Detailed description of the issue", height=120)
-        priority = st.selectbox("Priority", ["MEDIUM", "HIGH", "LOW"], index=0)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            priority = st.selectbox("Priority", ["MEDIUM", "HIGH", "LOW"], index=0)
+        with col2:
+            # Fetch and display pipelines
+            pipelines = _get_ticket_pipelines()
+            if pipelines:
+                selected_pipeline = st.selectbox("Pipeline", list(pipelines.keys()))
+                pipeline_id = pipelines[selected_pipeline]
+            else:
+                st.warning("No pipelines available")
+                pipeline_id = None
 
         col1, col2 = st.columns(2)
         with col1:
@@ -465,13 +507,14 @@ if number_obj:
                 st.error("❌ Subject and Description are required.")
             else:
                 with st.spinner("Creating ticket..."):
-                    ticket = _create_ticket(nid, subject, description, priority)
+                    ticket = _create_ticket(nid, subject, description, priority, pipeline_id)
                     if ticket:
                         st.success("✓ Ticket created successfully!")
                         st.markdown(f"""
                         <div class="metric-card">
                             <strong>Ticket ID:</strong> <code>{ticket["id"]}</code><br>
-                            <strong>Subject:</strong> {ticket["properties"]["subject"]}
+                            <strong>Subject:</strong> {ticket["properties"]["subject"]}<br>
+                            <strong>Pipeline:</strong> {selected_pipeline if 'pipeline_id' in locals() and pipeline_id else '—'}
                         </div>
                         """, unsafe_allow_html=True)
 
