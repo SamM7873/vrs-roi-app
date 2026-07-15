@@ -10,17 +10,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ── Authentication ────────────────────────────────────────────────────────────
-
 APP_PASSWORD = get_secret("APP_PASSWORD")
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 
-if not HUBSPOT_TOKEN:
-    st.error("HUBSPOT_TOKEN is not set. Configure it in secrets.")
-    st.stop()
-
-if not APP_PASSWORD:
-    st.error("APP_PASSWORD is not set. Configure it in secrets.")
+if not HUBSPOT_TOKEN or not APP_PASSWORD:
+    st.error("Missing secrets")
     st.stop()
 
 if "authenticated" not in st.session_state:
@@ -29,76 +23,25 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-        html, body, [class*="css"] {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-            -webkit-font-smoothing: antialiased;
-        }
         .stApp { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .login-container {
-            max-width: 420px;
-            margin: 8vh auto 0;
-            padding: 0 1rem;
-        }
+        .login-container { max-width: 420px; margin: 8vh auto 0; padding: 0 1rem; }
         .login-card {
             background: #fff;
             border-radius: 16px;
             padding: 2.5rem 2rem;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         }
-        .logo-area {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        .logo-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-        }
-        .logo-area h1 {
-            font-size: 1.5rem;
-            font-weight: 800;
-            color: #1f2937;
-            margin: 0 0 0.5rem;
-            letter-spacing: -0.5px;
-        }
-        .logo-area p {
-            color: #6b7280;
-            font-size: 0.9rem;
-            margin: 0;
-        }
-        .stTextInput > div > div > input {
-            border-radius: 10px !important;
-            border: 1.5px solid #e5e7eb !important;
-            padding: 0.75rem 1rem !important;
-            font-size: 0.95rem !important;
-            background: #f9fafb !important;
-        }
-        .stTextInput > div > div > input:focus {
-            border-color: #667eea !important;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
-            background: #fff !important;
-        }
-        div.stButton > button {
-            background-color: #667eea;
-            color: #fff;
-            border-radius: 10px;
-            border: none;
-            padding: 0.75rem 2rem;
-            font-weight: 700;
-            font-size: 0.95rem;
-            width: 100%;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        }
-        div.stButton > button:hover {
-            background-color: #5568d3;
-        }
+        .logo-area { text-align: center; margin-bottom: 2rem; }
+        .logo-icon { font-size: 3rem; margin-bottom: 1rem; }
+        .logo-area h1 { font-size: 1.5rem; font-weight: 800; color: #1f2937; margin: 0 0 0.5rem; }
+        .logo-area p { color: #6b7280; font-size: 0.9rem; margin: 0; }
     </style>
     <div class="login-container">
         <div class="login-card">
             <div class="logo-area">
                 <div class="logo-icon">🎧</div>
                 <h1>VRS Support Team</h1>
-                <p>Ticket Management & VRS Lookup</p>
+                <p>Create Support Tickets</p>
             </div>
         </div>
     </div>
@@ -109,80 +52,21 @@ if not st.session_state.authenticated:
     <div style="background: #fff; border-radius: 16px; padding: 0 2rem 2rem; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);">
     """, unsafe_allow_html=True)
 
-    entered_password = st.text_input("Password", type="password", placeholder="Enter password")
+    password = st.text_input("Password", type="password")
     if st.button("Sign In", use_container_width=True):
-        if entered_password == APP_PASSWORD:
+        if password == APP_PASSWORD:
             st.session_state.authenticated = True
             st.rerun()
         else:
-            st.error("❌ Incorrect password. Please try again.")
+            st.error("Invalid password")
 
     st.markdown("</div></div>", unsafe_allow_html=True)
     st.stop()
 
-# ── Main app (after authentication) ───────────────────────────────────────────
-
 BASE_URL = "https://api.hubapi.com"
 _headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-.main { background: #f9fafb; }
-.stApp { background: #f9fafb; }
-[data-testid="stAppViewContainer"] { background: #f9fafb; }
-.header-section {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 2rem 1.5rem;
-    border-radius: 12px;
-    margin-bottom: 2rem;
-}
-.header-section h1 { margin: 0 0 0.5rem; font-size: 1.8rem; }
-.header-section p { margin: 0; opacity: 0.9; font-size: 0.95rem; }
-.metric-card {
-    background: white;
-    border-radius: 12px;
-    padding: 1.5rem;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-.ticket-expander { background: white; border-radius: 10px; border-left: 4px solid #667eea; }
-</style>
-""", unsafe_allow_html=True)
-
-# Header
-st.markdown("""
-<div class="header-section">
-    <h1>🎧 VRS Support Team</h1>
-    <p>Lookup VRS numbers and manage customer support tickets</p>
-</div>
-""", unsafe_allow_html=True)
-
-# ── Helper functions ─────────────────────────────────────────────────────────
-
-def _parse_dt(v):
-    if not v:
-        return None
-    try:
-        dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except Exception:
-        return None
-
-def _fmt_date(v):
-    dt = _parse_dt(v)
-    return dt.strftime("%b %d, %Y") if dt else "—"
-
-def _fmt_datetime(v):
-    dt = _parse_dt(v)
-    return dt.strftime("%b %d, %Y at %I:%M %p") if dt else "—"
-
-def _lookup_number_by_email(email):
-    """Lookup VRS/Convo Now number by email."""
+def _lookup_by_email(email):
     if not email or not email.strip():
         return None
     try:
@@ -201,43 +85,12 @@ def _lookup_number_by_email(email):
         )
         if resp.status_code == 200:
             results = resp.json().get("results", [])
-            if results:
-                return results[0]
+            return results[0] if results else None
     except Exception as e:
         st.error(f"Error: {e}")
     return None
 
-
-def _get_number_tickets(number_id):
-    """Fetch all tickets associated with a VRS number."""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/crm/v4/objects/2-40974683/{number_id}/associations/tickets",
-            headers=_headers,
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            associations = resp.json().get("results", [])
-            ticket_ids = [a["id"] for a in associations]
-            if not ticket_ids:
-                return []
-            tickets = []
-            for tid in ticket_ids:
-                tr = requests.get(
-                    f"{BASE_URL}/crm/v3/objects/tickets/{tid}",
-                    headers=_headers,
-                    params={"properties": ["subject", "hs_pipeline_stage", "hs_ticket_priority", "createdate", "closed_date", "content"]},
-                    timeout=10,
-                )
-                if tr.status_code == 200:
-                    tickets.append(tr.json())
-            return tickets
-    except Exception as e:
-        st.error(f"Error fetching tickets: {e}")
-    return []
-
-def _get_ticket_pipelines():
-    """Fetch available ticket pipelines."""
+def _get_pipelines():
     try:
         resp = requests.get(
             f"{BASE_URL}/crm/v3/pipelines/tickets",
@@ -245,14 +98,12 @@ def _get_ticket_pipelines():
             timeout=10,
         )
         if resp.status_code == 200:
-            pipelines = resp.json().get("results", [])
-            return {p["label"]: p["id"] for p in pipelines}
-    except Exception as e:
-        st.error(f"Error fetching pipelines: {e}")
+            return {p["label"]: p["id"] for p in resp.json().get("results", [])}
+    except:
+        pass
     return {}
 
-def _create_ticket(number_id, subject, description, priority="MEDIUM", pipeline_id=None):
-    """Create a new ticket linked to a VRS number."""
+def _create_ticket(number_id, subject, description, priority, pipeline_id=None):
     try:
         payload = {
             "properties": {
@@ -263,6 +114,7 @@ def _create_ticket(number_id, subject, description, priority="MEDIUM", pipeline_
         }
         if pipeline_id:
             payload["properties"]["hs_pipeline"] = pipeline_id
+
         resp = requests.post(
             f"{BASE_URL}/crm/v3/objects/tickets",
             headers=_headers,
@@ -270,72 +122,84 @@ def _create_ticket(number_id, subject, description, priority="MEDIUM", pipeline_
             timeout=10,
         )
         if resp.status_code != 201:
-            st.error(f"Error creating ticket: {resp.status_code} {resp.text}")
+            st.error(f"Error: {resp.status_code}")
             return None
+
         ticket = resp.json()
         ticket_id = ticket["id"]
-        # Associate ticket with the number
-        ar = requests.put(
+
+        requests.put(
             f"{BASE_URL}/crm/v4/objects/tickets/{ticket_id}/associations/2-40974683/{number_id}",
             headers=_headers,
             json={"id": ticket_id, "types": [{"associationCategory": "HUBSPOT_DEFINED", "associationType": "ticket_to_number"}]},
             timeout=10,
         )
-        if ar.status_code not in (200, 204):
-            st.warning(f"Ticket created but could not link to number: {ar.status_code}")
         return ticket
     except Exception as e:
-        st.error(f"Error creating ticket: {e}")
+        st.error(f"Error: {e}")
     return None
 
-# ── Ticket Creation Form ──────────────────────────────────────────────────────
+st.markdown("""
+<style>
+.main { background: #f9fafb; }
+.stApp { background: #f9fafb; }
+[data-testid="stAppViewContainer"] { background: #f9fafb; }
+.header-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem 1.5rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+}
+.header-section h1 { margin: 0 0 0.5rem; font-size: 1.8rem; }
+.header-section p { margin: 0; opacity: 0.9; }
+</style>
+""", unsafe_allow_html=True)
 
-st.divider()
-st.subheader("📝 Create Support Ticket")
+st.markdown("""
+<div class="header-section">
+    <h1>🎧 VRS Support Team</h1>
+    <p>Create support tickets for VRS/Convo Now customers</p>
+</div>
+""", unsafe_allow_html=True)
+
+st.subheader("📝 Create Ticket")
 
 with st.form("ticket_form"):
-    # Customer info
     st.write("**Customer Information**")
-    customer_email = st.text_input("Email *", placeholder="customer@example.com")
+    email = st.text_input("Email *", placeholder="customer@example.com")
 
-    # Ticket details
     st.write("**Ticket Details**")
-    subject = st.text_input("Subject *", placeholder="Brief description of the issue")
+    subject = st.text_input("Subject *", placeholder="Brief issue description")
     description = st.text_area("Description *", placeholder="Detailed description", height=120)
 
     col1, col2 = st.columns(2)
     with col1:
         priority = st.selectbox("Priority", ["MEDIUM", "HIGH", "LOW"])
     with col2:
-        pipelines = _get_ticket_pipelines()
+        pipelines = _get_pipelines()
+        pipeline_id = None
         if pipelines:
             selected_pipeline = st.selectbox("Pipeline", list(pipelines.keys()))
             pipeline_id = pipelines[selected_pipeline]
-        else:
-            pipeline_id = None
 
     submitted = st.form_submit_button("✓ Create Ticket", use_container_width=True, type="primary")
 
     if submitted:
-        if not customer_email or not subject or not description:
-            st.error("Email, Subject, and Description are required.")
+        if not email or not subject or not description:
+            st.error("Email, Subject, and Description required")
         else:
-            with st.spinner("Looking up customer and creating ticket..."):
-                account = _lookup_number_by_email(customer_email)
+            with st.spinner("Creating ticket..."):
+                account = _lookup_by_email(email)
                 if not account:
-                    st.error(f"No VRS or Convo Now account found for {customer_email}")
+                    st.error(f"No account found for {email}")
                 else:
                     ticket = _create_ticket(account["id"], subject, description, priority, pipeline_id)
                     if ticket:
-                        st.success("✓ Ticket created successfully!")
+                        st.success("✓ Ticket created!")
                         props = account.get("properties", {})
-                        st.info(f"""
-                        **Ticket ID:** {ticket["id"]}
-                        **Customer:** {props.get('first_name', '')} {props.get('last_name', '')}
-                        **Account:** {props.get('service_type', '—')} - {props.get('number', '—')}
-                        """)
+                        st.info(f"**ID:** {ticket['id']}\n**Customer:** {props.get('first_name', '')} {props.get('last_name', '')}\n**Account:** {props.get('service_type', '—')} - {props.get('number', '—')}")
 
-# Logout button
 st.divider()
 if st.button("🚪 Sign Out", use_container_width=True):
     st.session_state.authenticated = False
