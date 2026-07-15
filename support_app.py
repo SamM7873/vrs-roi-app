@@ -187,11 +187,25 @@ def _lookup_number(phone):
         return None
     phone = phone.strip()
     try:
+        # Try exact match first
         resp = requests.post(
             f"{BASE_URL}/crm/v3/objects/2-40974683/search",
             headers=_headers,
             json={
-                "filterGroups": [[{"propertyName": "number", "operator": "EQ", "value": phone}]],
+                "filterGroups": [
+                    {
+                        "filters": [
+                            {"propertyName": "number", "operator": "EQ", "value": phone},
+                            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+                        ]
+                    },
+                    {
+                        "filters": [
+                            {"propertyName": "email", "operator": "EQ", "value": phone},
+                            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+                        ]
+                    }
+                ],
                 "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
                 "limit": 1,
             },
@@ -215,16 +229,33 @@ def _lookup_by_email(email):
             f"{BASE_URL}/crm/v3/objects/2-40974683/search",
             headers=_headers,
             json={
-                "filterGroups": [[{"propertyName": "email", "operator": "EQ", "value": email}]],
-                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type"],
-                "limit": 1,
+                "filterGroups": [
+                    {
+                        "filters": [
+                            {"propertyName": "email", "operator": "EQ", "value": email},
+                            {"propertyName": "credit_type", "operator": "NEQ", "value": "Guest"}
+                        ]
+                    }
+                ],
+                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
+                "limit": 10,
             },
             timeout=10,
         )
         if resp.status_code == 200:
             results = resp.json().get("results", [])
-            if results:
+            if not results:
+                return None
+            if len(results) == 1:
                 return results[0]
+            # Multiple matches - show selector
+            st.write(f"**Found {len(results)} matches:**")
+            selected_idx = st.selectbox(
+                "Select a customer",
+                range(len(results)),
+                format_func=lambda i: f"{results[i]['properties'].get('first_name', '')} {results[i]['properties'].get('last_name', '')} ({results[i]['properties'].get('number', '—')})"
+            )
+            return results[selected_idx]
     except Exception as e:
         st.error(f"Error looking up email: {e}")
     return None
