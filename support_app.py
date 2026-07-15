@@ -191,8 +191,8 @@ def _lookup_number(phone):
             f"{BASE_URL}/crm/v3/objects/2-40974683/search",
             headers=_headers,
             json={
-                "filterGroups": [[{"propertyName": "number_", "operator": "EQ", "value": phone}]],
-                "properties": ["number_", "contact_name", "email", "number_status", "service_type", "organization"],
+                "filterGroups": [[{"propertyName": "number", "operator": "EQ", "value": phone}]],
+                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type"],
                 "limit": 1,
             },
             timeout=10,
@@ -206,117 +206,63 @@ def _lookup_number(phone):
     return None
 
 def _lookup_by_email(email):
-    """Lookup a VRS number by contact email."""
+    """Lookup a VRS number by email."""
     if not email or not email.strip():
         return None
-    email = email.strip().lower()
+    email = email.strip()
     try:
-        # First, find the contact by email
-        contact_resp = requests.post(
-            f"{BASE_URL}/crm/v3/objects/contacts/search",
+        resp = requests.post(
+            f"{BASE_URL}/crm/v3/objects/2-40974683/search",
             headers=_headers,
             json={
                 "filterGroups": [[{"propertyName": "email", "operator": "EQ", "value": email}]],
-                "properties": ["firstname", "lastname", "email"],
+                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type"],
                 "limit": 1,
             },
             timeout=10,
         )
-        if contact_resp.status_code == 200:
-            contacts = contact_resp.json().get("results", [])
-            if not contacts:
-                st.warning(f"No contact found with email: {email}")
-                return None
-            contact_id = contacts[0]["id"]
-            st.info(f"Found contact: {contact_id}")
-            # Get associated VRS numbers
-            assoc_resp = requests.get(
-                f"{BASE_URL}/crm/v4/objects/contacts/{contact_id}/associations/2-40974683",
-                headers=_headers,
-                timeout=10,
-            )
-            if assoc_resp.status_code == 200:
-                associations = assoc_resp.json().get("results", [])
-                if not associations:
-                    st.warning(f"Contact found but no VRS numbers associated")
-                    return None
-                number_id = associations[0]["id"]
-                st.info(f"Found VRS number: {number_id}")
-                # Fetch the number details
-                num_resp = requests.get(
-                    f"{BASE_URL}/crm/v3/objects/2-40974683/{number_id}",
-                    headers=_headers,
-                    params={"properties": ["number_", "contact_name", "email", "number_status", "service_type", "organization"]},
-                    timeout=10,
-                )
-                if num_resp.status_code == 200:
-                    return num_resp.json()
-            else:
-                st.error(f"Association lookup failed: {assoc_resp.status_code}")
-        else:
-            st.error(f"Contact search failed: {contact_resp.status_code} - {contact_resp.text}")
+        if resp.status_code == 200:
+            results = resp.json().get("results", [])
+            if results:
+                return results[0]
     except Exception as e:
         st.error(f"Error looking up email: {e}")
     return None
 
 def _lookup_by_name(name):
-    """Lookup a VRS number by contact name (partial match)."""
+    """Lookup a VRS number by first/last name (partial match)."""
     if not name or not name.strip():
         return None
     name = name.strip()
     try:
-        # Search contacts by name
-        contact_resp = requests.post(
-            f"{BASE_URL}/crm/v3/objects/contacts/search",
+        # Search by first_name or last_name containing the input
+        resp = requests.post(
+            f"{BASE_URL}/crm/v3/objects/2-40974683/search",
             headers=_headers,
             json={
-                "filterGroups": [[{"propertyName": "firstname", "operator": "CONTAINS", "value": name}]],
-                "properties": ["firstname", "lastname", "email"],
-                "limit": 50,
+                "filterGroups": [
+                    [{"propertyName": "first_name", "operator": "CONTAINS", "value": name}],
+                    [{"propertyName": "last_name", "operator": "CONTAINS", "value": name}],
+                ],
+                "properties": ["number", "email", "first_name", "last_name", "number_status", "service_type"],
+                "limit": 10,
             },
             timeout=10,
         )
-        if contact_resp.status_code != 200:
-            return None
-        contacts = contact_resp.json().get("results", [])
-        if not contacts:
-            return None
-
-        # For each contact, try to find associated VRS number
-        vrs_numbers = []
-        for contact in contacts:
-            contact_id = contact["id"]
-            assoc_resp = requests.get(
-                f"{BASE_URL}/crm/v4/objects/contacts/{contact_id}/associations/2-40974683",
-                headers=_headers,
-                timeout=10,
+        if resp.status_code == 200:
+            results = resp.json().get("results", [])
+            if not results:
+                return None
+            if len(results) == 1:
+                return results[0]
+            # Multiple matches - show selector
+            st.write(f"**Found {len(results)} matches:**")
+            selected_idx = st.selectbox(
+                "Select a customer",
+                range(len(results)),
+                format_func=lambda i: f"{results[i]['properties'].get('first_name', '')} {results[i]['properties'].get('last_name', '')} ({results[i]['properties'].get('number', '—')})"
             )
-            if assoc_resp.status_code == 200:
-                associations = assoc_resp.json().get("results", [])
-                if associations:
-                    number_id = associations[0]["id"]
-                    num_resp = requests.get(
-                        f"{BASE_URL}/crm/v3/objects/2-40974683/{number_id}",
-                        headers=_headers,
-                        params={"properties": ["number_", "contact_name", "email", "number_status", "service_type", "organization"]},
-                        timeout=10,
-                    )
-                    if num_resp.status_code == 200:
-                        vrs_numbers.append(num_resp.json())
-
-        if not vrs_numbers:
-            return None
-        if len(vrs_numbers) == 1:
-            return vrs_numbers[0]
-
-        # Multiple matches - show selector
-        st.write(f"**Found {len(vrs_numbers)} matches:**")
-        selected_idx = st.selectbox(
-            "Select a customer",
-            range(len(vrs_numbers)),
-            format_func=lambda i: f"{vrs_numbers[i]['properties'].get('contact_name', '—')} ({vrs_numbers[i]['properties'].get('number_', '—')})"
-        )
-        return vrs_numbers[selected_idx]
+            return results[selected_idx]
     except Exception as e:
         st.error(f"Error looking up name: {e}")
     return None
@@ -441,12 +387,14 @@ if lookup_btn or search_input:
 if number_obj:
     props = number_obj.get("properties", {})
     nid = number_obj.get("id")
-    contact_name = props.get("contact_name", "—")
+    first_name = props.get("first_name", "")
+    last_name = props.get("last_name", "")
+    contact_name = f"{first_name} {last_name}".strip() or "—"
     email = props.get("email", "—")
-    phone = props.get("number_", "—")
+    phone = props.get("number", "—")
     status = props.get("number_status", "—")
     service_type = props.get("service_type", "—")
-    org = props.get("organization", "—")
+    usage_type = props.get("usage_type", "—")
 
     st.divider()
 
@@ -465,7 +413,7 @@ if number_obj:
     with col2:
         st.markdown('<div class="metric-card"><small style="color:#6b7280;">Service Type</small><br><strong>' + service_type + '</strong></div>', unsafe_allow_html=True)
     with col3:
-        st.markdown('<div class="metric-card"><small style="color:#6b7280;">Organization</small><br><strong>' + org + '</strong></div>', unsafe_allow_html=True)
+        st.markdown('<div class="metric-card"><small style="color:#6b7280;">Usage Type</small><br><strong>' + usage_type + '</strong></div>', unsafe_allow_html=True)
 
     # Ticket creation form
     st.divider()
