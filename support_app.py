@@ -225,8 +225,10 @@ def _lookup_by_email(email):
         if contact_resp.status_code == 200:
             contacts = contact_resp.json().get("results", [])
             if not contacts:
+                st.warning(f"No contact found with email: {email}")
                 return None
             contact_id = contacts[0]["id"]
+            st.info(f"Found contact: {contact_id}")
             # Get associated VRS numbers
             assoc_resp = requests.get(
                 f"{BASE_URL}/crm/v4/objects/contacts/{contact_id}/associations/2-40974683",
@@ -236,8 +238,10 @@ def _lookup_by_email(email):
             if assoc_resp.status_code == 200:
                 associations = assoc_resp.json().get("results", [])
                 if not associations:
+                    st.warning(f"Contact found but no VRS numbers associated")
                     return None
                 number_id = associations[0]["id"]
+                st.info(f"Found VRS number: {number_id}")
                 # Fetch the number details
                 num_resp = requests.get(
                     f"{BASE_URL}/crm/v3/objects/2-40974683/{number_id}",
@@ -247,6 +251,10 @@ def _lookup_by_email(email):
                 )
                 if num_resp.status_code == 200:
                     return num_resp.json()
+            else:
+                st.error(f"Association lookup failed: {assoc_resp.status_code}")
+        else:
+            st.error(f"Contact search failed: {contact_resp.status_code} - {contact_resp.text}")
     except Exception as e:
         st.error(f"Error looking up email: {e}")
     return None
