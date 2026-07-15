@@ -432,116 +432,51 @@ if customer_numbers:
 
     st.write(f"**Customer:** {customer_name} | **Email:** {customer_email}")
 
-    # Display accounts and ticket forms
-    for idx, account in enumerate(customer_numbers):
-        props = account.get("properties", {})
-        number = props.get("number", "—")
-        status = props.get("number_status", "—")
-        service_type = props.get("service_type", "—")
-        usage_type = props.get("usage_type", "—")
-        account_id = account.get("id")
+# Ticket creation form
+st.divider()
+st.subheader("📝 Create Support Ticket")
 
-        # Color code by service type
-        service_color = "#667eea" if service_type == "VRS" else "#764ba2"
-        status_color = "#2DB84B" if status == "Live" else "#EF4444"
+with st.form("ticket_form"):
+    # Customer info
+    st.write("**Customer Information**")
+    customer_email = st.text_input("Email *", placeholder="customer@example.com")
 
-        st.divider()
-        st.markdown(f"""
-        <div class="metric-card" style="border-left: 4px solid {service_color};">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-                <div>
-                    <strong style="font-size:1.1rem;">{service_type}</strong><br>
-                    <small style="color:#6b7280;">{number}</small>
-                </div>
-                <div style="background:{status_color};color:white;padding:4px 12px;border-radius:4px;font-size:0.75rem;font-weight:700;">
-                    {status}
-                </div>
-            </div>
-            <div style="border-top:1px solid #e5e7eb;padding-top:0.75rem;font-size:0.85rem;">
-                <div><small style="color:#6b7280;">Usage Type</small><br>{usage_type}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    # Ticket details
+    st.write("**Ticket Details**")
+    subject = st.text_input("Subject *", placeholder="Brief description of the issue")
+    description = st.text_area("Description *", placeholder="Detailed description", height=120)
 
-        # Ticket creation form for this account
-        st.subheader(f"📝 Create Ticket - {service_type} ({number})")
-        with st.form(f"ticket_form_{idx}"):
-            subject = st.text_input("Ticket Subject *", placeholder="Brief description of the issue", key=f"subject_{idx}")
-            description = st.text_area("Description *", placeholder="Detailed description of the issue", height=120, key=f"desc_{idx}")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                priority = st.selectbox("Priority", ["MEDIUM", "HIGH", "LOW"], index=0, key=f"priority_{idx}")
-            with col2:
-                pipelines = _get_ticket_pipelines()
-                if pipelines:
-                    selected_pipeline = st.selectbox("Pipeline", list(pipelines.keys()), key=f"pipeline_{idx}")
-                    pipeline_id = pipelines[selected_pipeline]
-                else:
-                    st.warning("No pipelines available")
-                    pipeline_id = None
-
-            col1, col2 = st.columns(2)
-            with col1:
-                submitted = st.form_submit_button("✓ Create Ticket", use_container_width=True, type="primary", key=f"submit_{idx}")
-            with col2:
-                st.form_submit_button("Cancel", use_container_width=True, key=f"cancel_{idx}")
-
-            if submitted:
-                if not subject or not description:
-                    st.error("❌ Subject and Description are required.")
-                else:
-                    with st.spinner("Creating ticket..."):
-                        ticket = _create_ticket(account_id, subject, description, priority, pipeline_id)
-                        if ticket:
-                            st.success("✓ Ticket created successfully!")
-                            st.markdown(f"""
-                            <div class="metric-card">
-                                <strong>Ticket ID:</strong> <code>{ticket["id"]}</code><br>
-                                <strong>Subject:</strong> {ticket["properties"]["subject"]}<br>
-                                <strong>For Account:</strong> {service_type} - {number}<br>
-                                <strong>Pipeline:</strong> {selected_pipeline if 'pipeline_id' in locals() and pipeline_id else '—'}
-                            </div>
-                            """, unsafe_allow_html=True)
-
-        # Display existing tickets for this account
-        st.subheader(f"🎫 Tickets - {service_type} ({number})")
-        with st.spinner("Loading tickets..."):
-            tickets = _get_number_tickets(account_id)
-
-        if not tickets:
-            st.info(f"No tickets found for {service_type} - {number}")
+    col1, col2 = st.columns(2)
+    with col1:
+        priority = st.selectbox("Priority", ["MEDIUM", "HIGH", "LOW"])
+    with col2:
+        pipelines = _get_ticket_pipelines()
+        if pipelines:
+            selected_pipeline = st.selectbox("Pipeline", list(pipelines.keys()))
+            pipeline_id = pipelines[selected_pipeline]
         else:
-            st.write(f"**{len(tickets)} ticket(s)**")
-            for ticket in tickets:
-                tid = ticket["id"]
-                props = ticket.get("properties", {})
-                subject = props.get("subject", "—")
-                priority = props.get("hs_ticket_priority", "—")
-                stage = props.get("hs_pipeline_stage", "—")
-                created = _fmt_datetime(props.get("createdate"))
-                closed = _fmt_date(props.get("closed_date"))
-                content = props.get("content", "—")
+            pipeline_id = None
 
-                # Color code priority
-                priority_color = {"HIGH": "#ef4444", "MEDIUM": "#f59e0b", "LOW": "#10b981"}.get(priority, "#6b7280")
+    submitted = st.form_submit_button("✓ Create Ticket", use_container_width=True, type="primary")
 
-                with st.expander(f"🎫 {subject} · <span style='color:{priority_color};font-weight:700;'>{priority}</span> · {created}", unsafe_allow_html=True):
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Ticket ID</small><br><code>{tid}</code></div>', unsafe_allow_html=True)
-                    with col2:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Priority</small><br><strong>{priority}</strong></div>', unsafe_allow_html=True)
-                    with col3:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Stage</small><br><strong>{stage}</strong></div>', unsafe_allow_html=True)
-
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Created</small><br>{created}</div>', unsafe_allow_html=True)
-                    with col2:
-                        st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Closed</small><br>{closed}</div>', unsafe_allow_html=True)
-
-                    st.markdown(f'<div class="metric-card"><small style="color:#6b7280;">Description</small><br>{content if content and content != "—" else "<em>(No description)</em>"}</div>', unsafe_allow_html=True)
+    if submitted:
+        if not customer_email or not subject or not description:
+            st.error("Email, Subject, and Description are required.")
+        else:
+            with st.spinner("Looking up customer and creating ticket..."):
+                account = _lookup_by_email(customer_email, return_all=False)
+                if not account:
+                    st.error(f"No VRS or Convo Now account found for {customer_email}")
+                else:
+                    ticket = _create_ticket(account["id"], subject, description, priority, pipeline_id)
+                    if ticket:
+                        st.success("✓ Ticket created successfully!")
+                        props = account.get("properties", {})
+                        st.info(f"""
+                        **Ticket ID:** {ticket["id"]}
+                        **Customer:** {props.get('first_name', '')} {props.get('last_name', '')}
+                        **Account:** {props.get('service_type', '—')} - {props.get('number', '—')}
+                        """)
 
 # Logout button
 st.divider()
