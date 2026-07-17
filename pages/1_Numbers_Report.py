@@ -42,12 +42,7 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             except:
                 usage_mins = 0
 
-            if usage_mins > 1:
-                status = "Active"
-            elif usage_mins >= 0:
-                status = "Live"
-            else:
-                status = "No Data"
+            status = "Active" if usage_mins > 1 else "Live"
 
             rows.append({
                 "Number": num,
@@ -164,12 +159,7 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                     except:
                         usage_mins = 0
 
-                    if usage_mins > 1:
-                        status = "Active"
-                    elif usage_mins >= 0:
-                        status = "Live"
-                    else:
-                        status = "No Data"
+                    status = "Active" if usage_mins > 1 else "Live"
 
                     month_str = p.get("month_date") or ""
                     mv_rows.append({
