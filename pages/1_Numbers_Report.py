@@ -147,17 +147,27 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             st.markdown("#### Detail Tables")
             display_cols = ["Number", "Name", "Email", "Usage Type", "Inbound Minutes", "Outbound Minutes", "Total URSA Minutes", "Number Created At"]
 
+            # Filter by Usage Type
+            filter_type = st.radio("Filter by Usage Type:", ["All", "Personal", "Organization"], horizontal=True, key="usage_type_filter")
+
+            if filter_type == "Personal":
+                filtered_df = report_df[report_df["Usage Type"].str.lower() == "personal"]
+            elif filter_type == "Organization":
+                filtered_df = report_df[report_df["Usage Type"].str.lower() == "organization"]
+            else:
+                filtered_df = report_df
+
             tab_active, tab_live = st.tabs(["Active Numbers", "Live Numbers"])
 
             with tab_active:
-                active_df = report_df[report_df["Status"] == "Active"][display_cols]
+                active_df = filtered_df[filtered_df["Status"] == "Active"][display_cols]
                 if active_df.empty:
                     st.info("No active numbers found.")
                 else:
                     st.dataframe(active_df, use_container_width=True)
 
             with tab_live:
-                live_df = report_df[report_df["Status"] == "Live"][display_cols]
+                live_df = filtered_df[filtered_df["Status"] == "Live"][display_cols]
                 if live_df.empty:
                     st.info("No live numbers found.")
                 else:
