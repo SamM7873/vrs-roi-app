@@ -144,8 +144,23 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             else:
                 st.info("No data available for monthly breakdown.")
 
-            st.markdown("#### Detail Table")
-            display_cols = ["Number", "Name", "Email", "Usage Type", "Status", "Inbound Minutes", "Outbound Minutes", "Total URSA Minutes", "Number Created At"]
-            st.dataframe(report_df[display_cols], use_container_width=True)
+            st.markdown("#### Detail Tables")
+            display_cols = ["Number", "Name", "Email", "Usage Type", "Inbound Minutes", "Outbound Minutes", "Total URSA Minutes", "Number Created At"]
+
+            tab_active, tab_live = st.tabs(["Active Numbers", "Live Numbers"])
+
+            with tab_active:
+                active_df = report_df[report_df["Status"] == "Active"][display_cols]
+                if active_df.empty:
+                    st.info("No active numbers found.")
+                else:
+                    st.dataframe(active_df, use_container_width=True)
+
+            with tab_live:
+                live_df = report_df[report_df["Status"] == "Live"][display_cols]
+                if live_df.empty:
+                    st.info("No live numbers found.")
+                else:
+                    st.dataframe(live_df, use_container_width=True)
 
 report_header_close()
