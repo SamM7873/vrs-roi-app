@@ -10,6 +10,10 @@ require_auth()
 
 report_header("Numbers Report", "Live VRS numbers by URSA billable minutes (active vs live)")
 
+# Initialize session state for report data
+if "numbers_report_df" not in st.session_state:
+    st.session_state.numbers_report_df = None
+
 if st.button("Load Numbers Report", key="load_numbers_report"):
     all_number_records = list_all(
         "2-40974683",
@@ -67,6 +71,7 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             st.info("No Live VRS numbers found.")
         else:
             report_df = pd.DataFrame(rows)
+            st.session_state.numbers_report_df = report_df
 
             total = len(report_df)
             personal_active = ((report_df["Usage Type"].str.lower() == "personal") & (report_df["Status"] == "Active")).sum()
@@ -144,33 +149,36 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             else:
                 st.info("No data available for monthly breakdown.")
 
-            st.markdown("#### Detail Tables")
-            display_cols = ["Number", "Name", "Email", "Usage Type", "Inbound Minutes", "Outbound Minutes", "Total URSA Minutes", "Number Created At"]
+# Display detail tables with filter (outside the Load button block)
+if st.session_state.numbers_report_df is not None:
+    st.markdown("#### Detail Tables")
+    report_df = st.session_state.numbers_report_df
+    display_cols = ["Number", "Name", "Email", "Usage Type", "Inbound Minutes", "Outbound Minutes", "Total URSA Minutes", "Number Created At"]
 
-            # Filter by Usage Type
-            filter_type = st.radio("Filter by Usage Type:", ["All", "Personal", "Organization"], horizontal=True, key="usage_type_filter")
+    # Filter by Usage Type
+    filter_type = st.radio("Filter by Usage Type:", ["All", "Personal", "Organization"], horizontal=True, key="usage_type_filter")
 
-            if filter_type == "Personal":
-                filtered_df = report_df[report_df["Usage Type"].str.lower() == "personal"]
-            elif filter_type == "Organization":
-                filtered_df = report_df[report_df["Usage Type"].str.lower() == "organization"]
-            else:
-                filtered_df = report_df
+    if filter_type == "Personal":
+        filtered_df = report_df[report_df["Usage Type"].str.lower() == "personal"]
+    elif filter_type == "Organization":
+        filtered_df = report_df[report_df["Usage Type"].str.lower() == "organization"]
+    else:
+        filtered_df = report_df
 
-            tab_active, tab_live = st.tabs(["Active Numbers", "Live Numbers"])
+    tab_active, tab_live = st.tabs(["Active Numbers", "Live Numbers"])
 
-            with tab_active:
-                active_df = filtered_df[filtered_df["Status"] == "Active"][display_cols]
-                if active_df.empty:
-                    st.info("No active numbers found.")
-                else:
-                    st.dataframe(active_df, use_container_width=True)
+    with tab_active:
+        active_df = filtered_df[filtered_df["Status"] == "Active"][display_cols]
+        if active_df.empty:
+            st.info("No active numbers found.")
+        else:
+            st.dataframe(active_df, use_container_width=True)
 
-            with tab_live:
-                live_df = filtered_df[filtered_df["Status"] == "Live"][display_cols]
-                if live_df.empty:
-                    st.info("No live numbers found.")
-                else:
-                    st.dataframe(live_df, use_container_width=True)
+    with tab_live:
+        live_df = filtered_df[filtered_df["Status"] == "Live"][display_cols]
+        if live_df.empty:
+            st.info("No live numbers found.")
+        else:
+            st.dataframe(live_df, use_container_width=True)
 
 report_header_close()
