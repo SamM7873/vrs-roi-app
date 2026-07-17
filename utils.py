@@ -136,21 +136,21 @@ def require_auth():
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
             html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-            .stApp { background-color: #F6F8FA; }
+            .stApp { background-color: #F5F3F0; }
             .login-wrap { max-width:400px;margin:5vh auto 0;padding:0 1rem; }
             .login-logo-area { text-align:center;margin-bottom:1.5rem; }
             .logo-mark {
                 display:inline-flex;align-items:center;justify-content:center;
-                width:52px;height:52px;background:#00A651;border-radius:12px;
+                width:52px;height:52px;background:#C9A876;border-radius:12px;
                 font-size:1.3rem;font-weight:900;color:#fff;letter-spacing:-1px;margin-bottom:0.75rem;
             }
             .login-logo-area h2 { font-size:1.3rem;font-weight:800;color:#1F2937;margin:0 0 0.25rem; }
             .login-logo-area p { color:#6B7280;font-size:0.85rem;margin:0; }
             .login-card { background:#fff;border-radius:14px;padding:2rem 1.75rem;border:1px solid #E5E7EB;box-shadow:0 4px 16px rgba(0,0,0,0.06); }
             .stTextInput > div > div > input { border-radius:8px !important;border:1.5px solid #E5E7EB !important;padding:0.6rem 1rem !important;font-size:0.93rem !important;background:#F6F8FA !important; }
-            .stTextInput > div > div > input:focus { border-color:#00A651 !important;box-shadow:0 0 0 3px rgba(0,166,81,0.12) !important;background:#fff !important; }
-            div.stButton > button { background-color:#00A651;color:#fff;border-radius:8px;border:none;padding:0.6rem 2.2rem;font-weight:700;font-size:0.95rem;width:100%;box-shadow:0 1px 4px rgba(0,166,81,0.3); }
-            div.stButton > button:hover { background-color:#008F46;color:#fff; }
+            .stTextInput > div > div > input:focus { border-color:#C9A876 !important;box-shadow:0 0 0 3px rgba(201,168,118,0.12) !important;background:#fff !important; }
+            div.stButton > button { background-color:#C9A876;color:#fff;border-radius:8px;border:none;padding:0.6rem 2.2rem;font-weight:700;font-size:0.95rem;width:100%;box-shadow:0 1px 4px rgba(201,168,118,0.3); }
+            div.stButton > button:hover { background-color:#B59467;color:#fff; }
         </style>
         <div class="login-wrap">
           <div class="login-logo-area">
@@ -182,7 +182,7 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
     def _show(fetched, pct, done=False):
         if done:
             loader.markdown(f"""
-<div style="display:flex;align-items:center;gap:1rem;background:#F0FDF4;border:1.5px solid #2DB84B;
+<div style="display:flex;align-items:center;gap:1rem;background:#F0FDF4;border:1.5px solid #C9A876;
             border-radius:14px;padding:1rem 1.5rem;margin:0.5rem 0;">
   <div style="font-size:1.6rem;">✅</div>
   <div>
@@ -195,7 +195,7 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
             bar_html = (
                 '<div style="display:flex;gap:3px;justify-content:center;margin-top:0.6rem;">'
                 + "".join(
-                    f'<div style="width:14px;height:14px;border-radius:3px;background:{"#2DB84B" if i < filled else "#D1FAE5"};"></div>'
+                    f'<div style="width:14px;height:14px;border-radius:3px;background:{"#C9A876" if i < filled else "#E5D5C0"};"></div>'
                     for i in range(20)
                 )
                 + "</div>"
@@ -488,8 +488,8 @@ COMMON_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
     :root {
-        --primary: #00A651;
-        --primary-dark: #008F46;
+        --primary: #C9A876;
+        --primary-dark: #B59467;
         --background: #F6F8FA;
         --card: #FFFFFF;
         --text: #1F2937;
@@ -594,7 +594,7 @@ COMMON_CSS = COMMON_CSS + MOBILE_CSS
 def report_header(title, subtitle, section="Analytics"):
     st.markdown(f"""
 <div style="margin-top:1.5rem;">
-<div style="background:linear-gradient(135deg,#00A651 0%,#008F46 100%);
+<div style="background:linear-gradient(135deg,#C9A876 0%,#B59467 100%);
             border-radius:12px 12px 0 0;padding:1.25rem 1.75rem 1rem;">
     <div style="font-size:0.68rem;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;
                 color:rgba(255,255,255,0.65);margin-bottom:0.3rem;">{section}</div>
