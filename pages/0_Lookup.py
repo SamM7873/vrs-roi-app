@@ -31,42 +31,42 @@ if APP_PASSWORD:
                 font-size: 15px;
                 line-height: 1.6;
             }
-            .stApp, section.main > div, [data-testid="stAppViewContainer"] { background-color: #113a25 !important; }
+            .stApp, section.main > div, [data-testid="stAppViewContainer"] { background-color: #F5F3F0 !important; }
             /* Sidebar dark green */
-            section[data-testid="stSidebar"] { background-color: #0b2a1b !important; border-right: 1px solid #1e5438 !important; }
-            section[data-testid="stSidebar"] * { color: rgba(255,255,255,0.85) !important; }
-            section[data-testid="stSidebar"] [aria-selected="true"] { background-color: rgba(0,166,81,0.25) !important; border-radius: 8px; }
+            section[data-testid="stSidebar"] { background-color: #EBE7E2 !important; border-right: 1px solid #D9D3CA !important; }
+            section[data-testid="stSidebar"] * { color: #3d3430 !important; }
+            section[data-testid="stSidebar"] [aria-selected="true"] { background-color: #C9A876 !important; border-radius: 8px; }
             /* Center the login content */
             .login-wrap { max-width:420px;margin:6vh auto 0;padding:0 1rem; }
             .login-logo-area { text-align:center;margin-bottom:2.5rem; }
             .login-logo-area .logo-mark { display:inline-block;margin-bottom:1.4rem; }
-            .login-logo-area h2 { font-size:1.4rem;font-weight:700;color:#E6F2EC;margin:0 0 0.5rem;letter-spacing:-0.02em; }
+            .login-logo-area h2 { font-size:1.4rem;font-weight:700;color:#3d3430;margin:0 0 0.5rem;letter-spacing:-0.02em; }
             .login-logo-area p { color:#6aab85;font-size:0.9rem;margin:0; }
             /* Style the form area - target Streamlit's rendered column */
-            .stTextInput label { color:#9dc8b0 !important; font-weight:600 !important; font-size:0.85rem !important; }
+            .stTextInput label { color:#5b5349 !important; font-weight:600 !important; font-size:0.85rem !important; }
             .stTextInput > div > div > input {
                 border-radius: 10px !important;
-                border: 1.5px solid #2d6b47 !important;
+                border: 1.5px solid #D9D3CA !important;
                 padding: 0.7rem 1rem !important;
                 font-size: 0.95rem !important;
-                color: #E6F2EC !important;
-                background: #1a4d32 !important;
+                color: #3d3430 !important;
+                background: #FFFFFF !important;
             }
-            .stTextInput > div > div > input::placeholder { color: #6aab85 !important; }
+            .stTextInput > div > div > input::placeholder { color: #9d9591 !important; }
             .stTextInput > div > div > input:focus {
-                border-color: #00A651 !important;
+                border-color: #C9A876 !important;
                 box-shadow: 0 0 0 3px rgba(0,166,81,0.2) !important;
-                background: #1a4d32 !important;
+                background: #F5F3F0 !important;
             }
             div.stButton > button {
-                background-color: #00A651; color: #fff;
+                background-color: #C9A876; color: #fff;
                 border-radius: 10px; border: none;
                 padding: 0.7rem 2.2rem; font-weight: 700;
                 font-size: 0.95rem; width: 100%;
                 box-shadow: 0 2px 8px rgba(0,166,81,0.4);
                 margin-top: 0.5rem;
             }
-            div.stButton > button:hover { background-color: #008F46; color: #fff; }
+            div.stButton > button:hover { background-color: #B59467; color: #fff; }
         </style>
         <div class="login-wrap">
           <div class="login-logo-area">
@@ -429,7 +429,7 @@ st.markdown("""
 
     /* ── Hero ── */
     .hero-wrap {
-        background-color: #2DB84B;
+        background-color: #C9A876;
         border-radius: 0 0 32px 32px;
         padding: 2.5rem 2rem 3rem;
         margin-bottom: 0;
@@ -506,7 +506,7 @@ st.markdown("""
         transition: background 0.15s !important;
     }
     div[data-testid="stButton"] button:hover {
-        background: #25A340 !important;
+        background: #B59467 !important;
     }
 
     /* ── Inputs ── */
@@ -534,7 +534,7 @@ st.markdown("""
 
     /* ── Buttons ── */
     div.stButton > button {
-        background-color: #2DB84B;
+        background-color: #C9A876;
         color: #FFFFFF;
         border-radius: 999px;
         border: none;
@@ -546,7 +546,7 @@ st.markdown("""
         box-shadow: 0 2px 8px rgba(45,184,75,0.25);
     }
     div.stButton > button:hover {
-        background-color: #25A340;
+        background-color: #B59467;
         color: #FFFFFF;
         transform: translateY(-1px);
     }
@@ -557,7 +557,7 @@ st.markdown("""
 
     /* ── Tabs ── */
     .stTabs [data-baseweb="tab-list"] {
-        background-color: #1a4d32 !important;
+        background-color: #F5F3F0 !important;
         border-radius: 999px !important;
         padding: 4px 6px !important;
         gap: 4px !important;
@@ -573,7 +573,7 @@ st.markdown("""
         letter-spacing: 0.01em !important;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #00A651 !important;
+        background-color: #C9A876 !important;
         color: #FFFFFF !important;
         font-weight: 700 !important;
     }
@@ -660,7 +660,7 @@ def render_table_and_summary(df):
     loss_count   = (month_rows["Cost ROI"] == "LOSS").sum()
     total_months = len(month_rows)
     net = cost_diff.sum()
-    net_color = "#00A651" if net >= 0 else "#EF4444"
+    net_color = "#C9A876" if net >= 0 else "#EF4444"
     net_label = "PROFIT" if net >= 0 else "LOSS"
 
     # ── Summary stat tiles ──
@@ -681,7 +681,7 @@ def render_table_and_summary(df):
 
     # ── Month-by-month table ──
     st.markdown("""<div style="font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
-                   color:#E6F2EC;margin-bottom:0.75rem;">Month-by-Month Breakdown</div>""", unsafe_allow_html=True)
+                   color:#3d3430;margin-bottom:0.75rem;">Month-by-Month Breakdown</div>""", unsafe_allow_html=True)
 
     def roi_badge(val):
         if val == "PROFIT":
@@ -691,7 +691,7 @@ def render_table_and_summary(df):
         return '<span style="background:#F3F4F6;color:#9CA3AF;padding:3px 10px;border-radius:6px;font-size:0.78rem;">—</span>'
 
     header = """<div style="display:grid;grid-template-columns:130px 1fr 1fr 1fr 1fr 1fr 110px;
-                gap:0.75rem;padding:0.7rem 1.25rem;background:#1a4d32;border-radius:10px 10px 0 0;
+                gap:0.75rem;padding:0.7rem 1.25rem;background:#F5F3F0;border-radius:10px 10px 0 0;
                 font-size:0.72rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:#9dc8b0;">
   <div>Month</div><div>VRS Min</div><div>Convo Now Min</div>
   <div>VRS Cost</div><div>Convo Now Cost</div><div>Saved ($)</div><div style="text-align:center;">ROI</div>
@@ -746,9 +746,9 @@ def render_profit_loss_summary(df):
 
     def _mini_tiles(*items):
         tiles = "".join(
-            f"""<div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
+            f"""<div style="background:#F5F3F0;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
   <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">{lbl}</div>
-  <div style="font-size:1.3rem;font-weight:800;color:#E6F2EC;font-variant-numeric:tabular-nums;">{val}</div>
+  <div style="font-size:1.3rem;font-weight:800;color:#3d3430;font-variant-numeric:tabular-nums;">{val}</div>
   {f'<div style="font-size:0.75rem;color:#6aab85;margin-top:0.2rem;">{sub}</div>' if sub else ''}
 </div>"""
             for lbl, val, sub in items
@@ -773,20 +773,20 @@ def render_profit_loss_summary(df):
 
     # ── Cost Summary ───────────────────────────────────────────────────────────
     net = cost_diff.sum()
-    net_color = "#00A651" if net >= 0 else "#EF4444"
+    net_color = "#C9A876" if net >= 0 else "#EF4444"
     _sec_head("Cost Summary")
     st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:0.5rem;">
-  <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
+  <div style="background:#F5F3F0;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
     <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">PROFIT Months</div>
-    <div style="font-size:1.3rem;font-weight:800;color:#00A651;">{len(cost_profit_months)}</div>
+    <div style="font-size:1.3rem;font-weight:800;color:#C9A876;">{len(cost_profit_months)}</div>
     <div style="font-size:0.75rem;color:#6aab85;">+${cost_diff[cost_diff > 0].sum():,.2f}</div>
   </div>
-  <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
+  <div style="background:#F5F3F0;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
     <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">LOSS Months</div>
     <div style="font-size:1.3rem;font-weight:800;color:#EF4444;">{len(cost_loss_months)}</div>
     <div style="font-size:0.75rem;color:#f87171;">-${abs(cost_diff[cost_diff < 0].sum()):,.2f}</div>
   </div>
-  <div style="background:#1a4d32;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
+  <div style="background:#F5F3F0;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
     <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">Net Cost (VRS − Convo Now)</div>
     <div style="font-size:1.3rem;font-weight:800;color:{net_color};font-variant-numeric:tabular-nums;">${net:,.2f}</div>
   </div>
@@ -801,7 +801,7 @@ def render_profit_loss_summary(df):
         st.dataframe(loss_months[cols_show].reset_index(drop=True), use_container_width=True, hide_index=True)
 
 def render_charts(person_numbers, person_month_values, person_email_display):
-    st.markdown("<div style='font-size:1.1rem;font-weight:700;color:#E6F2EC;margin:1.5rem 0 1rem;letter-spacing:-0.01em;'>VRS vs Convo Now — Month-over-Month Comparison</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:1.1rem;font-weight:700;color:#3d3430;margin:1.5rem 0 1rem;letter-spacing:-0.01em;'>VRS vs Convo Now — Month-over-Month Comparison</div>", unsafe_allow_html=True)
 
     for person_key in sorted(person_numbers.keys()):
         months = person_month_values.get(person_key)
@@ -867,7 +867,7 @@ html, body, [class*="css"] {
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    color: #E6F2EC;
+    color: #3d3430;
     letter-spacing: -0.01em;
 }
 /* Streamlit global text overrides */
@@ -877,13 +877,13 @@ h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.2; }
 .stTabs [data-baseweb="tab"] { font-size: 0.875rem !important; font-weight: 600 !important; letter-spacing: 0.01em !important; }
 /* Metric/label text — force readable colors on dark background */
 [data-testid="stMetricLabel"] { font-size: 0.72rem !important; font-weight: 700 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; color: #9dc8b0 !important; }
-[data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 800 !important; color: #E6F2EC !important; }
+[data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 800 !important; color: #3d3430 !important; }
 [data-testid="stMetricDelta"] { font-size: 0.82rem !important; }
 /* Tab styling on dark background */
 .stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 2px solid #1e5438 !important; gap: 0.25rem !important; }
 .stTabs [data-baseweb="tab"] { background: transparent !important; color: #9dc8b0 !important; border-radius: 8px 8px 0 0 !important; padding: 0.5rem 1rem !important; }
-.stTabs [data-baseweb="tab"][aria-selected="true"] { background: #1a4d32 !important; color: #E6F2EC !important; border-bottom: 2px solid #00A651 !important; }
-.stTabs [data-baseweb="tab"]:hover { background: #163e28 !important; color: #E6F2EC !important; }
+.stTabs [data-baseweb="tab"][aria-selected="true"] { background: #F5F3F0 !important; color: #3d3430 !important; border-bottom: 2px solid #C9A876 !important; }
+.stTabs [data-baseweb="tab"]:hover { background: #163e28 !important; color: #3d3430 !important; }
 .stTabs [data-baseweb="tab-panel"] { padding-top: 1.25rem !important; }
 /* Info/warning boxes */
 [data-testid="stAlert"] { font-size: 0.9rem !important; line-height: 1.5 !important; }
@@ -937,7 +937,7 @@ section[data-testid="stSidebar"] [aria-selected="true"] {
 }
 .stTextInput > div > div > input::placeholder { color: #9CA3AF !important; }
 .stTextInput > div > div > input:focus {
-    border-color: #00A651 !important;
+    border-color: #C9A876 !important;
     box-shadow: 0 0 0 3px rgba(0,166,81,0.15) !important;
     background: #fff !important;
 }
@@ -948,19 +948,19 @@ section[data-testid="stSidebar"] [aria-selected="true"] {
 .stSlider label, .stRadio label, .stCheckbox label,
 [data-testid="stWidgetLabel"] { color: #9dc8b0 !important; font-weight: 600 !important; font-size: 0.85rem !important; }
 /* Selectbox/dropdown on dark background */
-.stSelectbox [data-baseweb="select"] > div { background: #1a4d32 !important; border-color: #2d6b47 !important; color: #E6F2EC !important; }
-.stSelectbox [data-baseweb="select"] span { color: #E6F2EC !important; }
+.stSelectbox [data-baseweb="select"] > div { background: #F5F3F0 !important; border-color: #2d6b47 !important; color: #3d3430 !important; }
+.stSelectbox [data-baseweb="select"] span { color: #3d3430 !important; }
 /* Dividers */
 hr { border-color: #2d6b47 !important; }
 /* Search button */
 div.stButton > button {
-    background-color: #00A651; color: #fff;
+    background-color: #C9A876; color: #fff;
     border-radius: 8px; border: none;
     padding: 0.6rem 1.4rem; font-weight: 700;
     font-size: 0.95rem; width: 100%;
     box-shadow: 0 1px 8px rgba(0,166,81,0.4);
 }
-div.stButton > button:hover { background-color: #008F46; }
+div.stButton > button:hover { background-color: #B59467; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -972,7 +972,7 @@ if True:
 with mid:
     # Green banner header inside the card column
     st.markdown("""
-<div style="background:linear-gradient(135deg,#00A651 0%,#008F46 100%);
+<div style="background:linear-gradient(135deg,#C9A876 0%,#B59467 100%);
             padding:1.4rem 2rem;text-align:center;margin:-1px -1px 0;">
   <svg width="120" height="24" viewBox="-80 0 1600 315" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path fill-rule="evenodd" clip-rule="evenodd" d="M748.115 0C665.546 0 608.068 64.5577 608.068 156.808C608.068 249.058 608.068 290.596 608.068 290.596C608.068 303.923 619.279 314.827 632.981 314.827C646.683 314.827 657.894 303.923 657.894 290.596C657.894 289.904 657.894 234.692 657.894 156.808C657.894 78.9231 694.196 48.4615 748.115 48.4615C802.033 48.4615 838.513 91.9039 838.513 156.635C838.513 221.365 838.513 289.385 838.513 290.423C838.513 296.827 841.182 303.058 845.809 307.558C850.435 312.231 856.842 314.654 863.426 314.654C877.128 314.654 888.339 303.75 888.339 290.423C888.339 290.423 888.339 230.712 888.339 156.635C888.339 82.5577 830.861 0 748.115 0Z" fill="white"/>
@@ -1179,10 +1179,10 @@ if "search_results" in st.session_state:
     total_vrs_min = pd.to_numeric(month_rows["VRS Minutes"], errors="coerce").sum() if not month_rows.empty else 0
     total_convo_min = pd.to_numeric(month_rows["Convo Now Minutes"], errors="coerce").sum() if not month_rows.empty else 0
     cost_saved = (total_vrs_min * VRS_RATE_PER_MINUTE) - (total_convo_min * CONVO_NOW_RATE_PER_MINUTE)
-    saved_color = "#00A651" if cost_saved >= 0 else "#EF4444"
+    saved_color = "#C9A876" if cost_saved >= 0 else "#EF4444"
 
     def _tile(label, value, sub="", color="#1F2937", accent=False):
-        border = "border-top:3px solid #00A651;" if accent else "border-top:3px solid transparent;"
+        border = "border-top:3px solid #C9A876;" if accent else "border-top:3px solid transparent;"
         return (f'<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:12px;'
                 f'padding:1rem 1.2rem;{border}">'
                 f'<div style="font-size:0.68rem;font-weight:700;letter-spacing:0.09em;'
@@ -1195,7 +1195,7 @@ if "search_results" in st.session_state:
     st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.55rem;margin-bottom:1.25rem;">
   {_tile("Numbers Found", total_nums, accent=True)}
   {_tile("Registrations", total_regs)}
-  {_tile("Live VRS", live_vrs, color="#00A651")}
+  {_tile("Live VRS", live_vrs, color="#C9A876")}
   {_tile("Account Age", account_age)}
   {_tile("Total VRS Min", f"{total_vrs_min:,.1f}")}
 </div>""", unsafe_allow_html=True)
@@ -1206,7 +1206,7 @@ if "search_results" in st.session_state:
 
     def status_badge(status):
         s = norm(status)
-        color = "#00A651" if s == "live" else "#EF4444" if s == "suspended" else "#F59E0B" if s in ("inactive", "cancelled") else "#6B7280"
+        color = "#C9A876" if s == "live" else "#EF4444" if s == "suspended" else "#F59E0B" if s in ("inactive", "cancelled") else "#6B7280"
         return f'<span style="background:{color};color:#fff;padding:3px 12px;border-radius:6px;font-size:0.75rem;font-weight:700;">{status or "—"}</span>'
 
     def ursa_badge(v):
@@ -1226,7 +1226,7 @@ if "search_results" in st.session_state:
         </div>"""
 
     def card_header(title):
-        return f'<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#00A651;margin-bottom:0.75rem;">{title}</div>'
+        return f'<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#C9A876;margin-bottom:0.75rem;">{title}</div>'
 
     if not matched_numbers:
         st.info("No number object records found — showing registration records only.")
@@ -1276,7 +1276,7 @@ if "search_results" in st.session_state:
             svc = norm(p.get("service_type") or "")
             _sec_lbl = "VRS" if svc == "vrs" else "Convo Now"
             if _sec_lbl != _last_lbl and len(person_records) > 1:
-                _sec_color = "#00A651" if svc == "vrs" else "#3B82F6"
+                _sec_color = "#C9A876" if svc == "vrs" else "#3B82F6"
                 _sec_mt = "0" if _last_lbl is None else "1rem"
                 st.markdown(
                     f'<div style="display:inline-flex;background:{_sec_color};color:#fff;'
@@ -1305,7 +1305,7 @@ if "search_results" in st.session_state:
                 '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;height:100%;">'
                 + card_header("Contact Summary")
                 + f'<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:1px solid #DDD9CC;">'
-                + f'<div style="width:44px;height:44px;border-radius:50%;background:#00A651;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
+                + f'<div style="width:44px;height:44px;border-radius:50%;background:#C9A876;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
                 + f'<div><div style="font-size:0.97rem;font-weight:700;color:#1F2937;">{name}</div>'
                 + f'<div style="font-size:0.78rem;color:#6B7280;">{fmt(p.get("email"))}</div></div>'
                 + f'<div style="margin-left:auto;">{status_badge(p.get("number_status"))}</div>'
@@ -1366,12 +1366,12 @@ if "search_results" in st.session_state:
                 current_m = recent[0][1] if recent else 0
                 prev_m = recent[1][1] if len(recent) > 1 else 0
                 diff_m = current_m - prev_m
-                diff_color = "#00A651" if diff_m >= 0 else "#EF4444"
+                diff_color = "#C9A876" if diff_m >= 0 else "#EF4444"
                 diff_sign = "+" if diff_m >= 0 else ""
                 monthly_col_html = (
                     '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;height:100%;">'
                     + card_header("Monthly Value (VRS)")
-                    + f'<div style="font-size:1.3rem;font-weight:800;color:#00A651;margin-bottom:0.3rem;">{current_m:,.1f} min</div>'
+                    + f'<div style="font-size:1.3rem;font-weight:800;color:#C9A876;margin-bottom:0.3rem;">{current_m:,.1f} min</div>'
                     + f'<div style="font-size:0.75rem;color:{diff_color};margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #DDD9CC;">{diff_sign}{diff_m:,.1f} vs prev month</div>'
                     + mv_rows
                     + '</div>'
@@ -1393,7 +1393,7 @@ if "search_results" in st.session_state:
                 if primary_addr.strip():
                     coords = geocode(primary_addr)
                     if coords:
-                        map_points.append({"lat": coords[0], "lon": coords[1], "label": "Primary Address", "addr": primary_addr, "color": "#00A651"})
+                        map_points.append({"lat": coords[0], "lon": coords[1], "label": "Primary Address", "addr": primary_addr, "color": "#C9A876"})
                 if emerg_addr.strip() and emerg_addr != primary_addr:
                     coords = geocode(emerg_addr)
                     if coords:
@@ -1424,7 +1424,7 @@ if "search_results" in st.session_state:
                         map_df, lat="lat", lon="lon",
                         hover_name="label", hover_data={"addr": True, "lat": False, "lon": False, "color": False},
                         color="label",
-                        color_discrete_map={"Primary Address": "#00A651", "Emergency Address": "#EF4444"},
+                        color_discrete_map={"Primary Address": "#C9A876", "Emergency Address": "#EF4444"},
                         zoom=11, height=260,
                     )
                     fig.update_traces(marker=dict(size=14))
@@ -1471,7 +1471,7 @@ if "search_results" in st.session_state:
                 _trend = _pendo.get("pendo_usage_trending_30d")
                 try:
                     _trend_f = float(_trend)
-                    _trend_html = (f'<span style="color:{"#00A651" if _trend_f >= 0 else "#EF4444"};font-weight:700;">'
+                    _trend_html = (f'<span style="color:{"#C9A876" if _trend_f >= 0 else "#EF4444"};font-weight:700;">'
                                    f'{"+" if _trend_f >= 0 else ""}{_trend_f:,.0f}%</span>')
                 except (TypeError, ValueError):
                     _trend_html = "—"
@@ -1504,27 +1504,27 @@ if "search_results" in st.session_state:
         _profile_email_norm = norm(_pfp.get("email") or "")
         _profile_nums = {str(_r.get("properties", {}).get("number") or "").strip() for _r in _profile_records}
         _pfp_svc = norm(_pfp.get("service_type") or "")
-        _pfp_svc_color = "#00A651" if _pfp_svc == "vrs" else "#3B82F6"
+        _pfp_svc_color = "#C9A876" if _pfp_svc == "vrs" else "#3B82F6"
         _pfp_svc_tag = "VRS" if _pfp_svc == "vrs" else "Convo Now"
         _pfp_status = (_pfp.get("number_status") or "").title()
-        _pfp_stat_color = "#00A651" if _pfp_status.lower() == "live" else "#EF4444" if _pfp_status.lower() == "suspended" else "#6B7280"
+        _pfp_stat_color = "#C9A876" if _pfp_status.lower() == "live" else "#EF4444" if _pfp_status.lower() == "suspended" else "#6B7280"
         _pfp_initials = "".join(n[0].upper() for n in _profile_name.split() if n)[:2] if _profile_name != "Unknown" else "?"
 
         if len(_person_groups) > 1:
             st.markdown(f"""
 <style>
 div[data-testid="stButton"] button[kind="secondary"] {{
-    background: #1a4d32 !important;
+    background: #F5F3F0 !important;
     border: 1.5px solid #2d6b47 !important;
     border-radius: 8px !important;
-    color: #E6F2EC !important;
+    color: #3d3430 !important;
     font-size: 0.82rem !important;
     font-weight: 600 !important;
     padding: 0.35rem 0.9rem !important;
     box-shadow: none !important;
 }}
 div[data-testid="stButton"] button[kind="secondary"]:hover {{
-    border-color: #00A651 !important;
+    border-color: #C9A876 !important;
     background: #1e5438 !important;
     color: #fff !important;
 }}
@@ -1548,7 +1548,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
       font-size:0.85rem;font-weight:800;color:{_pfp_svc_color};
       flex-shrink:0;">{_pfp_initials}</div>
   <div>
-    <div style="font-size:1.1rem;font-weight:800;color:#E6F2EC;line-height:1.2;">{_profile_name}</div>
+    <div style="font-size:1.1rem;font-weight:800;color:#3d3430;line-height:1.2;">{_profile_name}</div>
     <div style="display:flex;align-items:center;gap:0.4rem;margin-top:0.2rem;flex-wrap:wrap;">
       <span style="font-size:0.75rem;color:rgba(255,255,255,0.7);">{_pfp.get('email') or ''}</span>
       <span style="width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,0.3);display:inline-block;"></span>
@@ -1607,8 +1607,8 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
     transition: background 0.15s, border-color 0.15s, color 0.15s !important;
 }}
 [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child .stButton > button:hover {{
-    background: #00A651 !important;
-    border-color: #00A651 !important;
+    background: #C9A876 !important;
+    border-color: #C9A876 !important;
     color: #fff !important;
     box-shadow: 0 2px 8px rgba(0,166,81,0.25) !important;
 }}
@@ -1644,7 +1644,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
 }
 [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child button:hover {
     background: transparent !important;
-    color: #00A651 !important;
+    color: #C9A876 !important;
     transform: translateX(2px) !important;
 }
 </style>
@@ -1658,8 +1658,8 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             _list_status = (_fp.get("number_status") or "").title()
             _list_svc = norm(_fp.get("service_type") or "")
             _svc_tag = "VRS" if _list_svc == "vrs" else "Convo Now"
-            _svc_color = "#00A651" if _list_svc == "vrs" else "#3B82F6"
-            _stat_color = "#00A651" if _list_status.lower() == "live" else "#EF4444" if _list_status.lower() == "suspended" else "#6B7280"
+            _svc_color = "#C9A876" if _list_svc == "vrs" else "#3B82F6"
+            _stat_color = "#C9A876" if _list_status.lower() == "live" else "#EF4444" if _list_status.lower() == "suspended" else "#6B7280"
             _initials_l = "".join(n[0].upper() for n in _list_name.split() if n)[:2] if _list_name != "Unknown" else "?"
             _num_count = len(_person_records)
 
@@ -1732,7 +1732,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             return '<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 8px;border-radius:6px;font-size:0.72rem;">No</span>'
 
         def progress_step(label, done):
-            bg = "#00A651" if done else "#E5E7EB"
+            bg = "#C9A876" if done else "#E5E7EB"
             fg = "#fff" if done else "#9CA3AF"
             check = "✓" if done else "·"
             return (
@@ -1744,7 +1744,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             )
 
         def progress_line(done):
-            bg = "#00A651" if done else "#E5E7EB"
+            bg = "#C9A876" if done else "#E5E7EB"
             return f'<div style="flex:1;height:2px;background:{bg};margin-top:14px;"></div>'
 
         st.markdown('<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#9dc8b0;margin:0.5rem 0 0.75rem;">Registrations</div>', unsafe_allow_html=True)
@@ -1831,7 +1831,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             "D": lambda rc: f"Last month usage was {rc['last_month_perf']:.1f}% of the historical baseline. Consumer is at risk — immediate action needed to prevent churn.",
         }
 
-        st.markdown("<div style='font-size:1.05rem;font-weight:700;color:#E6F2EC;margin-bottom:0.75rem;letter-spacing:-0.01em;'>VRS Consumer Retention Analysis</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:1.05rem;font-weight:700;color:#3d3430;margin-bottom:0.75rem;letter-spacing:-0.01em;'>VRS Consumer Retention Analysis</div>", unsafe_allow_html=True)
         analysis_date = datetime.now().strftime("%b %d, %Y at %I:%M %p")
 
         seg_counts = {"A": 0, "B": 0, "C": 0, "D": 0}
@@ -2246,7 +2246,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
 
                 st.markdown(f"""
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
-  <div style="background:linear-gradient(135deg,#2DB84B,#22a040);border-radius:14px;padding:1.25rem 1.5rem;color:#fff;">
+  <div style="background:linear-gradient(135deg,#C9A876,#B59467);border-radius:14px;padding:1.25rem 1.5rem;color:#fff;">
 <div style="font-size:0.72rem;font-weight:700;letter-spacing:1px;opacity:0.8;text-transform:uppercase;margin-bottom:0.3rem;">Total Tickets</div>
 <div style="font-size:2rem;font-weight:900;">{total}</div>
   </div>
