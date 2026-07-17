@@ -10,6 +10,15 @@ require_auth()
 
 report_header("Numbers Report", "Live VRS numbers by URSA billable minutes (active vs live)")
 
+# Auto-refresh every 10 minutes for real-time updates
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+current_time = time.time()
+if current_time - st.session_state.last_refresh > 600:  # 10 minutes
+    st.session_state.last_refresh = current_time
+    st.rerun()
+
 # Persistent cache - survives browser sessions
 @persistent_cache(ttl_seconds=600)  # 10 minutes
 def fetch_numbers_data():

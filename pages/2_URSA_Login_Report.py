@@ -10,6 +10,15 @@ require_auth()
 
 report_header("URSA Login Report", "First login, first outbound, and second outbound timestamps")
 
+# Auto-refresh every 10 minutes for real-time updates
+if "last_refresh_ursa" not in st.session_state:
+    st.session_state.last_refresh_ursa = time.time()
+
+current_time = time.time()
+if current_time - st.session_state.last_refresh_ursa > 600:  # 10 minutes
+    st.session_state.last_refresh_ursa = current_time
+    st.rerun()
+
 @persistent_cache(ttl_seconds=600)  # 10 minutes
 def fetch_ursa_data():
     """Fetch URSA login data and cache for 10 minutes (persists across sessions)"""
