@@ -122,6 +122,23 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                 )
                 bar_chart(monthly, "_month", "Month", monthly["_month"].tolist())
 
+            st.markdown("#### Monthly Breakdown by Status (Active vs Live)")
+            monthly_status = (
+                df_dated.assign(_month=df_dated["_dt"].dt.strftime("%Y-%m"))
+                .groupby(["_month", "Status"]).size().reset_index(name="Count")
+                .sort_values("_month")
+            )
+            if not monthly_status.empty:
+                chart = alt.Chart(monthly_status).mark_bar().encode(
+                    x=alt.X("_month:N", title="Month", sort=sorted(monthly_status["_month"].unique())),
+                    y=alt.Y("Count:Q", title="Numbers Created"),
+                    color=alt.Color("Status:N", scale=alt.Scale(domain=["Active", "Live"], range=["#2DB84B", "#FFA500"]), legend=alt.Legend(title="Status")),
+                    tooltip=["_month:N", "Status:N", "Count:Q"]
+                ).properties(height=320)
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.info("No data available for monthly breakdown.")
+
             st.markdown("#### Detail Table")
             display_cols = ["Number", "Name", "Email", "Usage Type", "Status", "Usage Minutes", "Number Created At", "Number Status"]
             st.dataframe(report_df[display_cols], use_container_width=True)
