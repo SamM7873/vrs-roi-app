@@ -13,7 +13,7 @@ report_header("Numbers Report", "Live VRS numbers by usage type and created date
 if st.button("Load Numbers Report", key="load_numbers_report"):
     all_number_records = list_all(
         "2-40974683",
-        ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type", "number_created_at", "credit_type"],
+        ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type", "number_created_at", "credit_type", "usage_minutes"],
         progress_label="Fetching number records"
     )
 
@@ -36,6 +36,14 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             except Exception:
                 created_full = "-"
                 week_start = "-"
+
+            try:
+                usage_mins = float(p.get("usage_minutes") or 0)
+            except:
+                usage_mins = 0
+
+            status = "Active" if usage_mins > 1 else "Live"
+
             rows.append({
                 "Number": num,
                 "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
@@ -45,6 +53,8 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                 "Usage Type": p.get("usage_type") or "-",
                 "Credit Type": p.get("credit_type") or "-",
                 "Number Created At": created_full,
+                "Usage Minutes": usage_mins,
+                "Status": status,
                 "_week": week_start,
             })
 
@@ -54,12 +64,18 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
             report_df = pd.DataFrame(rows)
 
             total = len(report_df)
-            personal = (report_df["Usage Type"].str.lower() == "personal").sum()
-            org = (report_df["Usage Type"].str.lower() == "organization").sum()
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Live VRS Numbers", total)
-            m2.metric("Personal", personal)
-            m3.metric("Organization", org)
+            personal_active = ((report_df["Usage Type"].str.lower() == "personal") & (report_df["Status"] == "Active")).sum()
+            personal_live = ((report_df["Usage Type"].str.lower() == "personal") & (report_df["Status"] == "Live")).sum()
+            org_active = ((report_df["Usage Type"].str.lower() == "organization") & (report_df["Status"] == "Active")).sum()
+            org_live = ((report_df["Usage Type"].str.lower() == "organization") & (report_df["Status"] == "Live")).sum()
+
+            st.markdown("### Numbers Breakdown")
+            col1, col2, col3, col4, col5 = st.columns(5)
+            col1.metric("Total", total)
+            col2.metric("Personal Active", personal_active)
+            col3.metric("Personal Live", personal_live)
+            col4.metric("Org Active", org_active)
+            col5.metric("Org Live", org_live)
 
             df_dated = report_df[report_df["Number Created At"] != "-"].copy()
             df_dated["_dt"] = pd.to_datetime(df_dated["Number Created At"], format="%m/%d/%Y", errors="coerce")
@@ -107,6 +123,7 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                 bar_chart(monthly, "_month", "Month", monthly["_month"].tolist())
 
             st.markdown("#### Detail Table")
-            st.dataframe(report_df.drop(columns=["_week"]), use_container_width=True)
+            display_cols = ["Number", "Name", "Email", "Usage Type", "Status", "Usage Minutes", "Number Created At", "Number Status"]
+            st.dataframe(report_df[display_cols], use_container_width=True)
 
 report_header_close()
