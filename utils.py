@@ -8,8 +8,8 @@ import hashlib
 from datetime import datetime
 from collections import defaultdict
 
-# Persistent cache directory
-CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_cache", "data")
+# Persistent cache directory - use absolute path in home directory
+CACHE_DIR = os.path.expanduser("~/.vrs_roi_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 def persistent_cache(ttl_seconds=300):
@@ -25,8 +25,19 @@ def persistent_cache(ttl_seconds=300):
         def wrapper(*args, **kwargs):
             import threading
 
-            # Create cache key from function name and arguments
-            cache_key = hashlib.md5(f"{func.__name__}_{str(args)}_{str(kwargs)}".encode()).hexdigest()
+            # Create stable cache key from function name only (ignore params that change)
+            # For functions with params, those params should be part of the cache key
+            if args or kwargs:
+                # For functions with parameters, include a normalized version
+                param_str = json.dumps({
+                    'args': [str(a) for a in args],
+                    'kwargs': {k: str(v) for k, v in kwargs.items()}
+                }, sort_keys=True)
+                cache_key = hashlib.md5(f"{func.__name__}_{param_str}".encode()).hexdigest()
+            else:
+                # For functions with no parameters, use just the function name
+                cache_key = hashlib.md5(func.__name__.encode()).hexdigest()
+
             cache_file = os.path.join(CACHE_DIR, f"{func.__name__}_{cache_key}.json")
 
             # FIRST: Return cached data immediately if available (even if stale)
