@@ -8,7 +8,7 @@ st.set_page_config(page_title="Numbers Report", layout="wide", page_icon="📊")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
 
-report_header("Numbers Report", "Live VRS numbers by usage type and created date")
+report_header("Numbers Report", "Live VRS numbers by usage type and created date with monthly usage metrics")
 
 if st.button("Load Numbers Report", key="load_numbers_report"):
     all_number_records = list_all(
@@ -138,6 +138,61 @@ if st.button("Load Numbers Report", key="load_numbers_report"):
                 st.altair_chart(chart, use_container_width=True)
             else:
                 st.info("No data available for monthly breakdown.")
+
+        st.markdown("#### Monthly Usage Metrics")
+        st.info("Loading monthly usage values...")
+        try:
+            monthly_values = list_all(
+                "2-46246179",
+                ["number", "month_date", "usage_minutes", "service_type"],
+                progress_label="Fetching monthly usage values"
+            )
+
+            if monthly_values:
+                mv_rows = []
+                for r in monthly_values:
+                    p = r.get("properties", {})
+                    if norm(p.get("service_type") or "") != "vrs":
+                        continue
+                    try:
+                        usage_mins = float(p.get("usage_minutes") or 0)
+                    except:
+                        usage_mins = 0
+
+                    month_str = p.get("month_date") or ""
+                    mv_rows.append({
+                        "Number": p.get("number") or "",
+                        "Month": month_str,
+                        "Usage Minutes": usage_mins,
+                        "Status": "Active" if usage_mins > 1 else "Live",
+                    })
+
+                if mv_rows:
+                    mv_df = pd.DataFrame(mv_rows)
+                    monthly_summary = (
+                        mv_df.groupby(["Month", "Status"]).size().reset_index(name="Count")
+                        .sort_values("Month")
+                    )
+
+                    if not monthly_summary.empty:
+                        chart = alt.Chart(monthly_summary).mark_bar().encode(
+                            x=alt.X("Month:N", title="Month"),
+                            y=alt.Y("Count:Q", title="Number of Records"),
+                            color=alt.Color("Status:N", scale=alt.Scale(domain=["Active", "Live"], range=["#2DB84B", "#FFA500"]), legend=alt.Legend(title="Status")),
+                            tooltip=["Month:N", "Status:N", "Count:Q"]
+                        ).properties(height=320)
+                        st.altair_chart(chart, use_container_width=True)
+
+                        st.markdown("##### Monthly Usage Detail")
+                        st.dataframe(mv_df[["Number", "Month", "Usage Minutes", "Status"]], use_container_width=True)
+                    else:
+                        st.info("No monthly usage data available.")
+                else:
+                    st.info("No VRS monthly usage values found.")
+            else:
+                st.info("No monthly values records found.")
+        except Exception as e:
+            st.error(f"Error loading monthly usage values: {str(e)}")
 
             st.markdown("#### Detail Table")
             display_cols = ["Number", "Name", "Email", "Usage Type", "Status", "Usage Minutes", "Number Created At", "Number Status"]
