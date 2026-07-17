@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import time
 from datetime import datetime, timezone, timedelta, date
-from utils import dash_spinner, require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close, persistent_cache
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -117,10 +118,20 @@ else:
 
 st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
+# Auto-refresh every 10 minutes for real-time updates
+if "last_refresh_signup" not in st.session_state:
+    st.session_state.last_refresh_signup = time.time()
+
+current_time = time.time()
+if current_time - st.session_state.last_refresh_signup > 600:  # 10 minutes
+    st.session_state.last_refresh_signup = current_time
+    st.rerun()
+
 # ── run ───────────────────────────────────────────────────────────────────────
 
-if st.button("Run Sign-Up Journey Report", use_container_width=False):
-
+@persistent_cache(ttl_seconds=600)  # 10 minutes
+def fetch_signup_journey_data(filter_start, filter_end):
+    """Fetch sign-up journey data and cache for 10 minutes (persists across sessions)"""
     # 1. Pull contacts
     contact_records = list_all(
         "contacts",
@@ -129,8 +140,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     )
 
     if not contact_records:
-        st.warning("No contact records found.")
-        st.stop()
+        return None
 
     # Filter contacts by date range
     if filter_start and filter_end:
@@ -156,8 +166,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     total_contacts = len(contact_emails)
 
     if total_contacts == 0:
-        st.warning("No contacts found in the selected date range.")
-        st.stop()
+        return None
 
     # 2. Pull ALL live VRS number objects, join in Python on email
     num_records = list_all(
@@ -205,6 +214,49 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     has_login        = sum(1 for e in contact_emails if _any(e, "ursa_first_login"))
     has_outbound     = sum(1 for e in contact_emails if _any(e, "ursa_first_outbound_call"))
     has_2nd_outbound = sum(1 for e in contact_emails if _any(e, "ursa_second_outbound_call"))
+
+    # Build detail rows for later display
+    contact_map = {p["email"].strip().lower(): p for p in contacts_in_range if p.get("email")}
+    detail_rows = []
+    for email in sorted(contact_emails):
+        cp = contact_map.get(email, {})
+        first = _best(email, "first_name") or cp.get("firstname") or ""
+        last  = _best(email, "last_name")  or cp.get("lastname")  or ""
+        detail_rows.append({
+            "Name":            f"{first} {last}".strip() or "—",
+            "Email":           email,
+            "Number":          _best(email, "number") or "—",
+            "Contact Created": _fmt(cp.get("createdate")),
+            "Registered At":   _fmt(_best(email, "registered_at")),
+            "Number Created":  _fmt(_best(email, "number_created_at")),
+            "First Login":     _fmt(_best(email, "ursa_first_login")),
+            "First Outbound":  _fmt(_best(email, "ursa_first_outbound_call")),
+            "Second Outbound": _fmt(_best(email, "ursa_second_outbound_call")),
+        })
+
+    return {
+        "total_contacts": total_contacts,
+        "has_number": has_number,
+        "has_registered": has_registered,
+        "has_login": has_login,
+        "has_outbound": has_outbound,
+        "has_2nd_outbound": has_2nd_outbound,
+        "detail_rows": detail_rows,
+    }
+
+# Auto-load data
+data = fetch_signup_journey_data(filter_start, filter_end)
+
+if data is None or not data:
+    st.warning("No contacts found in the selected date range.")
+else:
+    total_contacts = data["total_contacts"]
+    has_number = data["has_number"]
+    has_registered = data["has_registered"]
+    has_login = data["has_login"]
+    has_outbound = data["has_outbound"]
+    has_2nd_outbound = data["has_2nd_outbound"]
+    detail_rows = data["detail_rows"]
 
     def pct(n):
         return f"{n / total_contacts * 100:.1f}%" if total_contacts else "—"
@@ -261,7 +313,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     chart_df = pd.DataFrame({
         "Stage": [r[0] for r in funnel_rows],
         "Count": [r[1] for r in funnel_rows],
-        "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#00A651", "#F59E0B", "#EF4444"],
+        "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#C9A876", "#F59E0B", "#EF4444"],
     })
     chart = alt.Chart(chart_df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
         x=alt.X("Stage:N", sort=[r[0] for r in funnel_rows], axis=alt.Axis(title=None, labelAngle=-20)),
@@ -273,24 +325,6 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
 
     # ── Per-person detail table ───────────────────────────────────────────────
     with st.expander("View per-person detail"):
-        contact_map = {p["email"].strip().lower(): p for p in contacts_in_range if p.get("email")}
-        detail_rows = []
-        for email in sorted(contact_emails):
-            cp = contact_map.get(email, {})
-            # Use _best() to pick best value across all number records for this email
-            first = _best(email, "first_name") or cp.get("firstname") or ""
-            last  = _best(email, "last_name")  or cp.get("lastname")  or ""
-            detail_rows.append({
-                "Name":            f"{first} {last}".strip() or "—",
-                "Email":           email,
-                "Number":          _best(email, "number") or "—",
-                "Contact Created": _fmt(cp.get("createdate")),
-                "Registered At":   _fmt(_best(email, "registered_at")),
-                "Number Created":  _fmt(_best(email, "number_created_at")),
-                "First Login":     _fmt(_best(email, "ursa_first_login")),
-                "First Outbound":  _fmt(_best(email, "ursa_first_outbound_call")),
-                "Second Outbound": _fmt(_best(email, "ursa_second_outbound_call")),
-            })
         detail_df = pd.DataFrame(detail_rows)
         st.dataframe(detail_df, use_container_width=True, hide_index=True)
         st.download_button(

@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import time
 from datetime import datetime, timezone, timedelta, date
-from utils import dash_spinner, require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, fetch_all, norm, COMMON_CSS, report_header, report_header_close, persistent_cache
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -88,10 +89,20 @@ else:
 
 st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
+# Auto-refresh every 10 minutes for real-time updates
+if "last_refresh_portin" not in st.session_state:
+    st.session_state.last_refresh_portin = time.time()
+
+current_time = time.time()
+if current_time - st.session_state.last_refresh_portin > 600:  # 10 minutes
+    st.session_state.last_refresh_portin = current_time
+    st.rerun()
+
 # ── run ───────────────────────────────────────────────────────────────────────
 
-if st.button("Run Port-In Report", use_container_width=False):
-
+@persistent_cache(ttl_seconds=600)  # 10 minutes
+def fetch_portin_data(filter_start, filter_end):
+    """Fetch port-in report data and cache for 10 minutes (persists across sessions)"""
     # Step 1: pull registrations where registration_type = port_in
     reg_records = list_all(
         "2-58833629",
@@ -107,8 +118,7 @@ if st.button("Run Port-In Report", use_container_width=False):
     ]
 
     if not port_in_regs:
-        st.warning("No port-in registration records found.")
-        st.stop()
+        return None, "No port-in registration records found."
 
     # Apply date filter on registered_at
     if filter_start and filter_end:
@@ -123,8 +133,7 @@ if st.button("Run Port-In Report", use_container_width=False):
         range_label = "All Time"
 
     if not port_in_regs:
-        st.warning("No port-in registrations found in the selected date range.")
-        st.stop()
+        return None, "No port-in registrations found in the selected date range."
 
     # Build lookup: number → registration properties
     reg_by_number = {}
@@ -194,6 +203,15 @@ if st.button("Run Port-In Report", use_container_width=False):
         })
 
     df = pd.DataFrame(rows)
+    return df, range_label
+
+# Auto-load data
+result = fetch_portin_data(filter_start, filter_end)
+
+if result is None or result[0] is None or result[0].empty:
+    st.warning(result[1] if result else "No data available.")
+else:
+    df, range_label = result
     total      = len(df)
     matched    = df["In Number Object"].sum()
     completed  = df["Active"].sum()
@@ -220,7 +238,7 @@ if st.button("Run Port-In Report", use_container_width=False):
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Completed / Active</div>
-    <div style="font-size:1.4rem;font-weight:800;color:#00A651;">{int(completed):,}</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#C9A876;">{int(completed):,}</div>
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">In Progress</div>
@@ -247,7 +265,7 @@ if st.button("Run Port-In Report", use_container_width=False):
     ns_counts = df[df["In Number Object"]].groupby("Number Status").size().reset_index(name="Count").sort_values("Count", ascending=False)
     if not ns_counts.empty:
         st.markdown("#### Number Object Status Breakdown")
-        bar2 = alt.Chart(ns_counts).mark_bar(color="#00A651", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+        bar2 = alt.Chart(ns_counts).mark_bar(color="#C9A876", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
             x=alt.X("Count:Q", title="Count"),
             y=alt.Y("Number Status:N", sort="-x", title=None, axis=alt.Axis(labelLimit=300)),
             tooltip=["Number Status", "Count"],

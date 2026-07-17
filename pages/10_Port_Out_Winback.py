@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import time
 from datetime import datetime, timezone, timedelta, date
 from collections import defaultdict
-from utils import dash_spinner, require_auth, list_all, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, fetch_all, norm, to_float, COMMON_CSS, report_header, report_header_close, persistent_cache
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -126,10 +127,20 @@ else:
 
 st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True)
 
+# Auto-refresh every 10 minutes for real-time updates
+if "last_refresh_portout" not in st.session_state:
+    st.session_state.last_refresh_portout = time.time()
+
+current_time = time.time()
+if current_time - st.session_state.last_refresh_portout > 600:  # 10 minutes
+    st.session_state.last_refresh_portout = current_time
+    st.rerun()
+
 # ── run ───────────────────────────────────────────────────────────────────────
 
-if st.button("Run Port-Out Winback Report", use_container_width=False):
-
+@persistent_cache(ttl_seconds=600)  # 10 minutes
+def fetch_portout_winback_data(filter_start, filter_end, date_field, reason_filter):
+    """Fetch port-out winback data and cache for 10 minutes (persists across sessions)"""
     raw = list_all(
         "2-40974683",
         ["number", "email", "first_name", "last_name",
@@ -153,15 +164,7 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
         records.append(p)
 
     if not records:
-        # Debug: show what values are present so we can tune the filter
-        vrs_all = [r for r in raw if norm(r.get("properties", {}).get("service_type") or "") == "vrs"]
-        statuses = list({r.get("properties", {}).get("number_status") or "—" for r in vrs_all})
-        bw_types = list({r.get("properties", {}).get("bandwidth_order_type") or "—" for r in vrs_all})
-        st.warning("No matching port-out records found.")
-        st.markdown(f"**VRS records pulled:** {len(vrs_all):,}")
-        st.markdown(f"**number_status values seen:** `{', '.join(sorted(statuses))}`")
-        st.markdown(f"**bandwidth_order_type values seen:** `{', '.join(sorted(bw_types))}`")
-        st.stop()
+        return None, "No matching port-out records found."
 
     # Apply date filter to baseline
     if filter_start and filter_end:
@@ -180,8 +183,7 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
         records = [p for p in records if norm(p.get("deleted_reason") or "") == norm(reason_filter)]
 
     if not records:
-        st.warning(f"No records found for the selected filters.")
-        st.stop()
+        return None, "No records found for the selected filters."
 
     total = len(records)
     all_nums = [str(p.get("number") or "").strip() for p in records if p.get("number")]
@@ -223,6 +225,38 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
         months = len(rows)
         avg    = usage / months if months else 0.0
         return usage, ursa, cfz, months, avg
+
+    return {
+        "records": records,
+        "range_label": range_label,
+        "num_monthly": dict(num_monthly),
+        "_totals_fn": _totals,
+    }, None
+
+# Auto-load data
+result = fetch_portout_winback_data(filter_start, filter_end, date_field, reason_filter)
+data, error = result
+
+if data is None or error:
+    st.warning(error or "No records found for the selected filters.")
+else:
+    records = data["records"]
+    range_label = data["range_label"]
+    num_monthly = defaultdict(list)
+    # Reconstruct the defaultdict from serialized dict
+    for num, rows in data["num_monthly"].items():
+        num_monthly[num] = rows
+
+    def _totals(num):
+        rows = num_monthly.get(num, [])
+        usage  = sum(r["usage_minutes"] for r in rows)
+        ursa   = sum(r["ursa_minutes"]  for r in rows)
+        cfz    = sum(r["cfz_minutes"]   for r in rows)
+        months = len(rows)
+        avg    = usage / months if months else 0.0
+        return usage, ursa, cfz, months, avg
+
+    total = len(records)
 
     # ── Summary tiles ─────────────────────────────────────────────────────────
     total_usage = sum(_totals(str(p.get("number") or ""))[0] for p in records)
@@ -268,7 +302,7 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Total URSA (min)</div>
-    <div style="font-size:1.4rem;font-weight:800;color:#00A651;">{total_ursa:,.0f}</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#C9A876;">{total_ursa:,.0f}</div>
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Total CfZ (min)</div>
@@ -337,7 +371,7 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
                 y=alt.Y("Minutes:Q", title="Minutes"),
                 color=alt.Color("Type:N", scale=alt.Scale(
                     domain=["Usage (total)", "URSA", "CfZ"],
-                    range=["#3B82F6", "#00A651", "#8B5CF6"],
+                    range=["#3B82F6", "#C9A876", "#8B5CF6"],
                 )),
                 tooltip=["Month", "Type", "Minutes"],
             ).properties(height=260)

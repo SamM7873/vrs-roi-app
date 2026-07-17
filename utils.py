@@ -13,31 +13,70 @@ CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_cac
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 def persistent_cache(ttl_seconds=300):
-    """Decorator for persistent file-based caching across browser sessions
+    """Decorator for persistent file-based caching with smart background refresh
+
+    Returns cached data immediately (even if stale), then fetches fresh data
+    in background if cache is stale. Users never wait for fetches.
 
     Args:
         ttl_seconds: Time-to-live in seconds (default 5 minutes)
     """
     def decorator(func):
         def wrapper(*args, **kwargs):
+            import threading
+
             # Create cache key from function name and arguments
             cache_key = hashlib.md5(f"{func.__name__}_{str(args)}_{str(kwargs)}".encode()).hexdigest()
             cache_file = os.path.join(CACHE_DIR, f"{func.__name__}_{cache_key}.json")
 
-            # Check if cache exists and is fresh
+            # FIRST: Return cached data immediately if available (even if stale)
             if os.path.exists(cache_file):
                 try:
+                    with open(cache_file, 'r') as f:
+                        cached_data = json.load(f)
                     file_age = time.time() - os.path.getmtime(cache_file)
+
+                    # If cache is fresh, return it
                     if file_age < ttl_seconds:
-                        with open(cache_file, 'r') as f:
-                            cached_data = json.load(f)
                         if cached_data.get('data_type') == 'dataframe':
                             return pd.DataFrame(cached_data['data'])
                         return cached_data.get('data')
-                except Exception as e:
+
+                    # If cache is stale, return it anyway but fetch fresh in background
+                    cached_result = cached_data.get('data')
+                    if cached_data.get('data_type') == 'dataframe':
+                        cached_result = pd.DataFrame(cached_result)
+
+                    # Background fetch for fresh data
+                    def background_refresh():
+                        try:
+                            fresh_result = func(*args, **kwargs)
+                            if isinstance(fresh_result, pd.DataFrame):
+                                refresh_data = {
+                                    'data_type': 'dataframe',
+                                    'data': fresh_result.to_dict(orient='records'),
+                                    'timestamp': time.time()
+                                }
+                            else:
+                                refresh_data = {
+                                    'data_type': 'other',
+                                    'data': fresh_result,
+                                    'timestamp': time.time()
+                                }
+                            with open(cache_file, 'w') as f:
+                                json.dump(refresh_data, f)
+                        except Exception:
+                            pass  # Silently fail, user still sees cached data
+
+                    thread = threading.Thread(target=background_refresh, daemon=True)
+                    thread.start()
+
+                    return cached_result
+
+                except Exception:
                     pass  # Fall through to fetch fresh data
 
-            # Fetch fresh data
+            # FALLBACK: No cache exists, fetch fresh data
             result = func(*args, **kwargs)
 
             # Cache the result
@@ -56,7 +95,7 @@ def persistent_cache(ttl_seconds=300):
                     }
                 with open(cache_file, 'w') as f:
                     json.dump(cache_data, f)
-            except Exception as e:
+            except Exception:
                 pass  # Continue even if caching fails
 
             return result

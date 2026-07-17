@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import time
 from datetime import datetime
-from utils import dash_spinner, require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close, persistent_cache
 
 st.set_page_config(page_title="Registration Funnel", layout="wide", page_icon="📋")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -10,7 +11,18 @@ require_auth()
 
 report_header("Registration Funnel", "Step-by-step conversion from Submitted → LEX → URD → Active", section="Analytics")
 
-if st.button("Load Registration Funnel", use_container_width=False):
+# Auto-refresh every 10 minutes for real-time updates
+if "last_refresh_funnel" not in st.session_state:
+    st.session_state.last_refresh_funnel = time.time()
+
+current_time = time.time()
+if current_time - st.session_state.last_refresh_funnel > 600:  # 10 minutes
+    st.session_state.last_refresh_funnel = current_time
+    st.rerun()
+
+@persistent_cache(ttl_seconds=600)  # 10 minutes
+def fetch_funnel_data():
+    """Fetch registration funnel data and cache for 10 minutes (persists across sessions)"""
     records = list_all(
         "2-58833629",
         [
@@ -26,8 +38,7 @@ if st.button("Load Registration Funnel", use_container_width=False):
     )
 
     if not records:
-        st.warning("No registration records found.")
-        st.stop()
+        return None
 
     rows = []
     for r in records:
@@ -60,7 +71,14 @@ if st.button("Load Registration Funnel", use_container_width=False):
             "Active ✓": active,
         })
 
-    df = pd.DataFrame(rows)
+    return pd.DataFrame(rows)
+
+# Auto-load data
+df = fetch_funnel_data()
+
+if df is None or df.empty:
+    st.warning("No registration records found.")
+else:
     total = len(df)
 
     submitted = total
@@ -91,7 +109,7 @@ if st.button("Load Registration Funnel", use_container_width=False):
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Active</div>
-    <div style="font-size:1.4rem;font-weight:800;color:#00A651;">{int(active_count):,}</div>
+    <div style="font-size:1.4rem;font-weight:800;color:#C9A876;">{int(active_count):,}</div>
     <div style="font-size:0.7rem;color:#9CA3AF;">{pct(active_count)}</div>
   </div>
   <div style="background:#fff;border:1px solid #FEE2E2;border-radius:10px;padding:1rem 1.25rem;">
@@ -105,7 +123,7 @@ if st.button("Load Registration Funnel", use_container_width=False):
     funnel_df = pd.DataFrame({
         "Step": ["Submitted", "LEX Verified", "URD Completed", "Active"],
         "Count": [submitted, int(lex_done_count), int(urd_done_count), int(active_count)],
-        "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#00A651"],
+        "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#C9A876"],
     })
     funnel_chart = alt.Chart(funnel_df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
         x=alt.X("Step:N", sort=["Submitted", "LEX Verified", "URD Completed", "Active"], axis=alt.Axis(title=None)),
