@@ -3,8 +3,65 @@ import requests
 import pandas as pd
 import os
 import time
+import json
+import hashlib
 from datetime import datetime
 from collections import defaultdict
+
+# Persistent cache directory
+CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_cache", "data")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+def persistent_cache(ttl_seconds=300):
+    """Decorator for persistent file-based caching across browser sessions
+
+    Args:
+        ttl_seconds: Time-to-live in seconds (default 5 minutes)
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            # Create cache key from function name and arguments
+            cache_key = hashlib.md5(f"{func.__name__}_{str(args)}_{str(kwargs)}".encode()).hexdigest()
+            cache_file = os.path.join(CACHE_DIR, f"{func.__name__}_{cache_key}.json")
+
+            # Check if cache exists and is fresh
+            if os.path.exists(cache_file):
+                try:
+                    file_age = time.time() - os.path.getmtime(cache_file)
+                    if file_age < ttl_seconds:
+                        with open(cache_file, 'r') as f:
+                            cached_data = json.load(f)
+                        if cached_data.get('data_type') == 'dataframe':
+                            return pd.DataFrame(cached_data['data'])
+                        return cached_data.get('data')
+                except Exception as e:
+                    pass  # Fall through to fetch fresh data
+
+            # Fetch fresh data
+            result = func(*args, **kwargs)
+
+            # Cache the result
+            try:
+                if isinstance(result, pd.DataFrame):
+                    cache_data = {
+                        'data_type': 'dataframe',
+                        'data': result.to_dict(orient='records'),
+                        'timestamp': time.time()
+                    }
+                else:
+                    cache_data = {
+                        'data_type': 'other',
+                        'data': result,
+                        'timestamp': time.time()
+                    }
+                with open(cache_file, 'w') as f:
+                    json.dump(cache_data, f)
+            except Exception as e:
+                pass  # Continue even if caching fails
+
+            return result
+        return wrapper
+    return decorator
 
 def get_secret(key, default=""):
     """Read a secret, tolerating a missing secrets.toml (env var fallback)."""

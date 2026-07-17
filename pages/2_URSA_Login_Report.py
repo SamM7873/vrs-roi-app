@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime as _dt
-from utils import require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close, persistent_cache
 
 st.set_page_config(page_title="URSA Login Report", layout="wide", page_icon="👤")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -10,9 +10,9 @@ require_auth()
 
 report_header("URSA Login Report", "First login, first outbound, and second outbound timestamps")
 
-@st.cache_data(ttl=300)
+@persistent_cache(ttl_seconds=600)  # 10 minutes
 def fetch_ursa_data():
-    """Fetch URSA login data and cache for 5 minutes"""
+    """Fetch URSA login data and cache for 10 minutes (persists across sessions)"""
     ursa_records = list_all(
         "2-40974683",
         ["number", "email", "first_name", "last_name", "number_status", "service_type",

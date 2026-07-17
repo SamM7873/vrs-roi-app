@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime
-from utils import require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close, persistent_cache
 
 st.set_page_config(page_title="Numbers Report", layout="wide", page_icon="📊")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -10,10 +10,10 @@ require_auth()
 
 report_header("Numbers Report", "Live VRS numbers by URSA billable minutes (active vs live)")
 
-# Cache the data fetch function
-@st.cache_data(ttl=300)
+# Persistent cache - survives browser sessions
+@persistent_cache(ttl_seconds=600)  # 10 minutes
 def fetch_numbers_data():
-    """Fetch all VRS numbers data once and cache for 5 minutes"""
+    """Fetch all VRS numbers data and cache for 10 minutes"""
     all_number_records = list_all(
         "2-40974683",
         ["number", "email", "first_name", "last_name", "number_status", "service_type", "usage_type", "number_created_at", "credit_type", "ursa_sum_of_total_billable_inbound_minutes", "ursa_sum_of_total_billable_outbound_minutes"],
