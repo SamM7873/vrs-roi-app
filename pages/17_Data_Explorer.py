@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from utils import require_auth, list_all, persistent_cache, COMMON_CSS, report_header, report_header_close
+from utils import require_auth, list_all, COMMON_CSS, report_header, report_header_close
 
 st.set_page_config(page_title="Data Explorer", layout="wide", page_icon="📊")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -15,7 +15,7 @@ object_type = st.selectbox(
     key="explorer_object"
 )
 
-@persistent_cache(ttl_seconds=600)
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_explorer_data(obj_type):
     if obj_type == "VRS Numbers":
         return list_all("2-40974683",
