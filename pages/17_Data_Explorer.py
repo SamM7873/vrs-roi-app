@@ -306,30 +306,75 @@ if not display_props:
     st.stop()
 
 
-def build_dataframe():
-    """Fetch each selected object, join on the key if multiple, return a df."""
-    frames = []
-    for otype in object_types:
-        oid = OBJECTS[otype]["id"]
-        oavail = per_obj_available[otype]
-        oprops = [p for p in display_props if p in oavail]
-        if multi and join_key in oavail and join_key not in oprops:
-            oprops.append(join_key)
-        ofilters = [f for f in built_filters if f["propertyName"] in oavail]
+def fetch_object_constrained(oid, props, base_filters, key_prop, key_values, label):
+    """Fetch an object restricted to key_prop IN key_values (batched)."""
+    vals = [str(v) for v in key_values if v not in (None, "")]
+    if not vals:
+        return []
+    all_recs = []
+    loader = st.empty()
+    for i in range(0, len(vals), 400):
+        chunk = vals[i:i + 400]
+        fg = [{"filters": base_filters + [{"propertyName": key_prop, "operator": "IN", "values": chunk}]}]
+        all_recs.extend(_search_over_cap(oid, props, fg))
+        loader.markdown(
+            f"<div style='padding:0.6rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;"
+            f"border-radius:10px;'>Fetching {label} for matched keys… <strong>{len(all_recs):,}</strong></div>",
+            unsafe_allow_html=True,
+        )
+    loader.empty()
+    return all_recs
+
+
+def _frame_for(otype, key_values=None):
+    """Fetch one object's records as a tagged DataFrame. If key_values is given,
+    restrict the fetch to join_key IN key_values (used to fetch the secondary
+    object only for keys found in the primary)."""
+    oid = OBJECTS[otype]["id"]
+    oavail = per_obj_available[otype]
+    oprops = [p for p in display_props if p in oavail]
+    if multi and join_key in oavail and join_key not in oprops:
+        oprops.append(join_key)
+    ofilters = [f for f in built_filters if f["propertyName"] in oavail]
+
+    if key_values is not None and join_key in oavail:
+        recs = fetch_object_constrained(oid, oprops, ofilters, join_key, key_values, otype)
+    else:
         recs = fetch_object(oid, oprops, ofilters)
-        fdf = pd.DataFrame([r.get("properties", {}) for r in recs])
-        keep = [c for c in oprops if c in fdf.columns]
-        fdf = fdf[keep] if keep else fdf
 
-        if not multi:
-            return fdf.rename(columns={c: label_by_name.get(c, c) for c in fdf.columns})
+    fdf = pd.DataFrame([r.get("properties", {}) for r in recs])
+    keep = [c for c in oprops if c in fdf.columns]
+    return fdf[keep] if keep else fdf
 
+
+def build_dataframe():
+    """Fetch objects (filtered/primary first), join on the shared key."""
+    if not multi:
+        fdf = _frame_for(object_types[0])
+        return fdf.rename(columns={c: label_by_name.get(c, c) for c in fdf.columns})
+
+    # Order: objects that carry a filter come first (smaller, drives the join),
+    # otherwise keep the user's selection order. This makes e.g. filtered
+    # Numbers fetch first, then Monthly Values only for those numbers.
+    def has_filter(otype):
+        return any(f["propertyName"] in per_obj_available[otype] for f in built_filters)
+    ordered = sorted(object_types, key=lambda o: (not has_filter(o), object_types.index(o)))
+
+    frames = []
+    key_values = None  # keys found so far — constrain later fetches (inner join only)
+    for otype in ordered:
+        fdf = _frame_for(otype, key_values if join_how == "inner" else None)
         if join_key not in fdf.columns:
             st.warning(f"{otype} returned no “{label_by_name.get(join_key, join_key)}” values — skipped from the join.")
             continue
         tag = OBJECTS[otype]["tag"]
-        fdf = fdf.rename(columns={c: f"{tag}::{c}" for c in fdf.columns if c != join_key})
-        frames.append(fdf)
+        frames.append(fdf.rename(columns={c: f"{tag}::{c}" for c in fdf.columns if c != join_key}))
+
+        found = set(fdf[join_key].dropna().astype(str))
+        if join_how == "inner":
+            key_values = found if key_values is None else (key_values & found)
+            if not key_values:
+                break  # nothing can match — stop early
 
     if not frames:
         return pd.DataFrame()
