@@ -392,51 +392,126 @@ st.download_button(
 
 # ── Visualize ───────────────────────────────────────────────────────────────
 st.markdown("#### Visualize")
+
+PRIMARY = "#C9A876"     # beige
+SECONDARY = "#0D3B26"   # deep green
+DONUT_SCHEME = ["#C9A876", "#0D3B26", "#8FA998", "#B59467", "#6B7280",
+                "#3B7A57", "#DDBD8E", "#5A6A5A", "#A9CBB7", "#8C6A3F"]
+
+
+def _agg_by(frame, gcol, measure_choice, num_cols):
+    """Return (grouped_df with Value, label) for the chosen measure."""
+    w = frame.copy()
+    w[gcol] = w[gcol].fillna("—").replace("", "—")
+    if measure_choice == "Count of records":
+        g = w.groupby(gcol).size().reset_index(name="Value")
+        return g, "Records"
+    agg, _, col = measure_choice.partition(" of ")
+    w["_num"] = pd.to_numeric(w[col], errors="coerce")
+    gb = w.groupby(gcol)["_num"]
+    g = (gb.sum() if agg == "Sum" else gb.mean()).reset_index(name="Value")
+    return g, measure_choice
+
+
 if view.empty:
     st.info("No rows to chart.")
 else:
-    v1, v2, v3 = st.columns([2, 2, 1])
-    group_col = v1.selectbox("Group by", list(view.columns), key="viz_group")
+    r1c1, r1c2, r1c3 = st.columns([2, 2, 2])
+    chart_type = r1c1.selectbox(
+        "Chart type",
+        ["Vertical Bar", "Horizontal Bar", "Line", "Area", "Donut", "Bar + Line (combo)"],
+        key="viz_type",
+    )
+    group_col = r1c2.selectbox("Group by (category / x-axis)", list(view.columns), key="viz_group")
 
     numeric_cols = [c for c in view.columns
                     if c != group_col and pd.to_numeric(view[c], errors="coerce").notna().any()]
-    measures = ["Count of records"] + [f"Sum of {c}" for c in numeric_cols] + [f"Average of {c}" for c in numeric_cols]
-    measure = v2.selectbox("Measure", measures, key="viz_measure")
-    top_n = int(v3.number_input("Top N", min_value=3, max_value=50, value=15, key="viz_topn"))
+    measure_opts = (["Count of records"]
+                    + [f"Sum of {c}" for c in numeric_cols]
+                    + [f"Average of {c}" for c in numeric_cols])
+    measure = r1c3.selectbox("Measure", measure_opts, key="viz_measure")
 
-    work = view.copy()
-    work[group_col] = work[group_col].fillna("—").replace("", "—")
+    r2c1, r2c2, r2c3 = st.columns([2, 2, 2])
+    top_n = int(r2c1.number_input("Top N", min_value=3, max_value=100, value=15, key="viz_topn"))
+    sort_desc = r2c2.checkbox("Sort by value (largest first)", value=True, key="viz_sort")
+    # combo needs a second measure (drawn as the line)
+    measure2 = None
+    if chart_type == "Bar + Line (combo)":
+        measure2 = r2c3.selectbox("Line measure", measure_opts,
+                                  index=min(1, len(measure_opts) - 1), key="viz_measure2")
 
-    if measure == "Count of records":
-        grouped = work.groupby(group_col).size().reset_index(name="Value")
-        measure_label = "Records"
+    # detect a date-like x for line/area so trends read chronologically
+    x_dt = pd.to_datetime(view[group_col], errors="coerce")
+    is_temporal = x_dt.notna().mean() > 0.6
+
+    grouped, measure_label = _agg_by(view, group_col, measure, numeric_cols)
+    if is_temporal and chart_type in ("Line", "Area", "Bar + Line (combo)"):
+        grouped["_sort"] = pd.to_datetime(grouped[group_col], errors="coerce")
+        grouped = grouped.sort_values("_sort").drop(columns="_sort").head(top_n)
+        x_enc = alt.X(f"{group_col}:T", title=group_col)
     else:
-        agg, _, col = measure.partition(" of ")
-        work["_num"] = pd.to_numeric(work[col], errors="coerce")
-        gb = work.groupby(group_col)["_num"]
-        grouped = (gb.sum() if agg == "Sum" else gb.mean()).reset_index(name="Value")
-        measure_label = measure
+        grouped = grouped.sort_values("Value", ascending=not sort_desc).head(top_n)
+        x_sort = "-y" if sort_desc else "y"
+        x_enc = alt.X(f"{group_col}:N", sort=x_sort, title=group_col, axis=alt.Axis(labelAngle=-40))
 
-    grouped = grouped.sort_values("Value", ascending=False).head(top_n)
-
-    top_row = grouped.iloc[0] if not grouped.empty else None
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total records", f"{len(view):,}")
-    c2.metric(f"Unique {group_col}", f"{work[group_col].nunique():,}")
+    # summary cards
+    top_row = grouped.sort_values("Value", ascending=False).iloc[0] if not grouped.empty else None
+    cc1, cc2, cc3 = st.columns(3)
+    cc1.metric("Total records", f"{len(view):,}")
+    cc2.metric(f"Unique {group_col}", f"{view[group_col].fillna('—').replace('', '—').nunique():,}")
     if top_row is not None:
-        c3.metric(f"Top {group_col}", str(top_row[group_col])[:22],
-                  help=f"{measure_label}: {top_row['Value']:,.1f}")
+        cc3.metric(f"Top {group_col}", str(top_row[group_col])[:22],
+                   help=f"{measure_label}: {top_row['Value']:,.1f}")
 
-    chart = (
-        alt.Chart(grouped)
-        .mark_bar(color="#C9A876", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-        .encode(
-            x=alt.X(f"{group_col}:N", sort="-y", title=group_col, axis=alt.Axis(labelAngle=-40)),
-            y=alt.Y("Value:Q", title=measure_label),
-            tooltip=[alt.Tooltip(f"{group_col}:N"), alt.Tooltip("Value:Q", format=",.1f")],
-        )
-        .properties(height=380)
-    )
+    tip = [alt.Tooltip(f"{group_col}:T" if is_temporal and chart_type in ('Line', 'Area', 'Bar + Line (combo)') else f"{group_col}:N"),
+           alt.Tooltip("Value:Q", format=",.1f", title=measure_label)]
+
+    if chart_type == "Horizontal Bar":
+        chart = (alt.Chart(grouped)
+                 .mark_bar(color=PRIMARY, cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
+                 .encode(y=alt.Y(f"{group_col}:N", sort="-x", title=group_col),
+                         x=alt.X("Value:Q", title=measure_label), tooltip=tip)
+                 .properties(height=max(320, len(grouped) * 26)))
+    elif chart_type == "Line":
+        chart = (alt.Chart(grouped)
+                 .mark_line(color=PRIMARY, point=alt.OverlayMarkDef(color=SECONDARY, size=55), strokeWidth=3)
+                 .encode(x=x_enc, y=alt.Y("Value:Q", title=measure_label), tooltip=tip)
+                 .properties(height=380))
+    elif chart_type == "Area":
+        chart = (alt.Chart(grouped)
+                 .mark_area(line={"color": PRIMARY}, color=alt.Gradient(
+                     gradient="linear",
+                     stops=[alt.GradientStop(color="#F4F1E8", offset=0),
+                            alt.GradientStop(color=PRIMARY, offset=1)],
+                     x1=1, x2=1, y1=1, y2=0))
+                 .encode(x=x_enc, y=alt.Y("Value:Q", title=measure_label), tooltip=tip)
+                 .properties(height=380))
+    elif chart_type == "Donut":
+        chart = (alt.Chart(grouped)
+                 .mark_arc(innerRadius=70, stroke="#fff", strokeWidth=2)
+                 .encode(theta=alt.Theta("Value:Q", stack=True),
+                         color=alt.Color(f"{group_col}:N",
+                                         scale=alt.Scale(range=DONUT_SCHEME),
+                                         legend=alt.Legend(title=group_col)),
+                         tooltip=tip)
+                 .properties(height=380))
+    elif chart_type == "Bar + Line (combo)":
+        grouped2, measure2_label = _agg_by(view, group_col, measure2, numeric_cols)
+        grouped2 = grouped2.set_index(group_col).reindex(grouped[group_col]).reset_index()
+        base = alt.Chart(grouped).encode(x=x_enc)
+        bars = base.mark_bar(color=PRIMARY, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+            y=alt.Y("Value:Q", title=measure_label), tooltip=tip)
+        line = (alt.Chart(grouped2)
+                .mark_line(color=SECONDARY, point=alt.OverlayMarkDef(color=SECONDARY, size=55), strokeWidth=3)
+                .encode(x=x_enc, y=alt.Y("Value:Q", axis=alt.Axis(title=measure2_label, titleColor=SECONDARY)),
+                        tooltip=[tip[0], alt.Tooltip("Value:Q", format=",.1f", title=measure2_label)]))
+        chart = alt.layer(bars, line).resolve_scale(y="independent").properties(height=380)
+    else:  # Vertical Bar
+        chart = (alt.Chart(grouped)
+                 .mark_bar(color=PRIMARY, cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+                 .encode(x=x_enc, y=alt.Y("Value:Q", title=measure_label), tooltip=tip)
+                 .properties(height=380))
+
     st.altair_chart(chart, use_container_width=True)
 
 report_header_close()
