@@ -210,17 +210,30 @@ join_how = "inner"
 combine_mode = "single"
 if multi:
     common = sorted(set.intersection(*per_obj_available.values()))
+    # Tickets link to VRS Numbers via association (not a shared column). If Tickets
+    # is selected alongside a number-bearing object, offer a "number via association" key.
+    tickets_number_join = ("Tickets" in object_types
+                           and any(o != "Tickets" and "number" in per_obj_available[o] for o in object_types))
+    join_options = list(common)
+    if tickets_number_join and "number" not in join_options:
+        join_options = ["number"] + join_options
+
     mode_options = ["Stack (list all, no join)"]
-    if common:
+    if join_options:
         mode_options = ["Join on shared key", "Stack (list all, no join)"]
     combine_mode = st.radio("With multiple objects", mode_options, horizontal=True, key="de_combine")
 
     if combine_mode == "Join on shared key":
-        jk_default = "number" if "number" in common else common[0]
+        jk_default = "number" if "number" in join_options else join_options[0]
+
+        def _jk_label(n):
+            if n == "number" and tickets_number_join and "number" not in common:
+                return "VRS Number (via ticket association)  ·  number"
+            return f"{label_by_name.get(n, n)}  ·  {n}"
+
         jc1, jc2 = st.columns([2, 2])
-        join_key = jc1.selectbox("Match (join) on", common,
-                                 index=common.index(jk_default),
-                                 format_func=lambda n: f"{label_by_name.get(n, n)}  ·  {n}")
+        join_key = jc1.selectbox("Match (join) on", join_options,
+                                 index=join_options.index(jk_default), format_func=_jk_label)
         match_mode = jc2.radio("Include", ["Only matched (in all)", "All records"], horizontal=True)
         join_how = "inner" if match_mode.startswith("Only") else "outer"
 
@@ -410,8 +423,16 @@ def _frame_for(otype, key_values=None):
     keep = [c for c in oprops if c in fdf.columns]
     fdf = fdf[keep] if keep else fdf
 
-    # enrich tickets with their associated VRS Numbers
-    if otype == "Tickets" and resolve_numbers and recs:
+    # tickets joined to VRS Numbers via association: attach a real "number" column
+    # (one row per ticket↔number) so the merge on "number" works
+    if otype == "Tickets" and do_join and join_key == "number" and "number" not in fdf.columns and recs:
+        tid_map = resolve_ticket_numbers([r.get("id") for r in recs])
+        fdf = fdf.copy()
+        fdf["number"] = [tid_map.get(str(r.get("id")), []) for r in recs]
+        fdf = fdf.explode("number").dropna(subset=["number"])
+
+    # enrich tickets with their associated VRS Numbers (display columns)
+    if otype == "Tickets" and resolve_numbers and recs and "Associated Numbers" not in fdf.columns:
         tid_map = resolve_ticket_numbers([r.get("id") for r in recs])
         per_row = [tid_map.get(str(r.get("id")), []) for r in recs]
         fdf = fdf.copy()
