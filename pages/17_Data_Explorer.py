@@ -236,6 +236,13 @@ load_all_cols = st.checkbox("Show ALL properties as columns", value=False,
                             help="Slower — pulls every property for every record.")
 display_props = available if load_all_cols else selected
 
+resolve_numbers = False
+if "Tickets" in object_types:
+    resolve_numbers = st.checkbox(
+        "🔗 Show associated VRS Numbers for tickets", value=False,
+        help="Looks up each ticket's directly-associated VRS Number(s) and adds "
+             "“Associated Numbers” + “Number Count” columns.")
+
 # ── filter builder ──────────────────────────────────────────────────────────
 st.markdown("#### Filters")
 st.caption("All conditions are combined with **AND**. Each filter applies to whichever object has that property. Leave empty to return every record.")
@@ -339,6 +346,50 @@ def fetch_object_constrained(oid, props, base_filters, key_prop, key_values, lab
     return all_recs
 
 
+def resolve_ticket_numbers(ticket_ids):
+    """Map ticket id -> list of associated VRS Number values (direct association)."""
+    NUM_OBJ = "2-40974683"
+    tid_to_nids = {}
+    all_nids = set()
+    loader = st.empty()
+    ids = [str(t) for t in ticket_ids if t]
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
+        try:
+            ar = requests.post(f"{BASE_URL}/crm/v4/associations/tickets/{NUM_OBJ}/batch/read",
+                               headers=_headers, json={"inputs": [{"id": t} for t in chunk]}, timeout=60)
+        except requests.exceptions.RequestException:
+            continue
+        if ar.status_code in (200, 207):
+            for result in ar.json().get("results", []):
+                tid = str(result.get("from", {}).get("id", ""))
+                nids = [str(a.get("toObjectId") or a.get("id") or "") for a in result.get("to", [])]
+                nids = [n for n in nids if n]
+                if nids:
+                    tid_to_nids[tid] = nids
+                    all_nids.update(nids)
+        loader.markdown(
+            f"<div style='padding:0.6rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;'>"
+            f"Resolving ticket → number associations… {min(i + 100, len(ids)):,}/{len(ids):,}</div>",
+            unsafe_allow_html=True)
+
+    # number object id -> number value
+    nid_to_num = {}
+    nids = list(all_nids)
+    for i in range(0, len(nids), 100):
+        chunk = nids[i:i + 100]
+        try:
+            br = requests.post(f"{BASE_URL}/crm/v3/objects/{NUM_OBJ}/batch/read", headers=_headers,
+                               json={"properties": ["number"], "inputs": [{"id": n} for n in chunk]}, timeout=60)
+        except requests.exceptions.RequestException:
+            continue
+        if br.status_code in (200, 207):
+            for r in br.json().get("results", []):
+                nid_to_num[str(r.get("id"))] = r.get("properties", {}).get("number") or str(r.get("id"))
+    loader.empty()
+    return {tid: [nid_to_num.get(n, n) for n in ns] for tid, ns in tid_to_nids.items()}
+
+
 def _frame_for(otype, key_values=None):
     """Fetch one object's records as a tagged DataFrame. If key_values is given,
     restrict the fetch to join_key IN key_values (used to fetch the secondary
@@ -357,7 +408,17 @@ def _frame_for(otype, key_values=None):
 
     fdf = pd.DataFrame([r.get("properties", {}) for r in recs])
     keep = [c for c in oprops if c in fdf.columns]
-    return fdf[keep] if keep else fdf
+    fdf = fdf[keep] if keep else fdf
+
+    # enrich tickets with their associated VRS Numbers
+    if otype == "Tickets" and resolve_numbers and recs:
+        tid_map = resolve_ticket_numbers([r.get("id") for r in recs])
+        per_row = [tid_map.get(str(r.get("id")), []) for r in recs]
+        fdf = fdf.copy()
+        fdf["Associated Numbers"] = [", ".join(v) for v in per_row]
+        fdf["Number Count"] = [len(v) for v in per_row]
+
+    return fdf
 
 
 def build_dataframe():
