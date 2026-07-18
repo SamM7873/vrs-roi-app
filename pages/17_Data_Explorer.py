@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
 import requests
+import copy
+import time
 from datetime import datetime, timezone
-from utils import require_auth, list_all, fetch_all, get_secret, COMMON_CSS, report_header, report_header_close
+from utils import require_auth, list_all, get_secret, COMMON_CSS, report_header, report_header_close
 
 st.set_page_config(page_title="Data Explorer", layout="wide", page_icon="📊")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -75,12 +77,81 @@ def fetch_property_schema(object_id):
     return sorted(out, key=lambda x: (x["group"], x["label"].lower()))
 
 
+def _search_over_cap(object_id, properties, filter_groups):
+    """Page through a filtered HubSpot search with no 10k limit.
+
+    The search API refuses to page past 10,000, so after each window we
+    continue with a `hs_object_id > last_id` filter (records sorted ascending
+    by id). This walks the entire matching set in 10k windows.
+    """
+    url = f"{BASE_URL}/crm/v3/objects/{object_id}/search"
+    props = list(properties)
+    if "hs_object_id" not in props:
+        props = props + ["hs_object_id"]
+
+    all_results = []
+    last_id = None
+    loader = st.empty()
+    WINDOW = 9900  # stay safely under the 10k wall
+
+    while True:
+        groups = copy.deepcopy(filter_groups) if filter_groups else [{"filters": []}]
+        if last_id is not None:
+            for g in groups:
+                g["filters"].append({"propertyName": "hs_object_id", "operator": "GT", "value": str(last_id)})
+
+        after = None
+        window_count = 0
+        hit_cap = False
+        while True:
+            payload = {
+                "limit": 100, "properties": props, "filterGroups": groups,
+                "sorts": [{"propertyName": "hs_object_id", "direction": "ASCENDING"}],
+            }
+            if after:
+                payload["after"] = after
+            resp = requests.post(url, headers=_headers, json=payload, timeout=60)
+            if resp.status_code == 429:
+                time.sleep(1.5)
+                continue
+            if resp.status_code != 200:
+                loader.empty()
+                if not all_results:
+                    st.error(f"Error {resp.status_code}: {resp.text}")
+                return all_results
+            data = resp.json()
+            results = data.get("results", [])
+            if not results:
+                break
+            all_results.extend(results)
+            window_count += len(results)
+            last_id = results[-1].get("properties", {}).get("hs_object_id") or results[-1].get("id")
+            loader.markdown(
+                f"<div style='padding:0.6rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;"
+                f"border-radius:10px;'>Fetching… <strong>{len(all_results):,}</strong> records</div>",
+                unsafe_allow_html=True,
+            )
+            after = data.get("paging", {}).get("next", {}).get("after")
+            if not after:
+                break
+            if window_count >= WINDOW:
+                hit_cap = True
+                break
+            time.sleep(0.1)
+
+        if not hit_cap:
+            break  # exhausted the full result set
+
+    loader.empty()
+    return all_results
+
+
 def run_report(object_id, properties, filter_groups):
-    # Not cached: list_all/fetch_all draw their own progress UI, which Streamlit
+    # Not cached: fetch helpers draw their own progress UI, which Streamlit
     # disallows inside @st.cache_data. Results are held in session_state instead.
     try:
         if filter_groups:
-            return fetch_all(object_id, properties, filter_groups=filter_groups)
+            return _search_over_cap(object_id, properties, filter_groups)
         return list_all(object_id, properties, progress_label="Fetching records")
     except Exception as e:
         st.error(f"Fetch failed: {e}")
@@ -242,9 +313,8 @@ m1.metric("Records", f"{len(df):,}")
 m2.metric("Columns", len(df.columns))
 m3.metric("Filters applied", len(cfg["filter_groups"][0]["filters"]) if cfg["filter_groups"] else 0)
 
-if len(records) >= 10000:
-    st.warning("Showing the first 10,000 records (HubSpot's search limit). "
-               "Add more filters to narrow the results.")
+if len(records) > 10000:
+    st.caption(f"Fetched all {len(records):,} matching records (paged past HubSpot's 10k search limit).")
 
 search = st.text_input("🔍 Search results", "")
 if search:
