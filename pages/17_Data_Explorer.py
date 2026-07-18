@@ -34,6 +34,11 @@ OBJECTS = {
         "defaults": ["number", "month_date", "service_type", "usage_minutes",
                      "ursa_minutes", "cfz_minutes", "credit_type", "usage_total_value"],
     },
+    "Tickets": {
+        "id": "tickets", "tag": "Tickets",
+        "defaults": ["subject", "hs_pipeline", "hs_pipeline_stage", "hs_ticket_priority",
+                     "hs_ticket_category", "source_type", "createdate", "hs_lastmodifieddate"],
+    },
 }
 
 OPS = {
