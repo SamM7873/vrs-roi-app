@@ -411,15 +411,25 @@ def build_dataframe():
 
 
 if run:
-    st.session_state.de_df = build_dataframe()
-    st.session_state.de_info = {
-        "objects": object_types,
-        "filters": len(built_filters),
-        "joined": do_join,
-        "stacked": multi and not do_join,
-        "join_how": join_how,
-        "join_label": label_by_name.get(join_key, join_key) if do_join else None,
-    }
+    with st.status("Running report…", expanded=True) as status:
+        st.write(f"Objects: {', '.join(object_types)}")
+        st.write(f"Columns: {len(display_props)} · Filters: {len(built_filters)}")
+        try:
+            result_df = build_dataframe()
+        except Exception as e:
+            status.update(label="Report failed", state="error")
+            st.exception(e)
+            st.stop()
+        st.session_state.de_df = result_df
+        st.session_state.de_info = {
+            "objects": object_types,
+            "filters": len(built_filters),
+            "joined": do_join,
+            "stacked": multi and not do_join,
+            "join_how": join_how,
+            "join_label": label_by_name.get(join_key, join_key) if do_join else None,
+        }
+        status.update(label=f"Done — {len(result_df):,} records", state="complete")
 
 df = st.session_state.get("de_df")
 info = st.session_state.get("de_info")
@@ -427,7 +437,8 @@ if df is None:
     st.info("Set your objects, columns and filters, then press **Run report**.")
     st.stop()
 if df.empty:
-    st.warning("No records matched.")
+    st.warning("No records matched your filters. Try loosening a condition — "
+               "e.g. check the exact value/spelling, or use **contains** instead of **is**.")
     st.stop()
 
 m1, m2, m3 = st.columns(3)
