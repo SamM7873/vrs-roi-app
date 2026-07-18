@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 import requests
 import copy
 import time
@@ -330,5 +331,56 @@ st.download_button(
     f"{cfg['object_type'].lower().replace(' ', '_')}_report_{datetime.now().strftime('%Y%m%d')}.csv",
     "text/csv",
 )
+
+# ── Visualize ───────────────────────────────────────────────────────────────
+st.markdown("#### Visualize")
+
+if df.empty:
+    st.info("No rows to chart.")
+else:
+    v1, v2, v3 = st.columns([2, 2, 1])
+    group_col = v1.selectbox("Group by", list(df.columns), key="viz_group")
+
+    numeric_cols = [c for c in df.columns
+                    if c != group_col and pd.to_numeric(df[c], errors="coerce").notna().any()]
+    measures = ["Count of records"] + [f"Sum of {c}" for c in numeric_cols] + [f"Average of {c}" for c in numeric_cols]
+    measure = v2.selectbox("Measure", measures, key="viz_measure")
+    top_n = int(v3.number_input("Top N", min_value=3, max_value=50, value=15, key="viz_topn"))
+
+    work = df.copy()
+    work[group_col] = work[group_col].fillna("—").replace("", "—")
+
+    if measure == "Count of records":
+        grouped = work.groupby(group_col).size().reset_index(name="Value")
+        measure_label = "Records"
+    else:
+        agg, _, col = measure.partition(" of ")
+        work["_num"] = pd.to_numeric(work[col], errors="coerce")
+        gb = work.groupby(group_col)["_num"]
+        grouped = (gb.sum() if agg == "Sum" else gb.mean()).reset_index(name="Value")
+        measure_label = measure
+
+    grouped = grouped.sort_values("Value", ascending=False).head(top_n)
+
+    # summary cards
+    top_row = grouped.iloc[0] if not grouped.empty else None
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total records", f"{len(df):,}")
+    c2.metric(f"Unique {group_col}", f"{work[group_col].nunique():,}")
+    if top_row is not None:
+        c3.metric(f"Top {group_col}", str(top_row[group_col])[:22],
+                  help=f"{measure_label}: {top_row['Value']:,.1f}")
+
+    chart = (
+        alt.Chart(grouped)
+        .mark_bar(color="#C9A876", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+        .encode(
+            x=alt.X(f"{group_col}:N", sort="-y", title=group_col, axis=alt.Axis(labelAngle=-40)),
+            y=alt.Y("Value:Q", title=measure_label),
+            tooltip=[alt.Tooltip(f"{group_col}:N"), alt.Tooltip("Value:Q", format=",.1f")],
+        )
+        .properties(height=380)
+    )
+    st.altair_chart(chart, use_container_width=True)
 
 report_header_close()
