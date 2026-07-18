@@ -11,7 +11,7 @@ st.set_page_config(page_title="Data Explorer", layout="wide", page_icon="📊")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
 
-report_header("Data Explorer", "Browse every property and build filtered reports across your custom objects", section="Analytics")
+report_header("Data Explorer", "Browse, filter, join and chart your custom objects", section="Analytics")
 
 BASE_URL = "https://api.hubapi.com"
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
@@ -19,24 +19,23 @@ _headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "applica
 
 OBJECTS = {
     "VRS Numbers": {
-        "id": "2-40974683",
+        "id": "2-40974683", "tag": "Numbers",
         "defaults": ["number", "email", "first_name", "last_name", "account_status",
                      "service_type", "credit_type", "credit_plan_name", "city",
                      "account_created_at", "number_status", "usage_type"],
     },
     "Registrations": {
-        "id": "2-58833629",
+        "id": "2-58833629", "tag": "Registrations",
         "defaults": ["registration_id", "registration_type", "email", "first_name",
                      "last_name", "number", "submitted_at", "registered_at"],
     },
     "Monthly Values": {
-        "id": "2-46246179",
+        "id": "2-46246179", "tag": "Monthly",
         "defaults": ["number", "month_date", "service_type", "usage_minutes",
                      "ursa_minutes", "cfz_minutes", "credit_type", "usage_total_value"],
     },
 }
 
-# operator label -> HubSpot operator. Some take no value / two values.
 OPS = {
     "is":            {"hs": "EQ",               "values": 1},
     "is not":        {"hs": "NEQ",              "values": 1},
@@ -49,7 +48,6 @@ OPS = {
     "is unknown":    {"hs": "NOT_HAS_PROPERTY", "values": 0},
 }
 
-# which operators make sense for each property type
 OPS_FOR_TYPE = {
     "date":        ["is", "is not", "is between", "greater than", "less than", "is known", "is unknown"],
     "datetime":    ["is between", "greater than", "less than", "is known", "is unknown"],
@@ -79,12 +77,7 @@ def fetch_property_schema(object_id):
 
 
 def _search_over_cap(object_id, properties, filter_groups):
-    """Page through a filtered HubSpot search with no 10k limit.
-
-    The search API refuses to page past 10,000, so after each window we
-    continue with a `hs_object_id > last_id` filter (records sorted ascending
-    by id). This walks the entire matching set in 10k windows.
-    """
+    """Page through a filtered HubSpot search with no 10k limit."""
     url = f"{BASE_URL}/crm/v3/objects/{object_id}/search"
     props = list(properties)
     if "hs_object_id" not in props:
@@ -93,7 +86,7 @@ def _search_over_cap(object_id, properties, filter_groups):
     all_results = []
     last_id = None
     loader = st.empty()
-    WINDOW = 9900  # stay safely under the 10k wall
+    WINDOW = 9900
 
     while True:
         groups = copy.deepcopy(filter_groups) if filter_groups else [{"filters": []}]
@@ -141,18 +134,17 @@ def _search_over_cap(object_id, properties, filter_groups):
             time.sleep(0.1)
 
         if not hit_cap:
-            break  # exhausted the full result set
+            break
 
     loader.empty()
     return all_results
 
 
-def run_report(object_id, properties, filter_groups):
-    # Not cached: fetch helpers draw their own progress UI, which Streamlit
-    # disallows inside @st.cache_data. Results are held in session_state instead.
+def fetch_object(object_id, properties, applicable_filters):
+    """Fetch one object's records, applying only the filters that exist on it."""
     try:
-        if filter_groups:
-            return _search_over_cap(object_id, properties, filter_groups)
+        if applicable_filters:
+            return _search_over_cap(object_id, properties, [{"filters": applicable_filters}])
         return list_all(object_id, properties, progress_label="Fetching records")
     except Exception as e:
         st.error(f"Fetch failed: {e}")
@@ -165,32 +157,66 @@ def _to_epoch_ms(d, end_of_day=False):
     return str(int(t.timestamp() * 1000))
 
 
-# ── object + display columns ────────────────────────────────────────────────
-object_type = st.selectbox("Select Custom Object", list(OBJECTS.keys()), key="explorer_object")
-obj = OBJECTS[object_type]
+# ── object selection (one or more) ──────────────────────────────────────────
+object_types = st.multiselect(
+    "Select Custom Object(s)", list(OBJECTS.keys()), default=["VRS Numbers"],
+    help="Pick more than one to match/join them on a shared key.",
+)
+if not object_types:
+    st.info("Select at least one custom object to begin.")
+    st.stop()
 
-# reset filters when the object changes
-if st.session_state.get("de_last_object") != object_type:
-    st.session_state.de_last_object = object_type
+multi = len(object_types) > 1
+
+# reset filters when the selected set changes
+sel_key = tuple(sorted(object_types))
+if st.session_state.get("de_last_sel") != sel_key:
+    st.session_state.de_last_sel = sel_key
     st.session_state.de_filter_ids = []
     st.session_state.de_next_id = 0
 
-schema = fetch_property_schema(obj["id"])
-if not schema:
-    st.error("Could not load property list from HubSpot. Check the API token / object permissions.")
-    st.stop()
+# load + merge schemas across the selected objects
+per_obj_available = {}
+meta = {}
+label_by_name = {}
+for otype in object_types:
+    sch = fetch_property_schema(OBJECTS[otype]["id"])
+    if not sch:
+        st.error(f"Could not load properties for {otype}. Check the API token / permissions.")
+        st.stop()
+    per_obj_available[otype] = {p["name"] for p in sch}
+    for p in sch:
+        meta.setdefault(p["name"], p)          # first object wins on shared names
+        label_by_name.setdefault(p["name"], p["label"])
 
-available = [p["name"] for p in schema]
-meta = {p["name"]: p for p in schema}
-label_by_name = {p["name"]: p["label"] for p in schema}
-defaults = [n for n in obj["defaults"] if n in available] or available[:10]
+available = sorted(set().union(*per_obj_available.values()))
 
-st.caption(f"{len(available)} properties available on **{object_type}**.")
+# union of each object's defaults, restricted to what exists
+default_cols = []
+for otype in object_types:
+    default_cols += [c for c in OBJECTS[otype]["defaults"] if c in per_obj_available[otype]]
+default_cols = list(dict.fromkeys(default_cols)) or available[:10]
+
+# ── join key (only when >1 object) ──────────────────────────────────────────
+join_key = None
+join_how = "inner"
+if multi:
+    common = sorted(set.intersection(*per_obj_available.values()))
+    if not common:
+        st.error("The selected objects share no common property to join on.")
+        st.stop()
+    jk_default = "number" if "number" in common else common[0]
+    jc1, jc2 = st.columns([2, 2])
+    join_key = jc1.selectbox("Match (join) on", common,
+                             index=common.index(jk_default),
+                             format_func=lambda n: f"{label_by_name.get(n, n)}  ·  {n}")
+    match_mode = jc2.radio("Include", ["Only matched (in all)", "All records"], horizontal=True)
+    join_how = "inner" if match_mode.startswith("Only") else "outer"
+
+st.caption(f"{len(available)} properties available across **{', '.join(object_types)}**.")
 
 selected = st.multiselect(
-    "Columns to show",
-    options=available,
-    default=defaults,
+    "Columns to show", options=available, default=default_cols,
     format_func=lambda n: f"{label_by_name.get(n, n)}  ·  {n}",
 )
 load_all_cols = st.checkbox("Show ALL properties as columns", value=False,
@@ -199,7 +225,7 @@ display_props = available if load_all_cols else selected
 
 # ── filter builder ──────────────────────────────────────────────────────────
 st.markdown("#### Filters")
-st.caption("All conditions are combined with **AND**. Leave empty to return every record.")
+st.caption("All conditions are combined with **AND**. Each filter applies to whichever object has that property. Leave empty to return every record.")
 
 if "de_filter_ids" not in st.session_state:
     st.session_state.de_filter_ids = []
@@ -215,10 +241,8 @@ if clear_col.button("🗑 Clear all"):
 built_filters = []
 for fid in list(st.session_state.de_filter_ids):
     c_prop, c_op, c_val, c_del = st.columns([3, 2, 3, 0.6])
-    prop = c_prop.selectbox(
-        "Property", available, key=f"deprop_{fid}",
-        format_func=lambda n: label_by_name.get(n, n),
-    )
+    prop = c_prop.selectbox("Property", available, key=f"deprop_{fid}",
+                            format_func=lambda n: label_by_name.get(n, n))
     ptype = meta[prop]["type"]
     allowed_ops = OPS_FOR_TYPE.get(ptype, OPS_FOR_TYPE["string"])
     op_label = c_op.selectbox("Condition", allowed_ops, key=f"deop_{fid}")
@@ -251,17 +275,16 @@ for fid in list(st.session_state.de_filter_ids):
         if vals:
             hs_filter = {"propertyName": prop, "operator": "IN", "values": vals}
 
-    elif op["values"] == 2:  # numeric between
+    elif op["values"] == 2:
         v1 = c_val.number_input("From", key=f"deval_{fid}_a", value=0.0, format="%g")
         v2 = c_val.number_input("To", key=f"deval_{fid}_b", value=0.0, format="%g")
         hs_filter = {"propertyName": prop, "operator": "BETWEEN", "value": str(v1), "highValue": str(v2)}
 
-    else:  # single value
+    else:
         if ptype == "enumeration" and meta[prop]["options"]:
             v = c_val.selectbox("Value", meta[prop]["options"], key=f"deval_{fid}")
         elif ptype == "number":
-            v = c_val.number_input("Value", key=f"deval_{fid}", value=0.0, format="%g")
-            v = str(v)
+            v = str(c_val.number_input("Value", key=f"deval_{fid}", value=0.0, format="%g"))
         else:
             v = c_val.text_input("Value", key=f"deval_{fid}")
         if v not in (None, ""):
@@ -282,72 +305,106 @@ if not display_props:
     st.info("Pick at least one column (or tick “Show ALL properties”) before running.")
     st.stop()
 
+
+def build_dataframe():
+    """Fetch each selected object, join on the key if multiple, return a df."""
+    frames = []
+    for otype in object_types:
+        oid = OBJECTS[otype]["id"]
+        oavail = per_obj_available[otype]
+        oprops = [p for p in display_props if p in oavail]
+        if multi and join_key in oavail and join_key not in oprops:
+            oprops.append(join_key)
+        ofilters = [f for f in built_filters if f["propertyName"] in oavail]
+        recs = fetch_object(oid, oprops, ofilters)
+        fdf = pd.DataFrame([r.get("properties", {}) for r in recs])
+        keep = [c for c in oprops if c in fdf.columns]
+        fdf = fdf[keep] if keep else fdf
+
+        if not multi:
+            return fdf.rename(columns={c: label_by_name.get(c, c) for c in fdf.columns})
+
+        if join_key not in fdf.columns:
+            st.warning(f"{otype} returned no “{label_by_name.get(join_key, join_key)}” values — skipped from the join.")
+            continue
+        tag = OBJECTS[otype]["tag"]
+        fdf = fdf.rename(columns={c: f"{tag}::{c}" for c in fdf.columns if c != join_key})
+        frames.append(fdf)
+
+    if not frames:
+        return pd.DataFrame()
+
+    merged = frames[0]
+    for f in frames[1:]:
+        merged = merged.merge(f, on=join_key, how=join_how)
+
+    def friendly(col):
+        if col == join_key:
+            return label_by_name.get(join_key, join_key)
+        tag, _, internal = col.partition("::")
+        return f"{tag} · {label_by_name.get(internal, internal)}"
+
+    return merged.rename(columns={c: friendly(c) for c in merged.columns})
+
+
 if run:
-    cfg = {
-        "props": display_props,
-        "filter_groups": [{"filters": built_filters}] if built_filters else [],
-        "obj_id": obj["id"],
-        "object_type": object_type,
+    st.session_state.de_df = build_dataframe()
+    st.session_state.de_info = {
+        "objects": object_types,
+        "filters": len(built_filters),
+        "joined": multi,
+        "join_label": label_by_name.get(join_key, join_key) if multi else None,
     }
-    st.session_state.de_run = cfg
-    # fetch now (only on click) and cache the records in session_state
-    st.session_state.de_records = run_report(cfg["obj_id"], cfg["props"], cfg["filter_groups"])
 
-cfg = st.session_state.get("de_run")
-if not cfg:
-    st.info("Set your columns and filters, then press **Run report**.")
+df = st.session_state.get("de_df")
+info = st.session_state.get("de_info")
+if df is None:
+    st.info("Set your objects, columns and filters, then press **Run report**.")
     st.stop()
-
-records = st.session_state.get("de_records", [])
-
-if not records:
-    st.warning("No records matched your filters.")
+if df.empty:
+    st.warning("No records matched.")
     st.stop()
-
-df = pd.DataFrame([r.get("properties", {}) for r in records])
-cols = [c for c in cfg["props"] if c in df.columns]
-df = df[cols] if cols else df
-df = df.rename(columns={c: label_by_name.get(c, c) for c in df.columns})
 
 m1, m2, m3 = st.columns(3)
 m1.metric("Records", f"{len(df):,}")
 m2.metric("Columns", len(df.columns))
-m3.metric("Filters applied", len(cfg["filter_groups"][0]["filters"]) if cfg["filter_groups"] else 0)
+m3.metric("Filters applied", info["filters"])
 
-if len(records) > 10000:
-    st.caption(f"Fetched all {len(records):,} matching records (paged past HubSpot's 10k search limit).")
+if info.get("joined"):
+    st.caption(f"Matched **{', '.join(info['objects'])}** on **{info['join_label']}** "
+               f"({'only records present in all' if join_how == 'inner' else 'all records, outer join'}).")
 
 search = st.text_input("🔍 Search results", "")
+view = df
 if search:
-    mask = df.astype(str).apply(lambda x: x.str.contains(search, case=False, na=False)).any(axis=1)
-    df = df[mask]
-    st.write(f"**{len(df):,} rows matching '{search}'**")
+    mask = view.astype(str).apply(lambda x: x.str.contains(search, case=False, na=False)).any(axis=1)
+    view = view[mask]
+    st.write(f"**{len(view):,} rows matching '{search}'**")
 
-st.dataframe(df, use_container_width=True, height=520)
+st.dataframe(view, use_container_width=True, height=520)
 
 st.download_button(
     "📥 Download CSV",
-    df.to_csv(index=False),
-    f"{cfg['object_type'].lower().replace(' ', '_')}_report_{datetime.now().strftime('%Y%m%d')}.csv",
+    view.to_csv(index=False),
+    f"data_explorer_report_{datetime.now().strftime('%Y%m%d')}.csv",
     "text/csv",
 )
 
 # ── Visualize ───────────────────────────────────────────────────────────────
 st.markdown("#### Visualize")
-
-if df.empty:
+if view.empty:
     st.info("No rows to chart.")
 else:
     v1, v2, v3 = st.columns([2, 2, 1])
-    group_col = v1.selectbox("Group by", list(df.columns), key="viz_group")
+    group_col = v1.selectbox("Group by", list(view.columns), key="viz_group")
 
-    numeric_cols = [c for c in df.columns
-                    if c != group_col and pd.to_numeric(df[c], errors="coerce").notna().any()]
+    numeric_cols = [c for c in view.columns
+                    if c != group_col and pd.to_numeric(view[c], errors="coerce").notna().any()]
     measures = ["Count of records"] + [f"Sum of {c}" for c in numeric_cols] + [f"Average of {c}" for c in numeric_cols]
     measure = v2.selectbox("Measure", measures, key="viz_measure")
     top_n = int(v3.number_input("Top N", min_value=3, max_value=50, value=15, key="viz_topn"))
 
-    work = df.copy()
+    work = view.copy()
     work[group_col] = work[group_col].fillna("—").replace("", "—")
 
     if measure == "Count of records":
@@ -362,10 +419,9 @@ else:
 
     grouped = grouped.sort_values("Value", ascending=False).head(top_n)
 
-    # summary cards
     top_row = grouped.iloc[0] if not grouped.empty else None
     c1, c2, c3 = st.columns(3)
-    c1.metric("Total records", f"{len(df):,}")
+    c1.metric("Total records", f"{len(view):,}")
     c2.metric(f"Unique {group_col}", f"{work[group_col].nunique():,}")
     if top_row is not None:
         c3.metric(f"Top {group_col}", str(top_row[group_col])[:22],
