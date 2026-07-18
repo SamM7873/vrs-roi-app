@@ -440,43 +440,94 @@ else:
         measure2 = r2c3.selectbox("Line measure", measure_opts,
                                   index=min(1, len(measure_opts) - 1), key="viz_measure2")
 
+    is_bar = chart_type in ("Vertical Bar", "Horizontal Bar")
+    r3c1, r3c2, r3c3 = st.columns([2, 2, 2])
+    split_col = "(none)"
+    stack_mode = "Stacked"
+    if is_bar:
+        split_col = r3c1.selectbox("Split by (color)", ["(none)"] + [c for c in view.columns if c != group_col],
+                                   key="viz_split")
+        if split_col != "(none)":
+            stack_mode = r3c2.radio("Bars", ["Stacked", "Grouped"], horizontal=True, key="viz_stack")
+    data_labels = r3c3.checkbox("Show data labels", value=False, key="viz_labels")
+    has_split = is_bar and split_col != "(none)"
+
     # detect a date-like x for line/area so trends read chronologically
     x_dt = pd.to_datetime(view[group_col], errors="coerce")
-    is_temporal = x_dt.notna().mean() > 0.6
+    is_temporal = x_dt.notna().mean() > 0.6 and chart_type in ("Line", "Area", "Bar + Line (combo)")
 
-    grouped, measure_label = _agg_by(view, group_col, measure, numeric_cols)
-    if is_temporal and chart_type in ("Line", "Area", "Bar + Line (combo)"):
-        grouped["_sort"] = pd.to_datetime(grouped[group_col], errors="coerce")
-        grouped = grouped.sort_values("_sort").drop(columns="_sort").head(top_n)
-        x_enc = alt.X(f"{group_col}:T", title=group_col)
+    # ── aggregate ───────────────────────────────────────────────────────────
+    if has_split:
+        w = view.copy()
+        w[group_col] = w[group_col].fillna("—").replace("", "—")
+        w[split_col] = w[split_col].fillna("—").replace("", "—")
+        if measure == "Count of records":
+            grouped = w.groupby([group_col, split_col]).size().reset_index(name="Value")
+            measure_label = "Records"
+        else:
+            agg, _, col = measure.partition(" of ")
+            w["_num"] = pd.to_numeric(w[col], errors="coerce")
+            gb = w.groupby([group_col, split_col])["_num"]
+            grouped = (gb.sum() if agg == "Sum" else gb.mean()).reset_index(name="Value")
+            measure_label = measure
+        totals = grouped.groupby(group_col)["Value"].sum().sort_values(ascending=not sort_desc)
+        grouped = grouped[grouped[group_col].isin(totals.head(top_n).index)]
+        group_totals = totals
     else:
-        grouped = grouped.sort_values("Value", ascending=not sort_desc).head(top_n)
-        x_sort = "-y" if sort_desc else "y"
-        x_enc = alt.X(f"{group_col}:N", sort=x_sort, title=group_col, axis=alt.Axis(labelAngle=-40))
+        grouped, measure_label = _agg_by(view, group_col, measure, numeric_cols)
+        if is_temporal:
+            grouped["_sort"] = pd.to_datetime(grouped[group_col], errors="coerce")
+            grouped = grouped.sort_values("_sort").drop(columns="_sort").head(top_n)
+        else:
+            grouped = grouped.sort_values("Value", ascending=not sort_desc).head(top_n)
+        group_totals = grouped.set_index(group_col)["Value"]
+
+    x_enc = (alt.X(f"{group_col}:T", title=group_col) if is_temporal
+             else alt.X(f"{group_col}:N", sort=("-y" if sort_desc else "y"),
+                        title=group_col, axis=alt.Axis(labelAngle=-40)))
 
     # summary cards
-    top_row = grouped.sort_values("Value", ascending=False).iloc[0] if not grouped.empty else None
     cc1, cc2, cc3 = st.columns(3)
     cc1.metric("Total records", f"{len(view):,}")
     cc2.metric(f"Unique {group_col}", f"{view[group_col].fillna('—').replace('', '—').nunique():,}")
-    if top_row is not None:
-        cc3.metric(f"Top {group_col}", str(top_row[group_col])[:22],
-                   help=f"{measure_label}: {top_row['Value']:,.1f}")
+    if not group_totals.empty:
+        gt = group_totals.sort_values(ascending=False)
+        cc3.metric(f"Top {group_col}", str(gt.index[0])[:22], help=f"{measure_label}: {gt.iloc[0]:,.1f}")
 
-    tip = [alt.Tooltip(f"{group_col}:T" if is_temporal and chart_type in ('Line', 'Area', 'Bar + Line (combo)') else f"{group_col}:N"),
-           alt.Tooltip("Value:Q", format=",.1f", title=measure_label)]
+    color_enc = alt.Color(f"{split_col}:N", scale=alt.Scale(range=DONUT_SCHEME),
+                          legend=alt.Legend(title=split_col)) if has_split else alt.value(PRIMARY)
+    tip = [alt.Tooltip(f"{group_col}:T" if is_temporal else f"{group_col}:N")]
+    if has_split:
+        tip.append(alt.Tooltip(f"{split_col}:N"))
+    tip.append(alt.Tooltip("Value:Q", format=",.1f", title=measure_label))
+
+    def _labels(base_enc, horizontal=False):
+        """Data-label text layer (only when not split, to stay legible)."""
+        t = alt.Chart(grouped).mark_text(
+            color="#4B4B3A", fontSize=11, fontWeight=600,
+            dx=6 if horizontal else 0, dy=0 if horizontal else -8,
+            align="left" if horizontal else "center", baseline="middle",
+        ).encode(**base_enc, text=alt.Text("Value:Q", format=",.0f"))
+        return t
 
     if chart_type == "Horizontal Bar":
-        chart = (alt.Chart(grouped)
-                 .mark_bar(color=PRIMARY, cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
-                 .encode(y=alt.Y(f"{group_col}:N", sort="-x", title=group_col),
-                         x=alt.X("Value:Q", title=measure_label), tooltip=tip)
-                 .properties(height=max(320, len(grouped) * 26)))
+        y_enc = alt.Y(f"{group_col}:N", sort="-x", title=group_col)
+        enc = dict(y=y_enc, x=alt.X("Value:Q", stack=(None if not has_split else ("zero" if stack_mode == "Stacked" else None)), title=measure_label), color=color_enc, tooltip=tip)
+        if has_split and stack_mode == "Grouped":
+            enc["yOffset"] = f"{split_col}:N"
+        chart = alt.Chart(grouped).mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(**enc) \
+                   .properties(height=max(320, grouped[group_col].nunique() * (26 if not has_split else 40)))
+        if data_labels and not has_split:
+            chart = chart + _labels(dict(y=y_enc, x=alt.X("Value:Q")), horizontal=True)
+
     elif chart_type == "Line":
         chart = (alt.Chart(grouped)
                  .mark_line(color=PRIMARY, point=alt.OverlayMarkDef(color=SECONDARY, size=55), strokeWidth=3)
                  .encode(x=x_enc, y=alt.Y("Value:Q", title=measure_label), tooltip=tip)
                  .properties(height=380))
+        if data_labels:
+            chart = chart + _labels(dict(x=x_enc, y=alt.Y("Value:Q")))
+
     elif chart_type == "Area":
         chart = (alt.Chart(grouped)
                  .mark_area(line={"color": PRIMARY}, color=alt.Gradient(
@@ -486,31 +537,34 @@ else:
                      x1=1, x2=1, y1=1, y2=0))
                  .encode(x=x_enc, y=alt.Y("Value:Q", title=measure_label), tooltip=tip)
                  .properties(height=380))
+
     elif chart_type == "Donut":
         chart = (alt.Chart(grouped)
                  .mark_arc(innerRadius=70, stroke="#fff", strokeWidth=2)
                  .encode(theta=alt.Theta("Value:Q", stack=True),
-                         color=alt.Color(f"{group_col}:N",
-                                         scale=alt.Scale(range=DONUT_SCHEME),
+                         color=alt.Color(f"{group_col}:N", scale=alt.Scale(range=DONUT_SCHEME),
                                          legend=alt.Legend(title=group_col)),
                          tooltip=tip)
                  .properties(height=380))
+
     elif chart_type == "Bar + Line (combo)":
         grouped2, measure2_label = _agg_by(view, group_col, measure2, numeric_cols)
         grouped2 = grouped2.set_index(group_col).reindex(grouped[group_col]).reset_index()
-        base = alt.Chart(grouped).encode(x=x_enc)
-        bars = base.mark_bar(color=PRIMARY, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-            y=alt.Y("Value:Q", title=measure_label), tooltip=tip)
+        bars = alt.Chart(grouped).mark_bar(color=PRIMARY, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+            x=x_enc, y=alt.Y("Value:Q", title=measure_label), tooltip=tip)
         line = (alt.Chart(grouped2)
                 .mark_line(color=SECONDARY, point=alt.OverlayMarkDef(color=SECONDARY, size=55), strokeWidth=3)
                 .encode(x=x_enc, y=alt.Y("Value:Q", axis=alt.Axis(title=measure2_label, titleColor=SECONDARY)),
                         tooltip=[tip[0], alt.Tooltip("Value:Q", format=",.1f", title=measure2_label)]))
         chart = alt.layer(bars, line).resolve_scale(y="independent").properties(height=380)
+
     else:  # Vertical Bar
-        chart = (alt.Chart(grouped)
-                 .mark_bar(color=PRIMARY, cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-                 .encode(x=x_enc, y=alt.Y("Value:Q", title=measure_label), tooltip=tip)
-                 .properties(height=380))
+        enc = dict(x=x_enc, y=alt.Y("Value:Q", stack=(None if not has_split else ("zero" if stack_mode == "Stacked" else None)), title=measure_label), color=color_enc, tooltip=tip)
+        if has_split and stack_mode == "Grouped":
+            enc["xOffset"] = f"{split_col}:N"
+        chart = alt.Chart(grouped).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(**enc).properties(height=380)
+        if data_labels and not has_split:
+            chart = chart + _labels(dict(x=x_enc, y=alt.Y("Value:Q")))
 
     st.altair_chart(chart, use_container_width=True)
 
