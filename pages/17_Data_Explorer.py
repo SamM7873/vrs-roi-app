@@ -333,8 +333,8 @@ def fetch_object_constrained(oid, props, base_filters, key_prop, key_values, lab
         return []
     all_recs = []
     loader = st.empty()
-    for i in range(0, len(vals), 400):
-        chunk = vals[i:i + 400]
+    for i in range(0, len(vals), 100):  # HubSpot IN operator allows max 100 values
+        chunk = vals[i:i + 100]
         fg = [{"filters": base_filters + [{"propertyName": key_prop, "operator": "IN", "values": chunk}]}]
         all_recs.extend(_search_over_cap(oid, props, fg))
         loader.markdown(
