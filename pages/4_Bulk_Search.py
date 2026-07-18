@@ -33,20 +33,18 @@ def month_key(s):
 
 report_header("Bulk Search", "Paste emails or numbers — get aggregated VRS & Convo Now stats", section="Analytics")
 
-# ── Tab selector ──
+# ── Mode selector ──
 from utils import list_all, persistent_cache
-tab_bulk, tab_explorer = st.tabs(["Bulk Search", "Data Explorer"])
+mode = st.radio("Select Mode", ["Bulk Search", "Data Explorer"], horizontal=True)
 
-with tab_explorer:
-    st.markdown("### Data Explorer - Browse All Custom Objects")
+if mode == "Data Explorer":
+    st.markdown("### 📊 Data Explorer - Browse All Custom Objects")
 
-    explorer_col1, explorer_col2 = st.columns([2, 1])
-    with explorer_col1:
-        object_type = st.selectbox(
-            "Select Custom Object",
-            ["VRS Numbers", "Registrations", "Monthly Values"],
-            key="explorer_object"
-        )
+    object_type = st.selectbox(
+        "Select Custom Object",
+        ["VRS Numbers", "Registrations", "Monthly Values"],
+        key="explorer_object"
+    )
 
     @persistent_cache(ttl_seconds=600)
     def fetch_explorer_data(obj_type):
@@ -93,7 +91,7 @@ with tab_explorer:
             "text/csv"
         )
 
-with tab_bulk:
+else:
     # ── Input ──
     st.markdown("##### Paste emails or phone numbers (one per line, or comma-separated)")
     raw_input = st.text_area("bulk_input", height=140, placeholder="john@example.com\njane@example.com\n7325551234\n...", label_visibility="collapsed")
