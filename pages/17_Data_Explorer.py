@@ -75,11 +75,16 @@ def fetch_property_schema(object_id):
     return sorted(out, key=lambda x: (x["group"], x["label"].lower()))
 
 
-@st.cache_data(ttl=600, show_spinner=False)
 def run_report(object_id, properties, filter_groups):
-    if filter_groups:
-        return fetch_all(object_id, properties, filter_groups=filter_groups)
-    return list_all(object_id, properties, progress_label="Fetching records")
+    # Not cached: list_all/fetch_all draw their own progress UI, which Streamlit
+    # disallows inside @st.cache_data. Results are held in session_state instead.
+    try:
+        if filter_groups:
+            return fetch_all(object_id, properties, filter_groups=filter_groups)
+        return list_all(object_id, properties, progress_label="Fetching records")
+    except Exception as e:
+        st.error(f"Fetch failed: {e}")
+        return []
 
 
 def _to_epoch_ms(d, end_of_day=False):
@@ -206,19 +211,22 @@ if not display_props:
     st.stop()
 
 if run:
-    st.session_state.de_run = {
+    cfg = {
         "props": display_props,
         "filter_groups": [{"filters": built_filters}] if built_filters else [],
         "obj_id": obj["id"],
         "object_type": object_type,
     }
+    st.session_state.de_run = cfg
+    # fetch now (only on click) and cache the records in session_state
+    st.session_state.de_records = run_report(cfg["obj_id"], cfg["props"], cfg["filter_groups"])
 
 cfg = st.session_state.get("de_run")
 if not cfg:
     st.info("Set your columns and filters, then press **Run report**.")
     st.stop()
 
-records = run_report(cfg["obj_id"], cfg["props"], cfg["filter_groups"])
+records = st.session_state.get("de_records", [])
 
 if not records:
     st.warning("No records matched your filters.")
