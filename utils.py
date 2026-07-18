@@ -279,6 +279,10 @@ def fetch_all(object_type_id, properties, filter_groups=None):
         after = data.get("paging", {}).get("next", {}).get("after")
         if not after:
             break
+        # HubSpot's search API cannot page past 10,000 records — it returns a
+        # 400 on the next request. Stop cleanly at the cap instead of erroring.
+        if len(all_results) >= 10000 or int(after) >= 10000:
+            break
         time.sleep(0.15)
     return all_results
 

@@ -242,6 +242,10 @@ m1.metric("Records", f"{len(df):,}")
 m2.metric("Columns", len(df.columns))
 m3.metric("Filters applied", len(cfg["filter_groups"][0]["filters"]) if cfg["filter_groups"] else 0)
 
+if len(records) >= 10000:
+    st.warning("Showing the first 10,000 records (HubSpot's search limit). "
+               "Add more filters to narrow the results.")
+
 search = st.text_input("🔍 Search results", "")
 if search:
     mask = df.astype(str).apply(lambda x: x.str.contains(search, case=False, na=False)).any(axis=1)
