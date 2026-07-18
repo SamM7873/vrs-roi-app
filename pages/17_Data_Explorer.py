@@ -197,21 +197,29 @@ for otype in object_types:
     default_cols += [c for c in OBJECTS[otype]["defaults"] if c in per_obj_available[otype]]
 default_cols = list(dict.fromkeys(default_cols)) or available[:10]
 
-# ── join key (only when >1 object) ──────────────────────────────────────────
+# ── combine mode (only when >1 object) ──────────────────────────────────────
+# Joining is optional: multiple objects can be joined on a shared key, or just
+# stacked together (listed one after another, no join required).
 join_key = None
 join_how = "inner"
+combine_mode = "single"
 if multi:
     common = sorted(set.intersection(*per_obj_available.values()))
-    if not common:
-        st.error("The selected objects share no common property to join on.")
-        st.stop()
-    jk_default = "number" if "number" in common else common[0]
-    jc1, jc2 = st.columns([2, 2])
-    join_key = jc1.selectbox("Match (join) on", common,
-                             index=common.index(jk_default),
-                             format_func=lambda n: f"{label_by_name.get(n, n)}  ·  {n}")
-    match_mode = jc2.radio("Include", ["Only matched (in all)", "All records"], horizontal=True)
-    join_how = "inner" if match_mode.startswith("Only") else "outer"
+    mode_options = ["Stack (list all, no join)"]
+    if common:
+        mode_options = ["Join on shared key", "Stack (list all, no join)"]
+    combine_mode = st.radio("With multiple objects", mode_options, horizontal=True, key="de_combine")
+
+    if combine_mode == "Join on shared key":
+        jk_default = "number" if "number" in common else common[0]
+        jc1, jc2 = st.columns([2, 2])
+        join_key = jc1.selectbox("Match (join) on", common,
+                                 index=common.index(jk_default),
+                                 format_func=lambda n: f"{label_by_name.get(n, n)}  ·  {n}")
+        match_mode = jc2.radio("Include", ["Only matched (in all)", "All records"], horizontal=True)
+        join_how = "inner" if match_mode.startswith("Only") else "outer"
+
+do_join = multi and combine_mode == "Join on shared key"
 
 st.caption(f"{len(available)} properties available across **{', '.join(object_types)}**.")
 
@@ -333,7 +341,7 @@ def _frame_for(otype, key_values=None):
     oid = OBJECTS[otype]["id"]
     oavail = per_obj_available[otype]
     oprops = [p for p in display_props if p in oavail]
-    if multi and join_key in oavail and join_key not in oprops:
+    if do_join and join_key in oavail and join_key not in oprops:
         oprops.append(join_key)
     ofilters = [f for f in built_filters if f["propertyName"] in oavail]
 
@@ -348,10 +356,20 @@ def _frame_for(otype, key_values=None):
 
 
 def build_dataframe():
-    """Fetch objects (filtered/primary first), join on the shared key."""
-    if not multi:
-        fdf = _frame_for(object_types[0])
-        return fdf.rename(columns={c: label_by_name.get(c, c) for c in fdf.columns})
+    """Fetch objects — single, stacked (no join), or joined on a shared key."""
+    if not do_join:
+        # single object, or multiple objects stacked (listed together)
+        frames = []
+        for otype in object_types:
+            fdf = _frame_for(otype)
+            fdf = fdf.rename(columns={c: label_by_name.get(c, c) for c in fdf.columns})
+            if multi:
+                fdf.insert(0, "Object", otype)
+            frames.append(fdf)
+        frames = [f for f in frames if not f.empty]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
 
     # Order: objects that carry a filter come first (smaller, drives the join),
     # otherwise keep the user's selection order. This makes e.g. filtered
@@ -397,8 +415,10 @@ if run:
     st.session_state.de_info = {
         "objects": object_types,
         "filters": len(built_filters),
-        "joined": multi,
-        "join_label": label_by_name.get(join_key, join_key) if multi else None,
+        "joined": do_join,
+        "stacked": multi and not do_join,
+        "join_how": join_how,
+        "join_label": label_by_name.get(join_key, join_key) if do_join else None,
     }
 
 df = st.session_state.get("de_df")
@@ -417,7 +437,10 @@ m3.metric("Filters applied", info["filters"])
 
 if info.get("joined"):
     st.caption(f"Matched **{', '.join(info['objects'])}** on **{info['join_label']}** "
-               f"({'only records present in all' if join_how == 'inner' else 'all records, outer join'}).")
+               f"({'only records present in all' if info.get('join_how') == 'inner' else 'all records, outer join'}).")
+elif info.get("stacked"):
+    st.caption(f"Stacked **{', '.join(info['objects'])}** (listed together, no join). "
+               f"See the **Object** column for each row's source.")
 
 search = st.text_input("🔍 Search results", "")
 view = df
