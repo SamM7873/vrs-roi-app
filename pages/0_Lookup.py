@@ -10,14 +10,14 @@ from datetime import datetime
 from collections import defaultdict
 from utils import dash_spinner, vrs_rate_for_month as _vrs_rate
 
-from utils import get_secret, _load_users
+from utils import get_secret, _load_app_users, log_audit
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 if not HUBSPOT_TOKEN:
     st.error("HUBSPOT_TOKEN is not set. Add it to .streamlit/secrets.toml or set it as an environment variable.")
     st.stop()
 
 APP_PASSWORD = get_secret("APP_PASSWORD")
-_USERS = _load_users()
+_USERS = _load_app_users()
 if APP_PASSWORD or _USERS:
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -147,8 +147,11 @@ if APP_PASSWORD or _USERS:
                     "ip": ip, "location": location, "device": device,
                     "ua": ua, "time": login_time
                 }
+                log_audit(st.session_state.get("username", "user"), "login",
+                          {"ip": ip, "location": location, "device": device, "ua": ua})
                 st.rerun()
             else:
+                log_audit(entered_username.strip() or "(blank)", "login_failed", {})
                 st.error("Incorrect username or password.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
@@ -162,6 +165,7 @@ if APP_PASSWORD or _USERS:
             unsafe_allow_html=True,
         )
         if st.button("Log out", key="_logout_lookup", use_container_width=True):
+            log_audit(st.session_state.get("username", "user"), "logout")
             st.session_state.authenticated = False
             st.session_state.pop("username", None)
             st.rerun()

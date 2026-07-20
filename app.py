@@ -96,7 +96,8 @@ pendo_page       = st.Page("pages/14_Pendo_Report.py",               title="Pend
 dq_page          = st.Page("pages/15_Data_Quality.py",               title="Data Quality",                 icon="🧹")
 yoy_page         = st.Page("pages/16_YoY_Comparison.py",             title="Year-over-Year",               icon="📆")
 explorer_page    = st.Page("pages/17_Data_Explorer.py",               title="Data Explorer",                icon="📊")
+audit_page       = st.Page("pages/18_Audit_Log.py",                   title="Audit Log",                    icon="🛡️")
 
-pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page, numfunnel_page, winback_page, cs_tickets_page, vrs_zero_page, age_demo_page, pendo_page, dq_page, yoy_page, explorer_page])
+pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page, numfunnel_page, winback_page, cs_tickets_page, vrs_zero_page, age_demo_page, pendo_page, dq_page, yoy_page, explorer_page, audit_page])
 render_sync_widget()
 pg.run()

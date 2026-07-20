@@ -3,7 +3,8 @@ import requests
 import pandas as pd
 import os
 import time
-from datetime import datetime
+import json
+from datetime import datetime, timezone
 from collections import defaultdict
 
 def get_secret(key, default=""):
@@ -119,11 +120,12 @@ def _send_reset_code(email):
         return None, f"{type(e).__name__}: {e}"
 
 
-def _load_users():
+def _load_app_users():
     """Return {username: password} parsed from the APP_USERS secret.
 
     Format: comma- or semicolon-separated ``user:password`` pairs, e.g.
     ``APP_USERS = "alice:pw1, bob:pw2"``. Usernames are case-insensitive.
+    (Named distinctly from the legacy file-based _load_users above.)
     """
     raw = str(get_secret("APP_USERS", "")).strip()
     users = {}
@@ -136,6 +138,87 @@ def _load_users():
     return users
 
 
+def _app_admins():
+    """Usernames allowed to view the audit log (APP_ADMINS secret,
+    comma-separated). Defaults to samuel.mercado if unset."""
+    raw = str(get_secret("APP_ADMINS", "")).strip()
+    admins = {a.strip().lower() for a in raw.replace(";", ",").split(",") if a.strip()}
+    return admins or {"samuel.mercado"}
+
+
+def is_app_admin(username=None):
+    u = (username or st.session_state.get("username", "")).strip().lower()
+    return u in _app_admins()
+
+
+# ── Audit log ────────────────────────────────────────────────────────────────
+AUDIT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audit_log")
+AUDIT_FILE = os.path.join(AUDIT_DIR, "events.jsonl")
+
+
+def capture_login_context():
+    """Best-effort IP / location / device from the request headers."""
+    ip, ua = "Unknown", "Unknown"
+    try:
+        hdrs = st.context.headers
+        ua = hdrs.get("User-Agent", "Unknown")
+
+        def _private(a):
+            return a.startswith(("10.", "172.", "192.168.", "127.", "::1", "fc", "fd"))
+        for h in ["X-Forwarded-For", "X-Real-Ip", "CF-Connecting-IP", "True-Client-IP", "X-Client-IP"]:
+            val = hdrs.get(h, "")
+            if val:
+                for c in val.split(","):
+                    c = c.strip()
+                    if c and not _private(c):
+                        ip = c
+                        break
+            if ip != "Unknown":
+                break
+    except Exception:
+        pass
+    location = "Unknown"
+    try:
+        geo = requests.get(f"http://ip-api.com/json/{ip}?fields=city,regionName,country,status", timeout=4).json()
+        if geo.get("status") == "success":
+            location = ", ".join(filter(None, [geo.get("city", ""), geo.get("regionName", ""), geo.get("country", "")])) or "Unknown"
+    except Exception:
+        pass
+    ual = ua.lower()
+    device = "Mobile" if ("mobile" in ual or "android" in ual) else ("Tablet" if ("tablet" in ual or "ipad" in ual) else "Desktop")
+    return {"ip": ip, "location": location, "device": device, "ua": ua}
+
+
+def log_audit(username, action, context=None):
+    """Append a login/logout audit event. Never raises."""
+    try:
+        os.makedirs(AUDIT_DIR, exist_ok=True)
+        ctx = context or {}
+        row = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "username": username or "unknown",
+            "action": action,
+            "ip": ctx.get("ip", ""),
+            "location": ctx.get("location", ""),
+            "device": ctx.get("device", ""),
+            "ua": ctx.get("ua", ""),
+        }
+        with open(AUDIT_FILE, "a") as f:
+            f.write(json.dumps(row) + "\n")
+    except Exception:
+        pass
+
+
+def read_audit(limit=1000):
+    """Return the most recent audit events (newest first)."""
+    try:
+        with open(AUDIT_FILE) as f:
+            lines = f.readlines()[-limit:]
+        return [json.loads(l) for l in reversed(lines) if l.strip()]
+    except Exception:
+        return []
+
+
 def require_auth():
     """Login gate. Supports per-user username+password via the APP_USERS
     secret, and falls back to a single shared APP_PASSWORD. Call at the top
@@ -144,7 +227,7 @@ def require_auth():
         st.error("HUBSPOT_TOKEN is not set.")
         st.stop()
 
-    users = _load_users()
+    users = _load_app_users()
     if not users and not APP_PASSWORD:
         st.error("No access control configured — set APP_USERS (user:pass pairs) "
                  "or APP_PASSWORD in secrets.")
@@ -192,8 +275,13 @@ def require_auth():
             if ok:
                 st.session_state.authenticated = True
                 st.session_state.username = username.strip() or "user"
+                _ctx = capture_login_context()
+                st.session_state.login_info = {**_ctx, "time": datetime.now().strftime("%b %d, %Y at %I:%M %p")}
+                log_audit(st.session_state.username, "login", _ctx)
                 st.rerun()
             else:
+                log_audit(username.strip() or "(blank)", "login_failed",
+                          {"ip": capture_login_context().get("ip", "")})
                 st.error("Incorrect username or password.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
@@ -208,6 +296,7 @@ def require_auth():
             unsafe_allow_html=True,
         )
         if st.button("Log out", key="_logout_btn", use_container_width=True):
+            log_audit(st.session_state.get("username", "user"), "logout")
             st.session_state.authenticated = False
             st.session_state.pop("username", None)
             st.rerun()
