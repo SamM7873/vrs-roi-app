@@ -37,7 +37,7 @@ report_header_close()
 
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
-_CACHE_VERSION = 6  # bump when columns/fetch logic change
+_CACHE_VERSION = 7  # bump when columns/fetch logic change
 _report_key = f"vrs_zero_v{_CACHE_VERSION}_" + range_label.replace(" ", "_").replace("–", "_")
 
 cached = st.session_state.get("_vrs_zero_cache")
@@ -126,7 +126,7 @@ if run or not cached:
             cn_obj_records.extend(fetch_all(
                 "2-40974683",
                 ["number", "email", "first_name", "last_name", "service_type",
-                 "number_status", "usage_type", "credit_plan_name", "age_bucket"],
+                 "number_status", "usage_type", "credit_plan_name", "age_bucket", "state"],
                 filter_groups=[{"filters": [
                     {"propertyName": "number",           "operator": "IN", "values": chunk},
                     {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
@@ -161,6 +161,9 @@ if run or not cached:
             age = (p.get("age_bucket") or "").strip()
             if age:
                 email_to_age.setdefault(email, age)
+            state = (p.get("state") or "").strip()  # State from the Number object
+            if state:
+                email_to_state.setdefault(email, state)
 
     if not cn_emails:
         st.warning("No qualifying Convo Now numbers found (Personal + Convo Now: Access Complimentary + Live). "
@@ -178,7 +181,7 @@ if run or not cached:
             c_recs = fetch_all(
                 "contacts",
                 ["email", "hs_additional_emails", "convo_now_account_id",
-                 "state", "jobtitle", "associatedcompanyid"],
+                 "jobtitle", "associatedcompanyid"],
                 filter_groups=[{"filters": [
                     {"propertyName": "email", "operator": "IN", "values": chunk},
                 ]}]
@@ -186,9 +189,10 @@ if run or not cached:
             for c in c_recs:
                 cp = c.get("properties", {})
                 pendo    = (cp.get("convo_now_account_id") or "").strip()
-                state    = (cp.get("state") or "").strip()
                 jobtitle = (cp.get("jobtitle") or "").strip()
                 companyid = (cp.get("associatedcompanyid") or "").strip()
+                # NOTE: State comes from the Number object (contact-level state is
+                # unreliable), captured in Step 2 / Step 3 — not from contacts here.
                 all_emails = [(cp.get("email") or "").strip().lower()]
                 all_emails += [x.strip().lower() for x in
                                str(cp.get("hs_additional_emails") or "").replace(",", ";").split(";")
@@ -197,7 +201,6 @@ if run or not cached:
                     if not _e:
                         continue
                     if pendo:     email_to_pendo.setdefault(_e, pendo)
-                    if state:     email_to_state.setdefault(_e, state)
                     if jobtitle:  email_to_jobtitle.setdefault(_e, jobtitle)
                     if companyid: email_to_companyid.setdefault(_e, companyid)
 
@@ -226,7 +229,7 @@ if run or not cached:
             chunk = list(cn_emails)[i:i+100]
             all_num_objs.extend(fetch_all(
                 "2-40974683",
-                ["number", "email", "first_name", "last_name", "service_type", "number_status", "age_bucket"],
+                ["number", "email", "first_name", "last_name", "service_type", "number_status", "age_bucket", "state"],
                 filter_groups=[{"filters": [
                     {"propertyName": "email", "operator": "IN", "values": chunk},
                 ]}]
@@ -252,6 +255,9 @@ if run or not cached:
         age = (p.get("age_bucket") or "").strip()
         if age:
             email_to_age.setdefault(email, age)
+        state = (p.get("state") or "").strip()  # State from the Number object
+        if state:
+            email_to_state.setdefault(email, state)
         if svc == "vrs":
             email_vrs_nums[email].add(num)
         elif svc == "convo now":
