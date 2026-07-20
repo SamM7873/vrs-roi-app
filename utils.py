@@ -119,15 +119,35 @@ def _send_reset_code(email):
         return None, f"{type(e).__name__}: {e}"
 
 
+def _load_users():
+    """Return {username: password} parsed from the APP_USERS secret.
+
+    Format: comma- or semicolon-separated ``user:password`` pairs, e.g.
+    ``APP_USERS = "alice:pw1, bob:pw2"``. Usernames are case-insensitive.
+    """
+    raw = str(get_secret("APP_USERS", "")).strip()
+    users = {}
+    for pair in raw.replace(";", ",").split(","):
+        if ":" in pair:
+            u, _, p = pair.partition(":")
+            u, p = u.strip(), p.strip()
+            if u and p:
+                users[u.lower()] = p
+    return users
+
+
 def require_auth():
-    """Login gate: email (allowlist) + personal password, with self-service
-    reset verified by the team APP_PASSWORD. Call at the top of every page."""
+    """Login gate. Supports per-user username+password via the APP_USERS
+    secret, and falls back to a single shared APP_PASSWORD. Call at the top
+    of every page."""
     if not HUBSPOT_TOKEN:
         st.error("HUBSPOT_TOKEN is not set.")
         st.stop()
 
-    if not APP_PASSWORD:
-        st.error("No access control configured — set APP_PASSWORD in secrets.")
+    users = _load_users()
+    if not users and not APP_PASSWORD:
+        st.error("No access control configured — set APP_USERS (user:pass pairs) "
+                 "or APP_PASSWORD in secrets.")
         st.stop()
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -156,17 +176,25 @@ def require_auth():
           <div class="login-logo-area">
             <div class="logo-mark">c</div>
             <h2>VRS / Convo Now Lookup</h2>
-            <p>Please enter your password to continue</p>
+            <p>Please sign in to continue</p>
           </div>
         <div class="login-card">
         """, unsafe_allow_html=True)
+        username = st.text_input("Username", placeholder="Enter username")
         entered = st.text_input("Password", type="password", placeholder="Enter password")
         if st.button("Login"):
-            if entered == APP_PASSWORD:
+            uname = username.strip().lower()
+            if users:
+                ok = uname in users and entered == users[uname]
+            else:
+                # no per-user list configured → shared password, any username
+                ok = bool(APP_PASSWORD) and entered == APP_PASSWORD
+            if ok:
                 st.session_state.authenticated = True
+                st.session_state.username = username.strip() or "user"
                 st.rerun()
             else:
-                st.error("Incorrect password.")
+                st.error("Incorrect username or password.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
