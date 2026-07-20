@@ -35,7 +35,7 @@ report_header_close()
 
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
-_CACHE_VERSION = 5  # bump when columns/fetch logic change
+_CACHE_VERSION = 6  # bump when columns/fetch logic change
 cached = st.session_state.get("_vrs_zero_cache")
 if cached and (cached.get("range_label") != range_label
                or cached.get("version") != _CACHE_VERSION):
@@ -120,6 +120,9 @@ if run or not cached:
     email_to_name: dict = {}
     email_to_pendo: dict = {}
     email_to_age: dict = {}
+    email_to_state: dict = {}
+    email_to_jobtitle: dict = {}
+    email_to_companyid: dict = {}
     _statuses_seen: dict = defaultdict(int)
     for r in cn_obj_records:
         p = r.get("properties", {})
@@ -149,29 +152,53 @@ if run or not cached:
     # Map the Pendo ID under EVERY email a contact has (primary + additional),
     # because the report keys rows by the number's email, which may be the
     # contact's secondary email rather than its primary.
-    with dash_spinner(f"Fetching Pendo IDs for {len(cn_emails):,} contacts…"):
+    with dash_spinner(f"Fetching contact details for {len(cn_emails):,} contacts…"):
         _email_list = sorted(cn_emails)
         for i in range(0, len(_email_list), 100):
             chunk = _email_list[i:i+100]
             c_recs = fetch_all(
                 "contacts",
-                ["email", "hs_additional_emails", "convo_now_account_id"],
+                ["email", "hs_additional_emails", "convo_now_account_id",
+                 "state", "jobtitle", "associatedcompanyid"],
                 filter_groups=[{"filters": [
                     {"propertyName": "email", "operator": "IN", "values": chunk},
                 ]}]
             )
             for c in c_recs:
                 cp = c.get("properties", {})
-                pendo = (cp.get("convo_now_account_id") or "").strip()
-                if not pendo:
-                    continue
+                pendo    = (cp.get("convo_now_account_id") or "").strip()
+                state    = (cp.get("state") or "").strip()
+                jobtitle = (cp.get("jobtitle") or "").strip()
+                companyid = (cp.get("associatedcompanyid") or "").strip()
                 all_emails = [(cp.get("email") or "").strip().lower()]
                 all_emails += [x.strip().lower() for x in
                                str(cp.get("hs_additional_emails") or "").replace(",", ";").split(";")
                                if x.strip()]
                 for _e in all_emails:
-                    if _e:
-                        email_to_pendo.setdefault(_e, pendo)
+                    if not _e:
+                        continue
+                    if pendo:     email_to_pendo.setdefault(_e, pendo)
+                    if state:     email_to_state.setdefault(_e, state)
+                    if jobtitle:  email_to_jobtitle.setdefault(_e, jobtitle)
+                    if companyid: email_to_companyid.setdefault(_e, companyid)
+
+    # ── Step 2c: associated Company (0-2) info ───────────────────────────────
+    company_info: dict = {}
+    _comp_ids = sorted({c for c in email_to_companyid.values() if c})
+    if _comp_ids:
+        with dash_spinner(f"Fetching {len(_comp_ids):,} associated companies…"):
+            for i in range(0, len(_comp_ids), 100):
+                chunk = _comp_ids[i:i+100]
+                comp_recs = fetch_all(
+                    "companies",
+                    ["name", "description", "industry_type",
+                     "deaf_owned_business_", "non_profit_organization_"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "hs_object_id", "operator": "IN", "values": chunk},
+                    ]}]
+                )
+                for cr in comp_recs:
+                    company_info[str(cr.get("id"))] = cr.get("properties", {})
 
     # ── Step 3: All numbers for those contacts (VRS + Convo Now) ─────────────
     with dash_spinner(f"Fetching all numbers for {len(cn_emails):,} contacts…"):
@@ -272,11 +299,20 @@ if run or not cached:
         cn_cost  = cn_total * CONVO_RATE
         vrs_nums = sorted(email_vrs_nums.get(email, set()))
         cn_nums  = sorted(email_cn_nums.get(email,  set()))
+        _cid = email_to_companyid.get(email, "")
+        _cinfo = company_info.get(_cid, {})
         rows.append({
             "Name":              email_to_name.get(email, "—"),
             "Email":             email,
             "Pendo ID":          email_to_pendo.get(email, "—"),
             "Age Bucket":        email_to_age.get(email, "—"),
+            "State":             email_to_state.get(email, "—"),
+            "Job Title":         email_to_jobtitle.get(email, "—"),
+            "Company Name":        (_cinfo.get("name") or "—"),
+            "Company Description": (_cinfo.get("description") or "—"),
+            "Industry Type":       (_cinfo.get("industry_type") or "—"),
+            "Deaf-Owned Business": (_cinfo.get("deaf_owned_business_") or "—"),
+            "Nonprofit Org":       (_cinfo.get("non_profit_organization_") or "—"),
             "VRS Numbers":       ", ".join(vrs_nums) if vrs_nums else "—",
             "Convo Now Numbers": ", ".join(cn_nums)  if cn_nums  else "—",
             "VRS Minutes":       round(vrs_total,  1),
@@ -483,7 +519,10 @@ if search.strip():
     st.caption(f'{len(df_view):,} of {total_contacts:,} contacts match "{search}"')
 
 display_df = df_view[[
-    "Name", "Email", "Pendo ID", "Age Bucket", "Convo Now Numbers", "VRS Numbers",
+    "Name", "Email", "Pendo ID", "Age Bucket", "State", "Job Title",
+    "Company Name", "Company Description", "Industry Type",
+    "Deaf-Owned Business", "Nonprofit Org",
+    "Convo Now Numbers", "VRS Numbers",
     "VRS Minutes", "URSA Minutes", "CfZ Minutes",
     "Convo Now Min", "Convo Now Cost", "Active Months", "Latest Month", "Latest Month Min"
 ]]
