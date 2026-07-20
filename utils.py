@@ -198,6 +198,20 @@ def require_auth():
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
+    # ── authenticated: account control in the sidebar ────────────────────────
+    with st.sidebar:
+        uname = st.session_state.get("username", "user")
+        st.markdown(
+            f"<div style='margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.15);"
+            f"font-size:0.8rem;color:rgba(255,255,255,0.7);'>Logged in as "
+            f"<strong style='color:#fff;'>{uname}</strong></div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Log out", key="_logout_btn", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.pop("username", None)
+            st.rerun()
+
 
 def list_all(object_type_id, properties, progress_label="Loading..."):
     """Fetch all records with an animated loading card."""
