@@ -4,10 +4,12 @@ import altair as alt
 import os
 from datetime import date, datetime, timezone
 from collections import defaultdict
+import time
 from utils import (
     dash_spinner,
     require_auth, fetch_all, norm, to_float,
     COMMON_CSS, report_header, report_header_close,
+    save_report, load_report,
 )
 
 st.set_page_config(page_title="VRS Zero / Convo Now Active", layout="wide", page_icon="🔄")
@@ -36,14 +38,31 @@ report_header_close()
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
 _CACHE_VERSION = 6  # bump when columns/fetch logic change
+_report_key = f"vrs_zero_v{_CACHE_VERSION}_" + range_label.replace(" ", "_").replace("–", "_")
+
 cached = st.session_state.get("_vrs_zero_cache")
 if cached and (cached.get("range_label") != range_label
                or cached.get("version") != _CACHE_VERSION):
     del st.session_state["_vrs_zero_cache"]
     cached = None
 
+# No in-memory cache and not an explicit run → try the saved (on-disk) report,
+# so results persist across reloads / sign-outs and don't re-fetch every time.
+if cached is None and not run:
+    disk = load_report(_report_key)
+    if disk and disk.get("version") == _CACHE_VERSION and disk.get("df_full") is not None:
+        cached = {
+            "version": _CACHE_VERSION,
+            "range_label": range_label,
+            "df_full": disk["df_full"],
+            "email_cn_months": disk.get("email_cn_months", {}),
+            "saved_at": disk.get("saved_at"),
+        }
+        st.session_state["_vrs_zero_cache"] = cached
+
 if not run and not cached:
-    st.info("Select a date range and click **Run Report**.")
+    st.info("Select a date range and click **Run Report**. "
+            "Results are saved and reused automatically next time — no need to re-run.")
     st.stop()
 
 # ── Resolve date floor ────────────────────────────────────────────────────────
@@ -358,16 +377,34 @@ if run or not cached:
 
     df_full = pd.DataFrame(rows).sort_values("Convo Now Min", ascending=False).reset_index(drop=True)
 
-    # Persist to session state so reruns (search, etc.) don't re-fetch
-    st.session_state["_vrs_zero_cache"] = {
+    # Persist to session state (fast reruns) AND to disk (survives reloads/sign-outs)
+    _payload = {
         "version":       _CACHE_VERSION,
         "range_label":   range_label,
         "df_full":       df_full,
         "email_cn_months": {k: dict(v) for k, v in email_cn_months.items()},
     }
+    save_report(_report_key, _payload)              # adds saved_at timestamp on disk
+    _saved_at = time.time()
+    st.session_state["_vrs_zero_cache"] = {**_payload, "saved_at": _saved_at}
 else:
     df_full          = cached["df_full"]
     email_cn_months  = cached["email_cn_months"]
+    _saved_at        = cached.get("saved_at")
+
+# ── Cached-result banner ──────────────────────────────────────────────────────
+if _saved_at:
+    _age_s = max(0, int(time.time() - _saved_at))
+    if _age_s < 90:
+        _ago = "just now"
+    elif _age_s < 3600:
+        _ago = f"{_age_s // 60} min ago"
+    elif _age_s < 86400:
+        _ago = f"{_age_s // 3600} h ago"
+    else:
+        _ago = f"{_age_s // 86400} d ago"
+    st.caption(f"📌 Saved report · last refreshed **{_ago}**. "
+               f"It's reused automatically — click **Run Report** above only when you want fresh data.")
 
 # ── Summary tiles ─────────────────────────────────────────────────────────────
 total_contacts = len(df_full)
