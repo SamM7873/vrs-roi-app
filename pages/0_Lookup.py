@@ -10,14 +10,15 @@ from datetime import datetime
 from collections import defaultdict
 from utils import dash_spinner, vrs_rate_for_month as _vrs_rate
 
-from utils import get_secret
+from utils import get_secret, _load_users
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 if not HUBSPOT_TOKEN:
     st.error("HUBSPOT_TOKEN is not set. Add it to .streamlit/secrets.toml or set it as an environment variable.")
     st.stop()
 
 APP_PASSWORD = get_secret("APP_PASSWORD")
-if APP_PASSWORD:
+_USERS = _load_users()
+if APP_PASSWORD or _USERS:
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
 
@@ -80,13 +81,20 @@ if APP_PASSWORD:
               </svg>
             </div>
             <h2>VRS / Convo Now Lookup</h2>
-            <p>Please enter your password to continue</p>
+            <p>Please sign in to continue</p>
           </div>
         """, unsafe_allow_html=True)
+        entered_username = st.text_input("Username", placeholder="Enter username")
         entered_password = st.text_input("Password", type="password", placeholder="Enter password")
         if st.button("Login"):
-            if entered_password == APP_PASSWORD:
+            _uname = entered_username.strip().lower()
+            if _USERS:
+                _ok = _uname in _USERS and entered_password == _USERS[_uname]
+            else:
+                _ok = bool(APP_PASSWORD) and entered_password == APP_PASSWORD
+            if _ok:
                 st.session_state.authenticated = True
+                st.session_state.username = entered_username.strip() or "user"
                 # Capture IP, location, device at login time
                 try:
                     hdrs = st.context.headers
@@ -141,9 +149,22 @@ if APP_PASSWORD:
                 }
                 st.rerun()
             else:
-                st.error("Incorrect password.")
+                st.error("Incorrect username or password.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
+
+    # authenticated — account control in the sidebar
+    with st.sidebar:
+        _u = st.session_state.get("username", "user")
+        st.markdown(
+            f"<div style='margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid rgba(0,0,0,0.1);"
+            f"font-size:0.8rem;color:#5b5349;'>Logged in as <strong>{_u}</strong></div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Log out", key="_logout_lookup", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.pop("username", None)
+            st.rerun()
 
 BASE_URL = "https://api.hubapi.com"
 headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
