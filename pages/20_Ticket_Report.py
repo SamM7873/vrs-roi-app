@@ -27,6 +27,7 @@ PROPS = [
     "hubspot_owner_id", "hs_pipeline", "hs_pipeline_stage",
     "hs_ticket_category", "subcategory",
     "ticket_type", "vrs_app", "usage_type", "source_type",
+    "hs_lastactivitydate", "num_notes",
     "si_jira_issue_key", "si_jira_issue_link",
 ]
 
@@ -93,9 +94,9 @@ with col4:
 report_header_close()
 
 if range_label == "Custom Range":
-    _KEY = f"ticket_report_v2_custom_{custom_from}_{custom_to}"
+    _KEY = f"ticket_report_v3_custom_{custom_from}_{custom_to}"
 else:
-    _KEY = "ticket_report_v2_" + range_label.replace(" ", "_")
+    _KEY = "ticket_report_v3_" + range_label.replace(" ", "_")
 cached = None if run else load_report(_KEY)
 
 if cached is None and not run:
@@ -157,6 +158,8 @@ for r in records:
         "VRS App": p.get("vrs_app") or "—",
         "Usage Type": p.get("usage_type") or "—",
         "Source": p.get("source_type") or "—",
+        "Last Activity": _dt(p.get("hs_lastactivitydate")),
+        "Activities": pd.to_numeric(p.get("num_notes"), errors="coerce"),
         "Jira Key": p.get("si_jira_issue_key") or "—",
         "Jira Link": p.get("si_jira_issue_link") or "",
         "_ttc_ms": ttc,
@@ -203,6 +206,11 @@ avg_ttc_days = (df["_ttc_ms"].mean() / 86_400_000) if df["_ttc_ms"].notna().any(
 avg_ttfr_hrs = (df["_ttfr_ms"].mean() / 3_600_000) if df["_ttfr_ms"].notna().any() else None
 with_jira = int((df["Jira Key"] != "—").sum())
 close_rate = (closed / total * 100) if total else 0
+_now_kpi = pd.Timestamp.now(tz="UTC")
+avg_activities = pd.to_numeric(df["Activities"], errors="coerce").mean()
+_days_since = (_now_kpi - df["Last Activity"]).dt.days
+avg_days_since = _days_since.mean() if _days_since.notna().any() else None
+stale = int((_days_since > 7).sum())  # open-ish tickets with no activity in 7+ days
 
 if _saved_at:
     _age = int(time.time() - _saved_at)
@@ -219,13 +227,18 @@ def tile(label, value, sub="", color="#1F2937"):
   {f'<div style="font-size:0.7rem;color:#9CA3AF;margin-top:0.15rem;">{sub}</div>' if sub else ''}
 </div>"""
 
-st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0.75rem;margin-bottom:1.4rem;">
+st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0.75rem;margin-bottom:0.75rem;">
   {tile("Tickets", f"{total:,}", range_label)}
   {tile("Closed", f"{closed:,}", f"{close_rate:.0f}% close rate", GREEN)}
   {tile("Open", f"{open_ct:,}", "not yet closed", AMBER)}
   {tile("Avg Time to Close", f"{avg_ttc_days:.1f} d" if avg_ttc_days is not None else "—", "create → closed", BLUE)}
   {tile("Avg First Response", f"{avg_ttfr_hrs:.1f} h" if avg_ttfr_hrs is not None else "—", "create → first reply", BLUE)}
   {tile("With Jira", f"{with_jira:,}", f"{(with_jira/total*100):.0f}% linked", "#8B5CF6")}
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1.4rem;">
+  {tile("Avg Activities / Ticket", f"{avg_activities:.1f}" if pd.notna(avg_activities) else "—", "logged notes/calls/emails")}
+  {tile("Avg Days Since Activity", f"{avg_days_since:.1f}" if avg_days_since is not None else "—", "since last logged activity", AMBER)}
+  {tile("Stale (7+ days)", f"{stale:,}", "no activity in 7+ days", "#EF4444")}
 </div>""", unsafe_allow_html=True)
 
 # ── Charts ───────────────────────────────────────────────────────────────────
@@ -304,10 +317,14 @@ search = st.text_input("Search tickets", placeholder="Filter by name, owner, cat
 show = df.copy()
 show["Time to Close (d)"] = (show["_ttc_ms"] / 86_400_000).round(1)
 show["First Response (h)"] = (show["_ttfr_ms"] / 3_600_000).round(1)
-for c in ("Created", "Closed"):
+_now = pd.Timestamp.now(tz="UTC")
+show["Days Since Activity"] = (_now - show["Last Activity"]).dt.days
+show["Activities"] = pd.to_numeric(show["Activities"], errors="coerce").fillna(0).astype(int)
+for c in ("Created", "Closed", "Last Activity"):
     show[c] = show[c].dt.strftime("%b %d, %Y")
 table_cols = ["Ticket ID", "Ticket Name", "Created", "Closed", "Time to Close (d)",
-              "First Response (h)", "Owner", "Pipeline", "Stage", "Category", "Subcategory",
+              "First Response (h)", "Last Activity", "Days Since Activity", "Activities",
+              "Owner", "Pipeline", "Stage", "Category", "Subcategory",
               "Ticket Type", "VRS App", "Usage Type", "Source", "Jira Key"]
 show = show[table_cols]
 
