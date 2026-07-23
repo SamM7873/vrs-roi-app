@@ -284,5 +284,7 @@ if st.button("Run Port-In Report", use_container_width=False):
             f"port_in_report_{datetime.now().strftime('%Y%m%d')}.csv",
             "text/csv",
         )
+        from utils import pdf_download_button
+        pdf_download_button(df[display_cols], "port_in.pdf", "Port-In Report", key="portin")
 
 report_header_close()

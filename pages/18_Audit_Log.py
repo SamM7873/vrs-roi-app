@@ -67,5 +67,7 @@ st.download_button(
     f"audit_log_{datetime.now().strftime('%Y%m%d')}.csv",
     "text/csv",
 )
+from utils import pdf_download_button
+pdf_download_button(view[cols], "audit_log.pdf", "Audit Log", key="audit")
 
 report_header_close()

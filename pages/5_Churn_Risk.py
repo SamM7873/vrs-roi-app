@@ -168,5 +168,7 @@ if st.button("Run Churn Risk Analysis", use_container_width=False):
         st.dataframe(risk_df[display_cols].reset_index(drop=True), use_container_width=True, hide_index=True)
         st.download_button("Download Churn Risk CSV", risk_df.to_csv(index=False),
                            f"churn_risk_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+        from utils import pdf_download_button
+        pdf_download_button(risk_df, "churn_risk.pdf", "Churn Risk", key="churn")
 
 report_header_close()

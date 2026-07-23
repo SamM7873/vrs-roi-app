@@ -156,5 +156,7 @@ if st.button("Load Registration Funnel", use_container_width=False):
         st.dataframe(df[show_cols].reset_index(drop=True), use_container_width=True, hide_index=True)
         st.download_button("Download CSV", df.to_csv(index=False),
                            f"registration_funnel_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+        from utils import pdf_download_button
+        pdf_download_button(df, "registration_funnel.pdf", "Registration Funnel", key="regfun")
 
 report_header_close()

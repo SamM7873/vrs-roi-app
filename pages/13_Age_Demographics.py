@@ -480,5 +480,7 @@ if cached:
 
         csv = df_show.to_csv(index=False)
         st.download_button("Download CSV", csv, "age_demographics.csv", "text/csv")
+        from utils import pdf_download_button
+        pdf_download_button(df_show, "age_demographics.pdf", "Age Demographics", key="age")
 
 report_header_close()

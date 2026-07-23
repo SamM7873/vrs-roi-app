@@ -337,5 +337,7 @@ st.dataframe(tbl, use_container_width=True, hide_index=True, height=460)
 
 st.download_button("📥 Download CSV", tbl.to_csv(index=False),
                    f"survey_feedback_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+from utils import pdf_download_button
+pdf_download_button(tbl, "survey_feedback.pdf", "Survey Feedback", key="survey")
 
 report_header_close()

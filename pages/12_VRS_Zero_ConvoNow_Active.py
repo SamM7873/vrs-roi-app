@@ -592,3 +592,5 @@ st.download_button(
     file_name=f"vrs_zero_convo_active_{range_label.replace(' ', '_').replace('–','_')}.csv",
     mime="text/csv",
 )
+from utils import pdf_download_button
+pdf_download_button(df_view, "vrs_zero.pdf", "VRS Zero / Convo Now Active", key="vrszero")

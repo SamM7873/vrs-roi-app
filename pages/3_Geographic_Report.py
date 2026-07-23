@@ -177,6 +177,8 @@ if st.button("Load Geographic Report", key="load_geo_report"):
                 )
                 mismatch_csv = mismatch_df.to_csv(index=False)
                 st.download_button("Download Mismatch CSV", mismatch_csv, "address_mismatch.csv", "text/csv")
+                from utils import pdf_download_button
+                pdf_download_button(mismatch_df, "address_mismatch.pdf", "Geographic — Address Mismatch", key="geo_mm")
             else:
                 st.success("No address mismatches found — all E911 addresses match primary state.")
 

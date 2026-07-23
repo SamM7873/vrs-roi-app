@@ -384,5 +384,7 @@ if st.button("Run Port-Out Winback Report", use_container_width=False):
         f"port_out_winback_{datetime.now().strftime('%Y%m%d')}.csv",
         "text/csv",
     )
+    from utils import pdf_download_button
+    pdf_download_button(df, "port_out_winback.pdf", "Port-Out Winback", key="winback")
 
 report_header_close()

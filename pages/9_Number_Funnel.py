@@ -237,5 +237,7 @@ if st.button("Run Number Funnel", use_container_width=False):
             f"number_funnel_{datetime.now().strftime('%Y%m%d')}.csv",
             "text/csv",
         )
+        from utils import pdf_download_button
+        pdf_download_button(df, "number_funnel.pdf", "Number Funnel", key="numfun")
 
 report_header_close()

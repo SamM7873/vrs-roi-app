@@ -277,3 +277,5 @@ st.download_button(
     "pendo_contacts.csv",
     "text/csv",
 )
+from utils import pdf_download_button
+pdf_download_button(_df_table, "pendo_contacts.pdf", "Pendo Report", key="pendo")

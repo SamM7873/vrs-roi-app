@@ -258,5 +258,7 @@ if run_clicked and raw_input.strip():
     # ── CSV export ──
     csv = result_df.to_csv(index=False)
     st.download_button("Download CSV", csv, file_name=f"bulk_search_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv")
+    from utils import pdf_download_button
+    pdf_download_button(result_df, "bulk_search.pdf", "Bulk Search", key="bulk")
 
 report_header_close()

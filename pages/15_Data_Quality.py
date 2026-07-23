@@ -448,6 +448,8 @@ with tab_email:
         "contact_data_quality.csv",
         "text/csv",
     )
+    from utils import pdf_download_button
+    pdf_download_button(d[display_cols], "data_quality.pdf", "Contact Data Quality", key="dq")
 
 
 with tab_addr:

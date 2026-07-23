@@ -105,6 +105,8 @@ if st.button("Load URSA Report", key="load_ursa_report"):
             st.dataframe(nc_df, use_container_width=True, hide_index=True)
             if not nc_df.empty:
                 st.download_button("Download CSV", nc_df.to_csv(index=False), "never_called.csv", "text/csv")
+                from utils import pdf_download_button
+                pdf_download_button(nc_df, "never_called.pdf", "URSA — Never Called", key="ursa_nc")
 
         with tab_no_login:
             not_logged_in_df = ursa_df[~has_login][["Number", "Email", "First Name", "Last Name"]].reset_index(drop=True)

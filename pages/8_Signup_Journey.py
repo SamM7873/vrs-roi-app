@@ -299,5 +299,7 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
             f"signup_journey_{datetime.now().strftime('%Y%m%d')}.csv",
             "text/csv",
         )
+        from utils import pdf_download_button
+        pdf_download_button(detail_df, "signup_journey.pdf", "Sign-Up Journey", key="journey")
 
 report_header_close()

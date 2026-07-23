@@ -1218,6 +1218,8 @@ if run_clicked or _use_cache:
             f"consumer_success_tickets_{datetime.now().strftime('%Y%m%d')}.csv",
             "text/csv",
         )
+        from utils import pdf_download_button
+        pdf_download_button(export_df, "consumer_success_tickets.pdf", "Consumer Success Tickets", key="cstix")
 
 # ── Ticket Inspector: trace one ticket through every step of the chain ───────
 st.markdown("---")

@@ -302,3 +302,5 @@ if f"Δ {str(years[-1])} vs {str(years[-2])}" in disp.columns:
 st.dataframe(disp, use_container_width=True, hide_index=True)
 st.download_button("Download CSV", disp.to_csv(index=False),
                    f"yoy_{metric_col}.csv", "text/csv")
+from utils import pdf_download_button
+pdf_download_button(disp, "yoy.pdf", "Year-over-Year", key="yoy")
