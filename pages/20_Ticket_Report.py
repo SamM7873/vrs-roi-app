@@ -26,6 +26,7 @@ PROPS = [
     "time_to_close", "time_to_first_agent_reply",
     "hubspot_owner_id", "hs_pipeline", "hs_pipeline_stage",
     "hs_ticket_category", "subcategory",
+    "ticket_type", "vrs_app", "usage_type", "source_type",
     "si_jira_issue_key", "si_jira_issue_link",
 ]
 
@@ -92,9 +93,9 @@ with col4:
 report_header_close()
 
 if range_label == "Custom Range":
-    _KEY = f"ticket_report_custom_{custom_from}_{custom_to}"
+    _KEY = f"ticket_report_v2_custom_{custom_from}_{custom_to}"
 else:
-    _KEY = "ticket_report_" + range_label.replace(" ", "_")
+    _KEY = "ticket_report_v2_" + range_label.replace(" ", "_")
 cached = None if run else load_report(_KEY)
 
 if cached is None and not run:
@@ -152,6 +153,10 @@ for r in records:
         "Stage": stage_labels.get(str(p.get("hs_pipeline_stage")), p.get("hs_pipeline_stage") or "—"),
         "Category": p.get("hs_ticket_category") or "—",
         "Subcategory": p.get("subcategory") or "—",
+        "Ticket Type": p.get("ticket_type") or "—",
+        "VRS App": p.get("vrs_app") or "—",
+        "Usage Type": p.get("usage_type") or "—",
+        "Source": p.get("source_type") or "—",
         "Jira Key": p.get("si_jira_issue_key") or "—",
         "Jira Link": p.get("si_jira_issue_link") or "",
         "_ttc_ms": ttc,
@@ -268,7 +273,8 @@ show["First Response (h)"] = (show["_ttfr_ms"] / 3_600_000).round(1)
 for c in ("Created", "Closed"):
     show[c] = show[c].dt.strftime("%b %d, %Y")
 table_cols = ["Ticket ID", "Ticket Name", "Created", "Closed", "Time to Close (d)",
-              "First Response (h)", "Owner", "Pipeline", "Stage", "Category", "Subcategory", "Jira Key"]
+              "First Response (h)", "Owner", "Pipeline", "Stage", "Category", "Subcategory",
+              "Ticket Type", "VRS App", "Usage Type", "Source", "Jira Key"]
 show = show[table_cols]
 
 if search.strip():
