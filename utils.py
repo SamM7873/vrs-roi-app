@@ -486,8 +486,13 @@ def _pdf_from_df(df, title, subtitle=""):
 
     green = "#0D3B26"
     cols = [str(c) for c in list(df.columns)[:12]]          # cap columns to fit page
-    d = df.iloc[:, :12].astype(str)
-    d = d.apply(lambda col: col.map(lambda x: (x[:40] + "…") if len(x) > 41 else x))
+
+    def _cell(x):
+        s = "" if x is None else str(x)
+        return (s[:40] + "…") if len(s) > 41 else s
+
+    rows = [[_cell(v) for v in row[:12]]
+            for row in df.itertuples(index=False, name=None)]
 
     buf = io.BytesIO()
     with PdfPages(buf) as pdf:
@@ -500,12 +505,12 @@ def _pdf_from_df(df, title, subtitle=""):
         pdf.savefig(fig); plt.close(fig)
 
         per_page = 24
-        for start in range(0, max(len(d), 1), per_page):
-            chunk = d.iloc[start:start + per_page]
+        for start in range(0, max(len(rows), 1), per_page):
+            chunk = rows[start:start + per_page]
             fig, ax = plt.subplots(figsize=(11, 8.5)); ax.axis("off")
             ax.set_title(title, fontsize=11, fontweight="bold", loc="left")
             tbl = ax.table(
-                cellText=chunk.values if len(chunk) else [["" for _ in cols]],
+                cellText=chunk if chunk else [["" for _ in cols]],
                 colLabels=cols, loc="upper center", cellLoc="left")
             tbl.auto_set_font_size(False); tbl.set_fontsize(7); tbl.scale(1, 1.3)
             for (r, _c), cell in tbl.get_celld().items():
