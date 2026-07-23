@@ -171,20 +171,25 @@ if df.empty:
     st.stop()
 
 # ── Filters ──────────────────────────────────────────────────────────────────
-fc1, fc2, fc3 = st.columns(3)
-_owner_opts = sorted([o for o in df["Owner"].unique() if o and o != "—"])
-sel_owner = fc1.multiselect("Ticket owner", _owner_opts)
-_pipe_opts = sorted([o for o in df["Pipeline"].unique() if o and o != "—"])
-sel_pipe = fc2.multiselect("Pipeline", _pipe_opts)
-_cat_opts = sorted([o for o in df["Category"].unique() if o and o != "—"])
-sel_cat = fc3.multiselect("Category", _cat_opts)
+def _opts(col):
+    return sorted([o for o in df[col].unique() if o and o != "—"])
 
-if sel_owner:
-    df = df[df["Owner"].isin(sel_owner)]
-if sel_pipe:
-    df = df[df["Pipeline"].isin(sel_pipe)]
-if sel_cat:
-    df = df[df["Category"].isin(sel_cat)]
+fc1, fc2, fc3, fc4 = st.columns(4)
+sel_owner = fc1.multiselect("Ticket owner", _opts("Owner"))
+sel_pipe = fc2.multiselect("Pipeline", _opts("Pipeline"))
+sel_cat = fc3.multiselect("Category", _opts("Category"))
+sel_sub = fc4.multiselect("Subcategory", _opts("Subcategory"))
+fc5, fc6, fc7, fc8 = st.columns(4)
+sel_type = fc5.multiselect("Ticket type", _opts("Ticket Type"))
+sel_app = fc6.multiselect("VRS app", _opts("VRS App"))
+sel_usage = fc7.multiselect("Usage type", _opts("Usage Type"))
+sel_source = fc8.multiselect("Source", _opts("Source"))
+
+for _col, _sel in [("Owner", sel_owner), ("Pipeline", sel_pipe), ("Category", sel_cat),
+                   ("Subcategory", sel_sub), ("Ticket Type", sel_type), ("VRS App", sel_app),
+                   ("Usage Type", sel_usage), ("Source", sel_source)]:
+    if _sel:
+        df = df[df[_col].isin(_sel)]
 
 if df.empty:
     st.warning("No tickets match the selected filters.")
@@ -261,6 +266,35 @@ with c4:
             x=alt.X("days:Q", title="Avg days to close"), y=alt.Y("Owner:N", sort="-x", title=None),
             tooltip=["Owner", "days"]
         ).properties(height=max(200, len(ob) * 24)), use_container_width=True)
+
+c5, c6 = st.columns(2)
+
+
+def _bar_by(col, color):
+    d = df[df[col] != "—"][col].value_counts().head(12).reset_index()
+    d.columns = [col, "Tickets"]
+    if d.empty:
+        st.caption(f"No {col} data.")
+        return
+    st.altair_chart(alt.Chart(d).mark_bar(color=color, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
+        x=alt.X("Tickets:Q"), y=alt.Y(f"{col}:N", sort="-x", title=None), tooltip=[col, "Tickets"]
+    ).properties(height=max(180, len(d) * 26)), use_container_width=True)
+
+
+with c5:
+    st.markdown("##### Tickets by VRS App")
+    _bar_by("VRS App", PRIMARY)
+with c6:
+    st.markdown("##### Tickets by Ticket Type")
+    _bar_by("Ticket Type", "#8B5CF6")
+
+c7, c8 = st.columns(2)
+with c7:
+    st.markdown("##### Tickets by Source")
+    _bar_by("Source", BLUE)
+with c8:
+    st.markdown("##### Tickets by Usage Type")
+    _bar_by("Usage Type", AMBER)
 
 # ── Table ────────────────────────────────────────────────────────────────────
 st.markdown("##### Ticket Detail")
