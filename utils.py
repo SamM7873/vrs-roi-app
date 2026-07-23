@@ -476,99 +476,184 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
     return all_results
 
 
-def _auto_chart(df, ax):
-    """Best-effort bar chart from a table: a low-cardinality text column vs the
-    first numeric column (summed), else counts of that text column. Returns a
-    (title, ok) tuple; ok=False if nothing sensible to chart."""
-    import matplotlib.pyplot as plt
-    beige = "#C9A876"
+# report PDF palette
+_PDF_GREEN = "#0D3B26"
+_PDF_BEIGE = "#C9A876"
+_PDF_CREAM = "#F4F1E8"
+_PDF_INK = "#1F2937"
+_PDF_MUTE = "#6B7280"
+
+
+def _pdf_profile(df):
+    """Classify columns: numeric metrics and low-cardinality categories."""
     numeric_cols, cat_cols = [], []
     for c in df.columns:
         coerced = pd.to_numeric(df[c], errors="coerce")
         if coerced.notna().mean() > 0.5:
             numeric_cols.append(c)
         else:
-            nun = df[c].astype(str).replace({"": None, "—": None}).nunique(dropna=True)
+            nun = df[c].astype(str).replace({"": None, "—": None, "nan": None}).nunique(dropna=True)
             if 2 <= nun <= 40:
                 cat_cols.append(c)
+    return numeric_cols, cat_cols
+
+
+def _fmt_num(v):
+    try:
+        v = float(v)
+    except Exception:
+        return str(v)
+    if abs(v) >= 1000 or v == int(v):
+        return f"{v:,.0f}"
+    return f"{v:,.1f}"
+
+
+def _draw_dashboard(fig, df, title, subtitle, numeric_cols, cat_cols):
+    """Cover/dashboard page: header band + KPI cards + chart."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch, Rectangle
+
+    fig.patch.set_facecolor("white")
+    bg = fig.add_axes([0, 0, 1, 1]); bg.axis("off"); bg.set_xlim(0, 1); bg.set_ylim(0, 1)
+
+    # header band
+    bg.add_patch(Rectangle((0, 0.88), 1, 0.12, color=_PDF_GREEN, zorder=1))
+    bg.add_patch(Rectangle((0, 0.878), 1, 0.006, color=_PDF_BEIGE, zorder=2))
+    bg.text(0.045, 0.945, title, color="white", fontsize=21, fontweight="bold", va="center", zorder=3)
+    if subtitle:
+        bg.text(0.045, 0.905, subtitle, color="#D9E4DD", fontsize=10, va="center", zorder=3)
+    bg.text(0.955, 0.945, "REPORT", color=_PDF_BEIGE, fontsize=11, fontweight="bold",
+            ha="right", va="center", zorder=3)
+    bg.text(0.955, 0.905, datetime.now().strftime("%b %d, %Y · %I:%M %p"),
+            color="#D9E4DD", fontsize=8, ha="right", va="center", zorder=3)
+
+    # KPI cards
+    kpis = [("Records", f"{len(df):,}")]
+    for c in numeric_cols[:3]:
+        s = pd.to_numeric(df[c], errors="coerce")
+        kpis.append((f"Σ {str(c)[:20]}", _fmt_num(s.sum())))
+    n = len(kpis); gap = 0.02; left = 0.045; right = 0.955
+    cw = (right - left - gap * (n - 1)) / n
+    y0, ch = 0.70, 0.13
+    for i, (label, val) in enumerate(kpis):
+        x = left + i * (cw + gap)
+        card = FancyBboxPatch((x, y0), cw, ch, boxstyle="round,pad=0.006,rounding_size=0.012",
+                              linewidth=1, edgecolor="#E5E1D6", facecolor=_PDF_CREAM, zorder=2)
+        bg.add_patch(card)
+        bg.text(x + 0.015, y0 + ch - 0.032, label.upper(), color=_PDF_MUTE, fontsize=7.5,
+                fontweight="bold", va="center", zorder=3)
+        bg.text(x + 0.015, y0 + 0.045, val, color=_PDF_INK, fontsize=17, fontweight="bold",
+                va="center", zorder=3)
+
+    # chart
+    ax = fig.add_axes([0.06, 0.09, 0.88, 0.52])
+    ch_title = _draw_chart(ax, df, numeric_cols, cat_cols)
+    if ch_title:
+        bg.text(0.045, 0.645, ch_title, color=_PDF_INK, fontsize=12, fontweight="bold", va="center", zorder=3)
+    else:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No chartable summary for this report", ha="center", va="center",
+                color=_PDF_MUTE, fontsize=10)
+    bg.text(0.045, 0.03, f"{title} · {len(df):,} rows", color=_PDF_MUTE, fontsize=7, va="center")
+    bg.text(0.955, 0.03, "Page 1", color=_PDF_MUTE, fontsize=7, ha="right", va="center")
+
+
+def _draw_chart(ax, df, numeric_cols, cat_cols):
+    """Draw a themed bar chart onto ax; return its title or None."""
+    import matplotlib.pyplot as plt
     if not cat_cols:
-        return None, False
+        return None
     gcol = cat_cols[0]
     w = df.copy()
-    w[gcol] = w[gcol].astype(str).replace({"": "—"})
+    w[gcol] = w[gcol].astype(str).replace({"": "—", "nan": "—"})
     if numeric_cols:
         vcol = numeric_cols[0]
         w["_v"] = pd.to_numeric(w[vcol], errors="coerce")
-        g = w.groupby(gcol)["_v"].sum().sort_values(ascending=False).head(20)
+        g = w.groupby(gcol)["_v"].sum().sort_values(ascending=False).head(15)
         ylabel = f"Sum of {vcol}"
     else:
-        g = w[gcol].value_counts().head(20)
+        g = w[gcol].value_counts().head(15)
         ylabel = "Count"
     if g.empty:
-        return None, False
-    ax.bar([str(i) for i in g.index], g.values, color=beige)
-    ax.set_ylabel(ylabel)
-    plt.setp(ax.get_xticklabels(), rotation=40, ha="right", fontsize=8)
-    return f"{ylabel} by {gcol}", True
+        return None
+    labels = [str(i)[:18] for i in g.index]
+    bars = ax.bar(labels, g.values, color=_PDF_BEIGE, edgecolor="white", linewidth=0.5, zorder=3)
+    ax.bar_label(bars, labels=[_fmt_num(v) for v in g.values], padding=2, fontsize=7, color=_PDF_INK)
+    ax.set_ylabel(ylabel, fontsize=9, color=_PDF_MUTE)
+    ax.grid(axis="y", color="#E5E1D6", linewidth=0.7, zorder=0)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.spines["bottom"].set_color("#CFC9BC")
+    ax.tick_params(length=0)
+    plt.setp(ax.get_xticklabels(), rotation=35, ha="right", fontsize=8, color=_PDF_INK)
+    plt.setp(ax.get_yticklabels(), fontsize=7, color=_PDF_MUTE)
+    return f"{ylabel} by {gcol}"
 
 
 def _pdf_from_df(df, title, subtitle=""):
-    """Render a DataFrame to a presentation PDF (title + auto chart + table)."""
+    """Render a DataFrame to a designed presentation PDF:
+    a branded dashboard (header + KPI cards + chart) then styled table pages."""
     import io
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
     from matplotlib.backends.backend_pdf import PdfPages
 
-    green = "#0D3B26"
-    cols = [str(c) for c in list(df.columns)[:12]]          # cap columns to fit page
+    numeric_cols, cat_cols = _pdf_profile(df)
+    cols = [str(c) for c in list(df.columns)[:12]]
 
     def _cell(x):
         s = "" if x is None else str(x)
-        return (s[:40] + "…") if len(s) > 41 else s
+        return (s[:38] + "…") if len(s) > 39 else s
 
     rows = [[_cell(v) for v in row[:12]]
             for row in df.itertuples(index=False, name=None)]
 
     buf = io.BytesIO()
     with PdfPages(buf) as pdf:
-        fig, ax = plt.subplots(figsize=(11, 8.5)); ax.axis("off")
-        ax.text(0.5, 0.60, title, ha="center", fontsize=20, fontweight="bold")
-        if subtitle:
-            ax.text(0.5, 0.53, subtitle, ha="center", fontsize=10, color="#666")
-        ax.text(0.5, 0.48, f"{len(df):,} rows · generated {datetime.now():%b %d, %Y %I:%M %p}",
-                ha="center", fontsize=9, color="#888")
+        # ── dashboard page ──
+        fig = plt.figure(figsize=(11, 8.5))
+        try:
+            _draw_dashboard(fig, df, title, subtitle, numeric_cols, cat_cols)
+        except Exception:
+            fig.clf()
+            ax = fig.add_axes([0, 0, 1, 1]); ax.axis("off")
+            ax.text(0.5, 0.6, title, ha="center", fontsize=20, fontweight="bold")
         pdf.savefig(fig); plt.close(fig)
 
-        # auto chart page (best effort)
-        try:
-            fig, ax = plt.subplots(figsize=(11, 6.5))
-            ch_title, ok = _auto_chart(df, ax)
-            if ok:
-                ax.set_title(ch_title, fontsize=13, fontweight="bold")
-                fig.tight_layout()
-                pdf.savefig(fig)
-            plt.close(fig)
-        except Exception:
-            plt.close("all")
-
-        per_page = 24
-        for start in range(0, max(len(rows), 1), per_page):
+        # ── table pages ──
+        per_page = 22
+        total_pages = max(1, (len(rows) + per_page - 1) // per_page)
+        for pi, start in enumerate(range(0, max(len(rows), 1), per_page)):
             chunk = rows[start:start + per_page]
-            fig, ax = plt.subplots(figsize=(11, 8.5)); ax.axis("off")
-            ax.set_title(title, fontsize=11, fontweight="bold", loc="left")
-            tbl = ax.table(
-                cellText=chunk if chunk else [["" for _ in cols]],
-                colLabels=cols, loc="upper center", cellLoc="left")
-            tbl.auto_set_font_size(False); tbl.set_fontsize(7); tbl.scale(1, 1.3)
-            for (r, _c), cell in tbl.get_celld().items():
+            fig = plt.figure(figsize=(11, 8.5))
+            bg = fig.add_axes([0, 0, 1, 1]); bg.axis("off"); bg.set_xlim(0, 1); bg.set_ylim(0, 1)
+            bg.add_patch(Rectangle((0, 0.94), 1, 0.06, color=_PDF_GREEN))
+            bg.text(0.045, 0.97, f"{title} — data table", color="white",
+                    fontsize=12, fontweight="bold", va="center")
+            bg.text(0.955, 0.97, f"Page {pi + 2}", color="#D9E4DD", fontsize=8, ha="right", va="center")
+
+            ax = fig.add_axes([0.03, 0.04, 0.94, 0.86]); ax.axis("off")
+            tbl = ax.table(cellText=chunk if chunk else [["" for _ in cols]],
+                           colLabels=cols, loc="upper center", cellLoc="left")
+            tbl.auto_set_font_size(False); tbl.set_fontsize(7); tbl.scale(1, 1.35)
+            ncols = len(cols)
+            for (r, c), cell in tbl.get_celld().items():
+                cell.set_edgecolor("#E5E1D6")
                 if r == 0:
-                    cell.set_facecolor(green); cell.set_text_props(color="white", fontweight="bold")
+                    cell.set_facecolor(_PDF_GREEN)
+                    cell.set_text_props(color="white", fontweight="bold")
+                    cell.set_height(cell.get_height() * 1.1)
+                else:
+                    cell.set_facecolor("white" if r % 2 else _PDF_CREAM)
+                    cell.set_text_props(color=_PDF_INK)
             pdf.savefig(fig); plt.close(fig)
     return buf.getvalue()
 
 
-def pdf_download_button(df, filename, title, subtitle="", label="📄 Prepare PDF (table)", key=None):
+def pdf_download_button(df, filename, title, subtitle="", label="📄 Prepare presentation PDF", key=None):
     """Two-step PDF export: a button that builds the PDF, then a download button.
     Safe no-op for empty/None frames. Call next to a page's CSV download."""
     if df is None or (hasattr(df, "empty") and df.empty):
