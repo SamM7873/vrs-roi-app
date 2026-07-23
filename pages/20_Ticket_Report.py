@@ -159,6 +159,12 @@ for r in records:
     })
 df = pd.DataFrame(rows)
 
+# Exclude the HubSpot Request pipeline (not a support pipeline)
+df = df[~df["Pipeline"].str.lower().str.contains("request", na=False)].reset_index(drop=True)
+if df.empty:
+    st.warning("No tickets found (after excluding the HubSpot Request pipeline).")
+    st.stop()
+
 # ── Filters ──────────────────────────────────────────────────────────────────
 fc1, fc2, fc3 = st.columns(3)
 _owner_opts = sorted([o for o in df["Owner"].unique() if o and o != "—"])
