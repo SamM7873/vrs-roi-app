@@ -107,8 +107,8 @@ def _owner_names(owner_ids):
     return names
 
 
-def _resolve_ticket_owners(submission_ids):
-    """submission id -> ticket owner name, via feedback→ticket association."""
+def _resolve_ticket_info(submission_ids):
+    """submission id -> {'owner': name, 'ticket': subject} via feedback→ticket."""
     ids = [str(s) for s in submission_ids if s]
     sid_to_tids, all_tids = {}, set()
     loader = st.empty()
@@ -129,49 +129,56 @@ def _resolve_ticket_owners(submission_ids):
                     all_tids.update(tids)
         loader.markdown(
             f"<div style='padding:0.5rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;'>"
-            f"Resolving ticket owners… {min(i+100, len(ids)):,}/{len(ids):,}</div>", unsafe_allow_html=True)
+            f"Resolving ticket info… {min(i+100, len(ids)):,}/{len(ids):,}</div>", unsafe_allow_html=True)
 
-    tid_to_owner = {}
+    tid_to_owner, tid_to_subject = {}, {}
     tids = list(all_tids)
     for i in range(0, len(tids), 100):
         chunk = tids[i:i + 100]
         try:
             br = requests.post(f"{BASE_URL}/crm/v3/objects/tickets/batch/read", headers=_headers,
-                               json={"properties": ["hubspot_owner_id"], "inputs": [{"id": t} for t in chunk]}, timeout=60)
+                               json={"properties": ["hubspot_owner_id", "subject"],
+                                     "inputs": [{"id": t} for t in chunk]}, timeout=60)
         except requests.exceptions.RequestException:
             continue
         if br.status_code in (200, 207):
             for t in br.json().get("results", []):
-                oid = (t.get("properties", {}) or {}).get("hubspot_owner_id")
-                if oid:
-                    tid_to_owner[str(t.get("id"))] = str(oid)
+                p = t.get("properties", {}) or {}
+                tid = str(t.get("id"))
+                if p.get("hubspot_owner_id"):
+                    tid_to_owner[tid] = str(p["hubspot_owner_id"])
+                if p.get("subject"):
+                    tid_to_subject[tid] = p["subject"]
     owners = _owner_names(tid_to_owner.values())
     loader.empty()
 
     result = {}
     for sid, tlist in sid_to_tids.items():
+        info = {"owner": "—", "ticket": "—"}
         for tid in tlist:
             oid = tid_to_owner.get(tid)
-            if oid:
-                result[sid] = owners.get(oid, "—")
-                break
+            if oid and info["owner"] == "—":
+                info["owner"] = owners.get(oid, "—")
+            if tid_to_subject.get(tid) and info["ticket"] == "—":
+                info["ticket"] = tid_to_subject[tid]
+        result[sid] = info
     return result
 
 
 # ── data (persisted so it doesn't re-fetch every visit) ─────────────────────
-_KEY = "survey_feedback_v3"  # v3: ticket owner resolved to name (not id)
+_KEY = "survey_feedback_v4"  # v4: adds ticket name
 top = st.columns([1, 3])
 refresh = top[0].button("🔄 Refresh data")
 
 disk = None if refresh else load_report(_KEY)
 if disk is not None and disk.get("records") is not None:
     records = disk["records"]
-    owner_by_sid = disk.get("owner_by_sid", {})
+    ticket_by_sid = disk.get("ticket_by_sid", {})
     _saved_at = disk.get("saved_at")
 else:
     records = list_all(OBJECT, props, progress_label="Fetching survey submissions")
-    owner_by_sid = _resolve_ticket_owners([r.get("id") for r in records]) if records else {}
-    save_report(_KEY, {"records": records, "owner_by_sid": owner_by_sid})
+    ticket_by_sid = _resolve_ticket_info([r.get("id") for r in records]) if records else {}
+    save_report(_KEY, {"records": records, "ticket_by_sid": ticket_by_sid})
     _saved_at = time.time()
 
 if not records:
@@ -184,7 +191,8 @@ df = pd.DataFrame([r.get("properties", {}) for r in records])
 for c in props:
     if c not in df.columns:
         df[c] = None
-df["Ticket Owner"] = [owner_by_sid.get(s, "—") for s in _sids]
+df["Ticket Owner"] = [ticket_by_sid.get(s, {}).get("owner", "—") for s in _sids]
+df["Ticket Name"] = [ticket_by_sid.get(s, {}).get("ticket", "—") for s in _sids]
 
 # parse timestamp
 if ts_prop:
@@ -311,10 +319,11 @@ if ts_prop and ts_prop in tbl.columns:
     tbl[ts_prop] = view["_ts"].dt.strftime("%b %d, %Y %I:%M %p")
 tbl = tbl.rename(columns={c: label_of.get(c, c) for c in tbl.columns})
 
-# surface the resolved Ticket Owner and a clear Rating column up front
-tbl.insert(0, "Ticket Owner", view.loc[tbl.index, "Ticket Owner"])
+# surface resolved Ticket Name / Owner and a clear Rating column up front
+tbl.insert(0, "Ticket Name", view.loc[tbl.index, "Ticket Name"])
+tbl.insert(1, "Ticket Owner", view.loc[tbl.index, "Ticket Owner"])
 if "Rating" not in tbl.columns:
-    tbl.insert(1, "Rating", view.loc[tbl.index, "Rating"])
+    tbl.insert(2, "Rating", view.loc[tbl.index, "Rating"])
 
 if search.strip():
     q = search.strip().lower()
