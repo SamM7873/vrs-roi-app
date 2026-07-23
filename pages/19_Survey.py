@@ -154,7 +154,7 @@ def _resolve_ticket_info(submission_ids):
 
     result = {}
     for sid, tlist in sid_to_tids.items():
-        info = {"owner": "—", "ticket": "—"}
+        info = {"owner": "—", "ticket": "—", "ticket_id": tlist[0] if tlist else "—"}
         for tid in tlist:
             oid = tid_to_owner.get(tid)
             if oid and info["owner"] == "—":
@@ -166,7 +166,7 @@ def _resolve_ticket_info(submission_ids):
 
 
 # ── data (persisted so it doesn't re-fetch every visit) ─────────────────────
-_KEY = "survey_feedback_v4"  # v4: adds ticket name
+_KEY = "survey_feedback_v5"  # v5: adds ticket id
 top = st.columns([1, 3])
 refresh = top[0].button("🔄 Refresh data")
 
@@ -191,6 +191,7 @@ df = pd.DataFrame([r.get("properties", {}) for r in records])
 for c in props:
     if c not in df.columns:
         df[c] = None
+df["Ticket ID"] = [ticket_by_sid.get(s, {}).get("ticket_id", "—") for s in _sids]
 df["Ticket Owner"] = [ticket_by_sid.get(s, {}).get("owner", "—") for s in _sids]
 df["Ticket Name"] = [ticket_by_sid.get(s, {}).get("ticket", "—") for s in _sids]
 
@@ -319,11 +320,12 @@ if ts_prop and ts_prop in tbl.columns:
     tbl[ts_prop] = view["_ts"].dt.strftime("%b %d, %Y %I:%M %p")
 tbl = tbl.rename(columns={c: label_of.get(c, c) for c in tbl.columns})
 
-# surface resolved Ticket Name / Owner and a clear Rating column up front
-tbl.insert(0, "Ticket Name", view.loc[tbl.index, "Ticket Name"])
-tbl.insert(1, "Ticket Owner", view.loc[tbl.index, "Ticket Owner"])
+# surface resolved Ticket ID / Name / Owner and a clear Rating column up front
+tbl.insert(0, "Ticket ID", view.loc[tbl.index, "Ticket ID"])
+tbl.insert(1, "Ticket Name", view.loc[tbl.index, "Ticket Name"])
+tbl.insert(2, "Ticket Owner", view.loc[tbl.index, "Ticket Owner"])
 if "Rating" not in tbl.columns:
-    tbl.insert(2, "Rating", view.loc[tbl.index, "Rating"])
+    tbl.insert(3, "Rating", view.loc[tbl.index, "Rating"])
 
 if search.strip():
     q = search.strip().lower()
