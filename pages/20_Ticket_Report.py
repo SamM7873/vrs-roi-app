@@ -210,7 +210,8 @@ _now_kpi = pd.Timestamp.now(tz="UTC")
 avg_activities = pd.to_numeric(df["Activities"], errors="coerce").mean()
 _days_since = (_now_kpi - df["Last Activity"]).dt.days
 avg_days_since = _days_since.mean() if _days_since.notna().any() else None
-stale = int((_days_since > 7).sum())  # open-ish tickets with no activity in 7+ days
+_open_mask = df["Closed"].isna()
+stale = int(((_days_since > 7) & _open_mask).sum())  # OPEN tickets with no activity in 7+ days
 
 if _saved_at:
     _age = int(time.time() - _saved_at)
@@ -238,7 +239,7 @@ st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(6,1fr);gap
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1.4rem;">
   {tile("Avg Activities / Ticket", f"{avg_activities:.1f}" if pd.notna(avg_activities) else "—", "logged notes/calls/emails")}
   {tile("Avg Days Since Activity", f"{avg_days_since:.1f}" if avg_days_since is not None else "—", "since last logged activity", AMBER)}
-  {tile("Stale (7+ days)", f"{stale:,}", "no activity in 7+ days", "#EF4444")}
+  {tile("Stale Open (7+ days)", f"{stale:,}", "open, no activity 7+ days", "#EF4444")}
 </div>""", unsafe_allow_html=True)
 
 # ── Charts ───────────────────────────────────────────────────────────────────
@@ -306,8 +307,36 @@ with c7:
     st.markdown("##### Tickets by Source")
     _bar_by("Source", BLUE)
 with c8:
-    st.markdown("##### Tickets by Usage Type")
-    _bar_by("Usage Type", AMBER)
+    st.markdown("##### Open Tickets by Days Since Activity")
+    _open_ds = _days_since[_open_mask].dropna()
+    if not _open_ds.empty:
+        _bkt = pd.cut(_open_ds, bins=[-1, 1, 7, 30, 10**9],
+                      labels=["0–1 d", "2–7 d", "8–30 d", "30+ d"])
+        _bd = _bkt.value_counts().reindex(["0–1 d", "2–7 d", "8–30 d", "30+ d"]).reset_index()
+        _bd.columns = ["Age", "Open Tickets"]
+        _colors = ["#0D3B26", "#C9A876", "#F59E0B", "#EF4444"]
+        st.altair_chart(alt.Chart(_bd).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+            x=alt.X("Age:N", sort=["0–1 d", "2–7 d", "8–30 d", "30+ d"], title=None),
+            y=alt.Y("Open Tickets:Q"),
+            color=alt.Color("Age:N", scale=alt.Scale(domain=["0–1 d", "2–7 d", "8–30 d", "30+ d"], range=_colors), legend=None),
+            tooltip=["Age", "Open Tickets"],
+        ).properties(height=260), use_container_width=True)
+    else:
+        st.caption("No open tickets with activity data.")
+
+# ── Per-owner summary ────────────────────────────────────────────────────────
+st.markdown("##### By Owner")
+_os = df[df["Owner"] != "—"].copy()
+_os["_act"] = pd.to_numeric(_os["Activities"], errors="coerce")
+owner_summary = _os.groupby("Owner").agg(
+    Tickets=("Ticket ID", "count"),
+    Closed=("Closed", lambda s: int(s.notna().sum())),
+    **{"Avg Close (d)": ("_ttc_ms", lambda s: round(s.mean() / 86_400_000, 1) if s.notna().any() else None)},
+    **{"Avg 1st Resp (h)": ("_ttfr_ms", lambda s: round(s.mean() / 3_600_000, 1) if s.notna().any() else None)},
+    **{"Avg Activities": ("_act", lambda s: round(s.mean(), 1) if s.notna().any() else None)},
+).reset_index().sort_values("Tickets", ascending=False)
+owner_summary["Close %"] = (owner_summary["Closed"] / owner_summary["Tickets"] * 100).round(0)
+st.dataframe(owner_summary, use_container_width=True, hide_index=True)
 
 # ── Table ────────────────────────────────────────────────────────────────────
 st.markdown("##### Ticket Detail")
