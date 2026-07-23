@@ -4,8 +4,19 @@ import pandas as pd
 import os
 import time
 import json
-from datetime import datetime, timezone
+import hmac
+import hashlib
+import base64
+from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+
+try:
+    import extra_streamlit_components as stx
+    _HAS_COOKIES = True
+except Exception:
+    _HAS_COOKIES = False
+
+_AUTH_COOKIE = "vrs_auth"
 
 def get_secret(key, default=""):
     """Read a secret, tolerating a missing secrets.toml (env var fallback)."""
@@ -219,10 +230,55 @@ def read_audit(limit=1000):
         return []
 
 
+def _auth_timeout_seconds():
+    """Idle timeout before a user must log in again (default 6 hours)."""
+    try:
+        return int(float(get_secret("AUTH_TIMEOUT_HOURS", "6")) * 3600)
+    except Exception:
+        return 6 * 3600
+
+
+def _auth_secret():
+    return str(get_secret("AUTH_SECRET", "") or APP_PASSWORD or "vrs-roi-fallback-secret")
+
+
+def _make_token(username):
+    payload = {"u": username, "t": int(time.time())}
+    raw = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+    sig = hmac.new(_auth_secret().encode(), raw.encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{raw}.{sig}"
+
+
+def _read_token(token, max_age):
+    """Return the username if the token is valid and not older than max_age."""
+    try:
+        raw, sig = token.split(".", 1)
+        expect = hmac.new(_auth_secret().encode(), raw.encode(), hashlib.sha256).hexdigest()[:32]
+        if not hmac.compare_digest(sig, expect):
+            return None
+        payload = json.loads(base64.urlsafe_b64decode(raw.encode()).decode())
+        if int(time.time()) - int(payload.get("t", 0)) > max_age:
+            return None
+        return payload.get("u")
+    except Exception:
+        return None
+
+
+@st.cache_resource
+def _cookie_manager():
+    if not _HAS_COOKIES:
+        return None
+    try:
+        return stx.CookieManager(key="vrs_auth_cookies")
+    except Exception:
+        return None
+
+
 def require_auth():
     """Login gate. Supports per-user username+password via the APP_USERS
-    secret, and falls back to a single shared APP_PASSWORD. Call at the top
-    of every page."""
+    secret, and falls back to a single shared APP_PASSWORD. Login persists in
+    a signed browser cookie with a sliding idle timeout (default 6 h). Call at
+    the top of every page."""
     if not HUBSPOT_TOKEN:
         st.error("HUBSPOT_TOKEN is not set.")
         st.stop()
@@ -234,6 +290,23 @@ def require_auth():
         st.stop()
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
+
+    timeout = _auth_timeout_seconds()
+    cm = _cookie_manager()
+
+    # Restore a session from the signed cookie (survives idle reconnects,
+    # but expires after `timeout` seconds of inactivity).
+    if not st.session_state.authenticated and cm is not None:
+        try:
+            tok = cm.get(_AUTH_COOKIE)
+        except Exception:
+            tok = None
+        if tok:
+            u = _read_token(tok, timeout)
+            if u:
+                st.session_state.authenticated = True
+                st.session_state.username = u
+
     if not st.session_state.authenticated:
         st.markdown("""
         <style>
@@ -278,6 +351,13 @@ def require_auth():
                 _ctx = capture_login_context()
                 st.session_state.login_info = {**_ctx, "time": datetime.now().strftime("%b %d, %Y at %I:%M %p")}
                 log_audit(st.session_state.username, "login", _ctx)
+                if cm is not None:
+                    try:
+                        cm.set(_AUTH_COOKIE, _make_token(st.session_state.username),
+                               expires_at=datetime.now() + timedelta(seconds=timeout), key="auth_set")
+                        st.session_state._cookie_refreshed = time.time()
+                    except Exception:
+                        pass
                 st.rerun()
             else:
                 log_audit(username.strip() or "(blank)", "login_failed",
@@ -285,6 +365,16 @@ def require_auth():
                 st.error("Incorrect username or password.")
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
+
+    # Sliding refresh: re-stamp the cookie at most every 5 min so continued
+    # activity keeps the session alive, but idle time still expires it.
+    if cm is not None and time.time() - st.session_state.get("_cookie_refreshed", 0) > 300:
+        try:
+            cm.set(_AUTH_COOKIE, _make_token(st.session_state.get("username", "user")),
+                   expires_at=datetime.now() + timedelta(seconds=timeout), key="auth_refresh")
+            st.session_state._cookie_refreshed = time.time()
+        except Exception:
+            pass
 
     # ── authenticated: account control in the sidebar ────────────────────────
     with st.sidebar:
@@ -297,8 +387,14 @@ def require_auth():
         )
         if st.button("Log out", key="_logout_btn", use_container_width=True):
             log_audit(st.session_state.get("username", "user"), "logout")
+            if cm is not None:
+                try:
+                    cm.delete(_AUTH_COOKIE, key="auth_del")
+                except Exception:
+                    pass
             st.session_state.authenticated = False
             st.session_state.pop("username", None)
+            st.session_state.pop("_cookie_refreshed", None)
             st.rerun()
 
 
