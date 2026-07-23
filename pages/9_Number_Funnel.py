@@ -9,7 +9,7 @@ require_auth()
 
 report_header(
     "Number Funnel Report",
-    "Live VRS numbers: Registered → Created → First Login → First Outbound → Second Outbound",
+    "Live VRS numbers: Created → Registered → First Login → First Outbound → Second Outbound",
     section="Analytics",
 )
 
@@ -151,17 +151,30 @@ if st.button("Run Number Funnel", use_container_width=False):
 
     total = len(records)
 
-    def count(field):
-        return sum(1 for p in records if in_range(p.get(field)))
-
-    stages = [
-        ("Numbers (baseline)",    total,                        "100%"),
-        ("Number registered at",  count("registered_at"),       None),
-        ("Number created at",     count("number_created_at"),   None),
-        ("Convo first login",     count("ursa_first_login"),    None),
-        ("Convo first outbound",  count("ursa_first_outbound_call"),  None),
-        ("Convo second outbound", count("ursa_second_outbound_call"), None),
+    # Chronological funnel milestones, in the true order a number progresses.
+    # Each stage is a MILESTONE with a timestamp field; a number "reached" a
+    # stage if it has that timestamp. We treat it as a true funnel — a record
+    # counts at stage k only if it also reached every earlier stage — so the
+    # counts can only ever DECREASE. (Counting each field independently caused
+    # the old bug: registered_at is sparse while number_created_at is on nearly
+    # every record, so the funnel dipped then rebounded to ~100%.)
+    funnel_fields = [
+        ("Number created at",     "number_created_at"),
+        ("Number registered at",  "registered_at"),
+        ("Convo first login",     "ursa_first_login"),
+        ("Convo first outbound",  "ursa_first_outbound_call"),
+        ("Convo second outbound", "ursa_second_outbound_call"),
     ]
+
+    def _has(p, field):
+        return _parse(p.get(field)) is not None
+
+    stages = [("Numbers (baseline)", total, "100%")]
+    reached = list(records)  # records still "in the funnel"
+    for label, field in funnel_fields:
+        reached = [p for p in reached if _has(p, field)]
+        stages.append((label, len(reached), None))
+
     stages = [
         (label, n, f"{n / total * 100:.1f}%" if pct is None else pct)
         for label, n, pct in stages
