@@ -88,11 +88,13 @@ def _ord(p):
 
 
 # ── controls ─────────────────────────────────────────────────────────────────
-c1, c2, c3 = st.columns([2, 2, 1])
+c1, c2, c3, c4 = st.columns([2, 1.6, 1.8, 1])
 metric = c1.selectbox("Active means…", ["VRS usage", "CfZ usage", "VRS or CfZ"],
                       help="A user is 'active' in a month if they generated at least 1 minute of this usage.")
 lookback = c2.selectbox("Look back", ["Last 12 months", "Last 15 months", "Last 18 months", "Last 24 months"], index=1)
-with c3:
+unit = c3.selectbox("Count users by", ["VRS Number", "Person (email)"],
+                    help="Person merges a customer's multiple numbers into one user via email.")
+with c4:
     st.markdown("<div style='margin-top:1.65rem;'></div>", unsafe_allow_html=True)
     run = st.button("Run Report", use_container_width=True)
 report_header_close()
@@ -105,42 +107,71 @@ while _m <= 0:
 start_date = date(_y, _m, 1)
 start_ms = str(int(datetime(start_date.year, start_date.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
 
-_KEY = f"retention_{metric.replace(' ', '_')}_{_months_back}m_{start_date}"
-cached = None if run else load_report(_KEY)
-if cached is None and not run:
-    st.info("Choose what counts as **active**, a look-back window, then **Run Report**. "
+# active user-months are cached by metric+window only (unit-independent)
+_BASE = f"retention_base_{metric.replace(' ', '_')}_{_months_back}m_{start_date}"
+base = None if run else load_report(_BASE)
+if base is None and not run:
+    st.info("Choose what counts as **active**, a look-back window and unit, then **Run Report**. "
             "The first run scans active user-months (can take a minute); results are then saved.")
     st.stop()
 
-if run or cached is None:
+if run or base is None:
     recs = _paged_search(_groups(metric, start_ms), ["number", "month_date"])
     rows = [{"number": str(r.get("properties", {}).get("number") or "").strip(),
              "month_date": r.get("properties", {}).get("month_date")} for r in recs]
-    save_report(_KEY, {"rows": rows})
+    save_report(_BASE, {"rows": rows})
     _saved_at = time.time()
 else:
-    rows = cached.get("rows", [])
-    _saved_at = cached.get("saved_at")
+    rows = base.get("rows", [])
+    _saved_at = base.get("saved_at")
 
 if not rows:
     st.warning("No active user-months found for this window/metric.")
     st.stop()
 
-# ── build cohorts ────────────────────────────────────────────────────────────
 active = pd.DataFrame(rows)
 active = active[active["number"] != ""]
-active["month"] = pd.to_datetime(active["month_date"], errors="coerce").dt.to_period("M")
-active = active.dropna(subset=["month"]).drop_duplicates(["number", "month"])
 
-first = active.groupby("number")["month"].min().rename("cohort")
-active = active.merge(first, on="number")
+# ── resolve numbers → person (email) if requested ────────────────────────────
+if unit == "Person (email)":
+    from utils import fetch_all
+    _EMAP = f"retention_emap_{metric.replace(' ', '_')}_{_months_back}m_{start_date}"
+    _cachedmap = None if run else load_report(_EMAP)
+    if run or _cachedmap is None:
+        _nums = sorted(active["number"].unique())
+        _map = {}
+        with st.spinner(f"Resolving emails for {len(_nums):,} numbers…"):
+            for i in range(0, len(_nums), 100):
+                chunk = _nums[i:i + 100]
+                for r in fetch_all("2-40974683", ["number", "email"],
+                                   filter_groups=[{"filters": [{"propertyName": "number", "operator": "IN", "values": chunk}]}]):
+                    p = r.get("properties", {})
+                    n = str(p.get("number") or "").strip()
+                    e = str(p.get("email") or "").strip().lower()
+                    if n and e:
+                        _map.setdefault(n, e)
+        save_report(_EMAP, {"map": _map})
+    else:
+        _map = _cachedmap.get("map", {})
+    active["user"] = active["number"].map(lambda n: _map.get(n, n))  # fall back to number
+    _unit_label = "people"
+else:
+    active["user"] = active["number"]
+    _unit_label = "numbers"
+
+# ── build cohorts (keyed by user) ────────────────────────────────────────────
+active["month"] = pd.to_datetime(active["month_date"], errors="coerce").dt.to_period("M")
+active = active.dropna(subset=["month"]).drop_duplicates(["user", "month"])
+
+first = active.groupby("user")["month"].min().rename("cohort")
+active = active.merge(first, on="user")
 active["_mo"] = active["month"].apply(_ord)
 active["_co"] = active["cohort"].apply(_ord)
 active["offset"] = active["_mo"] - active["_co"]
 
 latest_ord = int(active["_mo"].max())
-cohort_size = active.groupby("cohort")["number"].nunique()
-retained = active.groupby(["cohort", "offset"])["number"].nunique().reset_index(name="retained")
+cohort_size = active.groupby("cohort")["user"].nunique()
+retained = active.groupby(["cohort", "offset"])["user"].nunique().reset_index(name="retained")
 
 MAXO = 12
 
@@ -154,8 +185,10 @@ def overall_retention(o):
     return (ret / base * 100 if base else None), base
 
 
+r1, b1 = overall_retention(1)
 r3, b3 = overall_retention(3)
 r6, b6 = overall_retention(6)
+r9, b9 = overall_retention(9)
 r12, b12 = overall_retention(12)
 
 if _saved_at:
@@ -174,16 +207,18 @@ def tile(label, value, sub="", color="#1F2937"):
 def _pct(v):
     return f"{v:.0f}%" if v is not None else "—"
 
-st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.85rem;margin-bottom:1.4rem;">
-  {tile("Users tracked", f"{active['number'].nunique():,}", f"active since {start_date:%b %Y}")}
-  {tile("3-Month Retention", _pct(r3), f"of {b3:,} eligible users", GREEN)}
-  {tile("6-Month Retention", _pct(r6), f"of {b6:,} eligible users", BLUE)}
-  {tile("12-Month Retention", _pct(r12), f"of {b12:,} eligible users", AMBER)}
+st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0.7rem;margin-bottom:1.4rem;">
+  {tile(f"{_unit_label.title()} tracked", f"{active['user'].nunique():,}", f"active since {start_date:%b %Y}")}
+  {tile("1-Month", _pct(r1), f"of {b1:,} eligible", "#6B7280")}
+  {tile("3-Month", _pct(r3), f"of {b3:,} eligible", GREEN)}
+  {tile("6-Month", _pct(r6), f"of {b6:,} eligible", BLUE)}
+  {tile("9-Month", _pct(r9), f"of {b9:,} eligible", "#8B5CF6")}
+  {tile("12-Month", _pct(r12), f"of {b12:,} eligible", AMBER)}
 </div>""", unsafe_allow_html=True)
 
 with st.expander("ℹ️ How retention is calculated"):
     st.markdown(f"""
-- A **user** = a VRS number. They're **active** in a month if they generated ≥ 1 minute of **{metric}** that month.
+- A **user** = a {"person (customer email; a customer's multiple numbers count once)" if unit == "Person (email)" else "VRS number"}. They're **active** in a month if they generated ≥ 1 minute of **{metric}** that month.
 - Each user's **cohort** is their **first active month** in the window.
 - **N-Month Retention** = of a cohort, the share still active **N months after** their first month, averaged across all cohorts old enough to have reached that point (weighted by cohort size).
 - The **cohort table** below shows each starting month across the top offsets (M0 = 100% by definition). Blank cells mean that cohort hasn't reached that age yet.
@@ -228,8 +263,9 @@ st.download_button("📥 Download CSV", coh.to_csv(index=False),
                    f"retention_{metric.replace(' ', '_')}_{datetime.now():%Y%m%d}.csv", "text/csv")
 
 # ── PDF ──────────────────────────────────────────────────────────────────────
-_pdf_metrics = [("Users tracked", f"{active['number'].nunique():,}"),
-                ("3-Month", _pct(r3)), ("6-Month", _pct(r6)), ("12-Month", _pct(r12))]
+_pdf_metrics = [(f"{_unit_label.title()}", f"{active['user'].nunique():,}"),
+                ("1-Mo", _pct(r1)), ("3-Mo", _pct(r3)), ("6-Mo", _pct(r6)),
+                ("9-Mo", _pct(r9)), ("12-Mo", _pct(r12))]
 _pdf_charts = [{"data": curve_df.rename(columns={"Month": "Month #"}), "kind": "line",
                 "x": "Month #", "y": "Retention", "title": "Retention curve (% active by month)"}] if not curve_df.empty else []
 pdf_download_button(coh, "retention_report.pdf", f"Retention Report — {metric}",
