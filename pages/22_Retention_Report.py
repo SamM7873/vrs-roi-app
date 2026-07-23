@@ -32,6 +32,8 @@ def _groups(metric, start_ms):
         return [{"filters": [cfz, date_f]}]
     if metric == "VRS or CfZ":
         return [{"filters": [vrs, usage, date_f]}, {"filters": [cfz, date_f]}]
+    if metric == "VRS and CfZ (both)":
+        return [{"filters": [vrs, usage, cfz, date_f]}]  # same month must have both
     return [{"filters": [vrs, usage, date_f]}]  # VRS usage (default)
 
 
@@ -89,8 +91,9 @@ def _ord(p):
 
 # ── controls ─────────────────────────────────────────────────────────────────
 c1, c2, c3, c4 = st.columns([2, 1.6, 1.8, 1])
-metric = c1.selectbox("Active means…", ["VRS usage", "CfZ usage", "VRS or CfZ"],
-                      help="A user is 'active' in a month if they generated at least 1 minute of this usage.")
+metric = c1.selectbox("Active means…", ["VRS usage", "CfZ usage", "VRS or CfZ", "VRS and CfZ (both)"],
+                      help="A user is 'active' in a month if they generated at least 1 minute of this usage. "
+                           "'both' requires VRS and CfZ minutes in the same month.")
 lookback = c2.selectbox("Look back", ["Last 12 months", "Last 15 months", "Last 18 months", "Last 24 months"], index=1)
 unit = c3.selectbox("Count users by", ["VRS Number", "Person (email)"],
                     help="Person merges a customer's multiple numbers into one user via email.")
