@@ -30,7 +30,7 @@ PROPS = [
 ]
 
 RANGES = ["This Month", "This Year", "Last 30 Days", "Last 90 Days",
-          "Last 6 Months", "Last 12 Months", "All Time"]
+          "Last 6 Months", "Last 12 Months", "All Time", "Custom Range"]
 
 
 def _floor(label):
@@ -75,16 +75,26 @@ def _pipelines():
     return labels, stages
 
 
-col1, col2 = st.columns([3, 1])
+col1, col2, col3, col4 = st.columns([2, 1.3, 1.3, 1])
 with col1:
     range_label = st.selectbox("Date range (create date)", RANGES, index=2)
-with col2:
+
+custom_from = custom_to = None
+if range_label == "Custom Range":
+    with col2:
+        custom_from = st.date_input("From", value=date.fromordinal(date.today().toordinal() - 30))
+    with col3:
+        custom_to = st.date_input("To", value=date.today())
+with col4:
     st.markdown("<div style='margin-top:1.65rem;'></div>", unsafe_allow_html=True)
     run = st.button("Run Report", use_container_width=True)
 
 report_header_close()
 
-_KEY = "ticket_report_" + range_label.replace(" ", "_")
+if range_label == "Custom Range":
+    _KEY = f"ticket_report_custom_{custom_from}_{custom_to}"
+else:
+    _KEY = "ticket_report_" + range_label.replace(" ", "_")
 cached = None if run else load_report(_KEY)
 
 if cached is None and not run:
@@ -92,9 +102,16 @@ if cached is None and not run:
     st.stop()
 
 if run or cached is None:
-    floor = _floor(range_label)
     fg = None
-    if range_label != "All Time":
+    if range_label == "Custom Range":
+        _f = datetime(custom_from.year, custom_from.month, custom_from.day, tzinfo=timezone.utc)
+        _t = datetime(custom_to.year, custom_to.month, custom_to.day, 23, 59, 59, tzinfo=timezone.utc)
+        fg = [{"filters": [
+            {"propertyName": "createdate", "operator": "GTE", "value": str(int(_f.timestamp() * 1000))},
+            {"propertyName": "createdate", "operator": "LTE", "value": str(int(_t.timestamp() * 1000))},
+        ]}]
+    elif range_label != "All Time":
+        floor = _floor(range_label)
         floor_ms = str(int(datetime(floor.year, floor.month, floor.day, tzinfo=timezone.utc).timestamp() * 1000))
         fg = [{"filters": [{"propertyName": "createdate", "operator": "GTE", "value": floor_ms}]}]
     from utils import dash_spinner
