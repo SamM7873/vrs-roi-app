@@ -61,18 +61,92 @@ props = [p for p in CANDIDATES if p in schema]
 ts_prop = "hs_submission_timestamp" if "hs_submission_timestamp" in schema else (
     "hs_createdate" if "hs_createdate" in schema else None)
 
+def _fetch_owners():
+    """owner id -> 'First Last' (or email) for all HubSpot owners."""
+    out, after = {}, None
+    for _ in range(50):
+        url = f"{BASE_URL}/crm/v3/owners?limit=100" + (f"&after={after}" if after else "")
+        try:
+            r = requests.get(url, headers=_headers, timeout=30)
+        except requests.exceptions.RequestException:
+            break
+        if r.status_code != 200:
+            break
+        data = r.json()
+        for o in data.get("results", []):
+            name = f"{o.get('firstName','')} {o.get('lastName','')}".strip() or o.get("email") or str(o.get("id"))
+            out[str(o.get("id"))] = name
+        after = data.get("paging", {}).get("next", {}).get("after")
+        if not after:
+            break
+    return out
+
+
+def _resolve_ticket_owners(submission_ids):
+    """submission id -> ticket owner name, via feedback→ticket association."""
+    ids = [str(s) for s in submission_ids if s]
+    sid_to_tids, all_tids = {}, set()
+    loader = st.empty()
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
+        try:
+            ar = requests.post(f"{BASE_URL}/crm/v4/associations/{OBJECT}/tickets/batch/read",
+                               headers=_headers, json={"inputs": [{"id": s} for s in chunk]}, timeout=60)
+        except requests.exceptions.RequestException:
+            continue
+        if ar.status_code in (200, 207):
+            for res in ar.json().get("results", []):
+                sid = str(res.get("from", {}).get("id", ""))
+                tids = [str(a.get("toObjectId") or a.get("id") or "") for a in res.get("to", [])]
+                tids = [t for t in tids if t]
+                if tids:
+                    sid_to_tids[sid] = tids
+                    all_tids.update(tids)
+        loader.markdown(
+            f"<div style='padding:0.5rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;'>"
+            f"Resolving ticket owners… {min(i+100, len(ids)):,}/{len(ids):,}</div>", unsafe_allow_html=True)
+
+    tid_to_owner = {}
+    tids = list(all_tids)
+    for i in range(0, len(tids), 100):
+        chunk = tids[i:i + 100]
+        try:
+            br = requests.post(f"{BASE_URL}/crm/v3/objects/tickets/batch/read", headers=_headers,
+                               json={"properties": ["hubspot_owner_id"], "inputs": [{"id": t} for t in chunk]}, timeout=60)
+        except requests.exceptions.RequestException:
+            continue
+        if br.status_code in (200, 207):
+            for t in br.json().get("results", []):
+                oid = (t.get("properties", {}) or {}).get("hubspot_owner_id")
+                if oid:
+                    tid_to_owner[str(t.get("id"))] = str(oid)
+    owners = _fetch_owners()
+    loader.empty()
+
+    result = {}
+    for sid, tlist in sid_to_tids.items():
+        for tid in tlist:
+            oid = tid_to_owner.get(tid)
+            if oid:
+                result[sid] = owners.get(oid, oid)
+                break
+    return result
+
+
 # ── data (persisted so it doesn't re-fetch every visit) ─────────────────────
-_KEY = "survey_feedback_v1"
+_KEY = "survey_feedback_v2"  # v2: includes ticket owner
 top = st.columns([1, 3])
 refresh = top[0].button("🔄 Refresh data")
 
 disk = None if refresh else load_report(_KEY)
 if disk is not None and disk.get("records") is not None:
     records = disk["records"]
+    owner_by_sid = disk.get("owner_by_sid", {})
     _saved_at = disk.get("saved_at")
 else:
     records = list_all(OBJECT, props, progress_label="Fetching survey submissions")
-    save_report(_KEY, {"records": records})
+    owner_by_sid = _resolve_ticket_owners([r.get("id") for r in records]) if records else {}
+    save_report(_KEY, {"records": records, "owner_by_sid": owner_by_sid})
     _saved_at = time.time()
 
 if not records:
@@ -80,21 +154,25 @@ if not records:
     report_header_close()
     st.stop()
 
+_sids = [str(r.get("id")) for r in records]
 df = pd.DataFrame([r.get("properties", {}) for r in records])
 for c in props:
     if c not in df.columns:
         df[c] = None
+df["Ticket Owner"] = [owner_by_sid.get(s, "—") for s in _sids]
 
 # parse timestamp
 if ts_prop:
     df["_ts"] = pd.to_datetime(df[ts_prop], errors="coerce", utc=True)
 else:
     df["_ts"] = pd.NaT
-# numeric score
+# numeric score / rating
 if "hs_value" in df.columns:
     df["_score"] = pd.to_numeric(df["hs_value"], errors="coerce")
+    df["Rating"] = df["hs_value"]
 else:
     df["_score"] = pd.NA
+    df["Rating"] = "—"
 
 if _saved_at:
     _age = int(time.time() - _saved_at)
@@ -108,7 +186,7 @@ def _opts(col):
     return sorted([v for v in df[col].dropna().unique().tolist() if str(v).strip()]) if col in df.columns else []
 
 sel_type = f1.multiselect("Survey type", _opts("hs_survey_type")) if "hs_survey_type" in df.columns else []
-sel_name = f2.multiselect("Survey name", _opts("hs_survey_name")) if "hs_survey_name" in df.columns else []
+sel_owner = f2.multiselect("Ticket owner", _opts("Ticket Owner"))
 
 if df["_ts"].notna().any():
     min_d = df["_ts"].min().date()
@@ -117,12 +195,13 @@ if df["_ts"].notna().any():
     d_to = f4.date_input("To", value=max_d, min_value=min_d, max_value=max_d)
 else:
     d_from = d_to = None
+sel_name = []
 
 view = df.copy()
 if sel_type:
     view = view[view["hs_survey_type"].isin(sel_type)]
-if sel_name:
-    view = view[view["hs_survey_name"].isin(sel_name)]
+if sel_owner:
+    view = view[view["Ticket Owner"].isin(sel_owner)]
 if d_from and d_to:
     m = (view["_ts"].dt.date >= d_from) & (view["_ts"].dt.date <= d_to)
     view = view[m | view["_ts"].isna()]
@@ -206,6 +285,11 @@ tbl = view[show_cols].copy()
 if ts_prop and ts_prop in tbl.columns:
     tbl[ts_prop] = view["_ts"].dt.strftime("%b %d, %Y %I:%M %p")
 tbl = tbl.rename(columns={c: label_of.get(c, c) for c in tbl.columns})
+
+# surface the resolved Ticket Owner and a clear Rating column up front
+tbl.insert(0, "Ticket Owner", view.loc[tbl.index, "Ticket Owner"])
+if "Rating" not in tbl.columns:
+    tbl.insert(1, "Rating", view.loc[tbl.index, "Rating"])
 
 if search.strip():
     q = search.strip().lower()
