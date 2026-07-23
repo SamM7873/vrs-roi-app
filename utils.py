@@ -476,8 +476,44 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
     return all_results
 
 
+def _auto_chart(df, ax):
+    """Best-effort bar chart from a table: a low-cardinality text column vs the
+    first numeric column (summed), else counts of that text column. Returns a
+    (title, ok) tuple; ok=False if nothing sensible to chart."""
+    import matplotlib.pyplot as plt
+    beige = "#C9A876"
+    numeric_cols, cat_cols = [], []
+    for c in df.columns:
+        coerced = pd.to_numeric(df[c], errors="coerce")
+        if coerced.notna().mean() > 0.5:
+            numeric_cols.append(c)
+        else:
+            nun = df[c].astype(str).replace({"": None, "—": None}).nunique(dropna=True)
+            if 2 <= nun <= 40:
+                cat_cols.append(c)
+    if not cat_cols:
+        return None, False
+    gcol = cat_cols[0]
+    w = df.copy()
+    w[gcol] = w[gcol].astype(str).replace({"": "—"})
+    if numeric_cols:
+        vcol = numeric_cols[0]
+        w["_v"] = pd.to_numeric(w[vcol], errors="coerce")
+        g = w.groupby(gcol)["_v"].sum().sort_values(ascending=False).head(20)
+        ylabel = f"Sum of {vcol}"
+    else:
+        g = w[gcol].value_counts().head(20)
+        ylabel = "Count"
+    if g.empty:
+        return None, False
+    ax.bar([str(i) for i in g.index], g.values, color=beige)
+    ax.set_ylabel(ylabel)
+    plt.setp(ax.get_xticklabels(), rotation=40, ha="right", fontsize=8)
+    return f"{ylabel} by {gcol}", True
+
+
 def _pdf_from_df(df, title, subtitle=""):
-    """Render a DataFrame to a presentation PDF (title page + paginated table)."""
+    """Render a DataFrame to a presentation PDF (title + auto chart + table)."""
     import io
     import matplotlib
     matplotlib.use("Agg")
@@ -503,6 +539,18 @@ def _pdf_from_df(df, title, subtitle=""):
         ax.text(0.5, 0.48, f"{len(df):,} rows · generated {datetime.now():%b %d, %Y %I:%M %p}",
                 ha="center", fontsize=9, color="#888")
         pdf.savefig(fig); plt.close(fig)
+
+        # auto chart page (best effort)
+        try:
+            fig, ax = plt.subplots(figsize=(11, 6.5))
+            ch_title, ok = _auto_chart(df, ax)
+            if ok:
+                ax.set_title(ch_title, fontsize=13, fontweight="bold")
+                fig.tight_layout()
+                pdf.savefig(fig)
+            plt.close(fig)
+        except Exception:
+            plt.close("all")
 
         per_page = 24
         for start in range(0, max(len(rows), 1), per_page):

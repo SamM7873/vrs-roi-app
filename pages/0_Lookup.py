@@ -2168,7 +2168,5 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             file_name=f"vrs_lookup_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv",
         )
-        from utils import pdf_download_button
-        pdf_download_button(df, "vrs_lookup.pdf", "VRS Lookup", key="lookup")
 
 st.markdown('</div>', unsafe_allow_html=True)  # close content-card
