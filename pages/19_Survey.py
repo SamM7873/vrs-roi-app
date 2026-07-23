@@ -61,6 +61,10 @@ props = [p for p in CANDIDATES if p in schema]
 ts_prop = "hs_submission_timestamp" if "hs_submission_timestamp" in schema else (
     "hs_createdate" if "hs_createdate" in schema else None)
 
+def _owner_name_from(o):
+    return f"{o.get('firstName','')} {o.get('lastName','')}".strip() or o.get("email") or ""
+
+
 def _fetch_owners():
     """owner id -> 'First Last' (or email) for all HubSpot owners."""
     out, after = {}, None
@@ -74,12 +78,33 @@ def _fetch_owners():
             break
         data = r.json()
         for o in data.get("results", []):
-            name = f"{o.get('firstName','')} {o.get('lastName','')}".strip() or o.get("email") or str(o.get("id"))
-            out[str(o.get("id"))] = name
+            nm = _owner_name_from(o)
+            if nm:
+                out[str(o.get("id"))] = nm
         after = data.get("paging", {}).get("next", {}).get("after")
         if not after:
             break
     return out
+
+
+def _owner_names(owner_ids):
+    """Resolve owner id -> name; bulk list first, then per-id fallback.
+    Never returns a raw id — unresolved owners map to '—'."""
+    bulk = _fetch_owners()
+    names = {}
+    for oid in {str(o) for o in owner_ids if o}:
+        if oid in bulk:
+            names[oid] = bulk[oid]
+            continue
+        nm = ""
+        try:
+            r = requests.get(f"{BASE_URL}/crm/v3/owners/{oid}", headers=_headers, timeout=15)
+            if r.status_code == 200:
+                nm = _owner_name_from(r.json())
+        except requests.exceptions.RequestException:
+            pass
+        names[oid] = nm or "—"
+    return names
 
 
 def _resolve_ticket_owners(submission_ids):
@@ -120,7 +145,7 @@ def _resolve_ticket_owners(submission_ids):
                 oid = (t.get("properties", {}) or {}).get("hubspot_owner_id")
                 if oid:
                     tid_to_owner[str(t.get("id"))] = str(oid)
-    owners = _fetch_owners()
+    owners = _owner_names(tid_to_owner.values())
     loader.empty()
 
     result = {}
@@ -128,13 +153,13 @@ def _resolve_ticket_owners(submission_ids):
         for tid in tlist:
             oid = tid_to_owner.get(tid)
             if oid:
-                result[sid] = owners.get(oid, oid)
+                result[sid] = owners.get(oid, "—")
                 break
     return result
 
 
 # ── data (persisted so it doesn't re-fetch every visit) ─────────────────────
-_KEY = "survey_feedback_v2"  # v2: includes ticket owner
+_KEY = "survey_feedback_v3"  # v3: ticket owner resolved to name (not id)
 top = st.columns([1, 3])
 refresh = top[0].button("🔄 Refresh data")
 
