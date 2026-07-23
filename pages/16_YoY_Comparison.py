@@ -303,4 +303,11 @@ st.dataframe(disp, use_container_width=True, hide_index=True)
 st.download_button("Download CSV", disp.to_csv(index=False),
                    f"yoy_{metric_col}.csv", "text/csv")
 from utils import pdf_download_button
-pdf_download_button(disp, "yoy.pdf", "Year-over-Year", key="yoy")
+_yr = int(chart_df["Year"].max())
+_yoy_cd = (chart_df[chart_df["Year"] == _yr].sort_values("MonthNum")[["MonthName", metric_col]]
+           .rename(columns={metric_col: "Value"}))
+_yoy_cd["MonthName"] = _yoy_cd["MonthName"].astype(str)
+pdf_download_button(disp, "yoy.pdf", f"Year-over-Year — {metric_label}",
+                    subtitle=f"{metric_label} by month",
+                    charts=[{"data": _yoy_cd, "kind": "bar", "x": "MonthName", "y": "Value",
+                             "title": f"{metric_label} by month ({_yr})"}], key="yoy")

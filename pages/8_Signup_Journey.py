@@ -300,6 +300,10 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
             "text/csv",
         )
         from utils import pdf_download_button
-        pdf_download_button(detail_df, "signup_journey.pdf", "Sign-Up Journey", key="journey")
+        _pdf_metrics = [(str(r.Stage), f"{int(r.Count):,}") for r in chart_df.itertuples()][:4]
+        _pdf_charts = [{"data": chart_df[["Stage", "Count"]], "kind": "bar",
+                        "x": "Stage", "y": "Count", "title": "Sign-up journey funnel"}]
+        pdf_download_button(detail_df, "signup_journey.pdf", "Sign-Up Journey",
+                            metrics=_pdf_metrics, charts=_pdf_charts, key="journey")
 
 report_header_close()

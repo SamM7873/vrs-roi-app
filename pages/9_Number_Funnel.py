@@ -238,6 +238,10 @@ if st.button("Run Number Funnel", use_container_width=False):
             "text/csv",
         )
         from utils import pdf_download_button
-        pdf_download_button(df, "number_funnel.pdf", "Number Funnel", key="numfun")
+        _pdf_metrics = [(str(s[0]), f"{s[1]:,}") for s in stages][:4]
+        _pdf_charts = [{"data": chart_df[["Stage", "Count"]], "kind": "bar",
+                        "x": "Stage", "y": "Count", "title": "Number funnel"}]
+        pdf_download_button(df, "number_funnel.pdf", "Number Funnel",
+                            metrics=_pdf_metrics, charts=_pdf_charts, key="numfun")
 
 report_header_close()

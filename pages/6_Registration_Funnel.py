@@ -157,6 +157,10 @@ if st.button("Load Registration Funnel", use_container_width=False):
         st.download_button("Download CSV", df.to_csv(index=False),
                            f"registration_funnel_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
         from utils import pdf_download_button
-        pdf_download_button(df, "registration_funnel.pdf", "Registration Funnel", key="regfun")
+        _pdf_metrics = [(str(r.Step), f"{int(r.Count):,}") for r in funnel_df.itertuples()][:4]
+        _pdf_charts = [{"data": funnel_df[["Step", "Count"]], "kind": "bar",
+                        "x": "Step", "y": "Count", "title": "Registration funnel"}]
+        pdf_download_button(df, "registration_funnel.pdf", "Registration Funnel",
+                            metrics=_pdf_metrics, charts=_pdf_charts, key="regfun")
 
 report_header_close()

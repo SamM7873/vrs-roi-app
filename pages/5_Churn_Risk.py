@@ -169,6 +169,13 @@ if st.button("Run Churn Risk Analysis", use_container_width=False):
         st.download_button("Download Churn Risk CSV", risk_df.to_csv(index=False),
                            f"churn_risk_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
         from utils import pdf_download_button
-        pdf_download_button(risk_df, "churn_risk.pdf", "Churn Risk", key="churn")
+        _pdf_metrics = [("A — Growth", f"{seg_counts['A']:,}"), ("B — Stable", f"{seg_counts['B']:,}"),
+                        ("C — Declining", f"{seg_counts['C']:,}"), ("D — At Risk", f"{seg_counts['D']:,}")]
+        _pdf_charts = [{"data": chart_df.head(30)[["Label", "Last Month Perf %"]], "kind": "barh",
+                        "x": "Label", "y": "Last Month Perf %",
+                        "title": "Bottom 30 — Last Month Performance vs Baseline"}]
+        pdf_download_button(risk_df, "churn_risk.pdf", "Churn Risk",
+                            subtitle="Segment D — churn risk", metrics=_pdf_metrics,
+                            charts=_pdf_charts, key="churn")
 
 report_header_close()
