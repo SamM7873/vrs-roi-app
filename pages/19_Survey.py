@@ -227,6 +227,8 @@ def _opts(col):
 
 sel_type = f1.multiselect("Survey type", _opts("hs_survey_type")) if "hs_survey_type" in df.columns else []
 sel_owner = f2.multiselect("Ticket owner", _opts("Ticket Owner"))
+team_360_only = st.checkbox("360 team only", value=False,
+                            help="Only responses whose ticket owner is on the 360 team.")
 
 if df["_ts"].notna().any():
     min_d = df["_ts"].min().date()
@@ -238,6 +240,8 @@ else:
 sel_name = []
 
 view = df.copy()
+if team_360_only:
+    view = view[view["Ticket Owner"].isin(TEAM_360)]
 if sel_type:
     view = view[view["hs_survey_type"].isin(sel_type)]
 if sel_owner:
@@ -316,37 +320,6 @@ with c_right:
         st.altair_chart(chart, use_container_width=True)
 
 # ── detail table ────────────────────────────────────────────────────────────
-st.markdown("##### 360 Team — Responses & Avg Rating")
-_t = view[view["Ticket Owner"].isin(TEAM_360)].copy()
-if _t.empty:
-    st.caption("No survey responses from 360 team members in the current view.")
-else:
-    g360 = _t.groupby("Ticket Owner").agg(
-        Responses=("Ticket Owner", "count"),
-        AvgRating=("_score", "mean"),
-    ).reset_index()
-    g360["AvgRating"] = g360["AvgRating"].round(2)
-    gcol1, gcol2 = st.columns(2)
-    with gcol1:
-        st.altair_chart(
-            alt.Chart(g360).mark_bar(color=PRIMARY, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
-                x=alt.X("Responses:Q", title="Responses"),
-                y=alt.Y("Ticket Owner:N", sort="-x", title=None),
-                tooltip=["Ticket Owner", "Responses", alt.Tooltip("AvgRating:Q", title="Avg rating")],
-            ).properties(height=max(180, len(g360) * 30), title="Responses per 360 member"),
-            use_container_width=True)
-    with gcol2:
-        _gr = g360.dropna(subset=["AvgRating"])
-        if not _gr.empty:
-            st.altair_chart(
-                alt.Chart(_gr).mark_bar(color="#15803D", cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
-                    x=alt.X("AvgRating:Q", title="Avg rating"),
-                    y=alt.Y("Ticket Owner:N", sort="-x", title=None),
-                    tooltip=["Ticket Owner", alt.Tooltip("AvgRating:Q", title="Avg rating"), "Responses"],
-                ).properties(height=max(180, len(_gr) * 30), title="Avg rating per 360 member"),
-                use_container_width=True)
-    st.dataframe(g360.sort_values("Responses", ascending=False), use_container_width=True, hide_index=True)
-
 st.markdown("##### Submissions")
 search = st.text_input("Search responses", placeholder="Filter by comment, survey, value…",
                        label_visibility="collapsed")
