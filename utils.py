@@ -264,8 +264,10 @@ def _read_token(token, max_age):
         return None
 
 
-@st.cache_resource
 def _cookie_manager():
+    # NOT cached: CookieManager's constructor renders a widget, which Streamlit
+    # forbids inside @st.cache_data/@st.cache_resource. A fixed key keeps it the
+    # same component across reruns.
     if not _HAS_COOKIES:
         return None
     try:
