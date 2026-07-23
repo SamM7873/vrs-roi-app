@@ -100,7 +100,8 @@ audit_page       = st.Page("pages/18_Audit_Log.py",                   title="Aud
 survey_page      = st.Page("pages/19_Survey.py",                      title="Survey",                       icon="📝")
 ticket_rpt_page  = st.Page("pages/20_Ticket_Report.py",               title="Ticket Report",                icon="🎫")
 jira_rpt_page    = st.Page("pages/21_Jira_Report.py",                  title="Jira Ticket Report",           icon="🧩")
+retention_page   = st.Page("pages/22_Retention_Report.py",             title="Retention Report",             icon="🔁")
 
-pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page, numfunnel_page, winback_page, cs_tickets_page, vrs_zero_page, age_demo_page, pendo_page, dq_page, yoy_page, explorer_page, survey_page, ticket_rpt_page, jira_rpt_page, audit_page])
+pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page, numfunnel_page, winback_page, cs_tickets_page, vrs_zero_page, age_demo_page, pendo_page, dq_page, yoy_page, explorer_page, survey_page, ticket_rpt_page, jira_rpt_page, retention_page, audit_page])
 render_sync_widget()
 pg.run()
