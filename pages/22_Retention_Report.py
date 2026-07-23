@@ -180,9 +180,15 @@ retained = active.groupby(["cohort", "offset"])["user"].nunique().reset_index(na
 
 MAXO = min(12, _months_back)  # can't measure further than the look-back window
 
+# Left-censoring: the window's FIRST month cohort is contaminated — long-standing
+# users who were already active before the window appear "new" only because our
+# data starts at the boundary. Exclude it from all headline retention math so a
+# tiny, artificially-inflated cohort can never drive the numbers.
+_boundary = pd.Period(start_date, "M")
+
 
 def overall_retention(o):
-    elig = [c for c in cohort_size.index if _ord(c) + o <= latest_ord]
+    elig = [c for c in cohort_size.index if c != _boundary and _ord(c) + o <= latest_ord]
     if not elig:
         return None, 0
     base = int(cohort_size[elig].sum())
@@ -228,6 +234,7 @@ with st.expander("ℹ️ How retention is calculated"):
 - **N-Month Retention** = of a cohort, the share still active **N months after** their first month, averaged across all cohorts old enough to have reached that point (weighted by cohort size).
 - The **cohort table** below shows each starting month across the top offsets (M0 = 100% by definition). Blank cells mean that cohort hasn't reached that age yet.
 - Window: active months since **{start_date:%b %Y}**. Widen the look-back for more 12-month data points.
+- **The first window month ({start_date:%b %Y}) is excluded** from the headline metrics and curve. Its "new" users are really pre-existing customers who only *look* new because our data starts there (left-censoring). It's still shown in the cohort table below, greyed by context, so you can see it — just not counted in the KPIs.
 """)
 
 # ── retention curve ──────────────────────────────────────────────────────────
@@ -260,9 +267,12 @@ pct.columns = [f"M{c}" for c in pct.columns]
 coh = pct.reset_index()
 coh.insert(0, "Cohort", coh.pop("cohort").astype(str))
 coh.insert(1, "Users", cohort_size.reindex([pd.Period(c, "M") for c in coh["Cohort"]]).values)
+# flag the excluded, left-censored boundary cohort so it's obvious in the table
+coh["Cohort"] = coh["Cohort"].apply(lambda c: f"{c} ⚠️ excluded" if c == str(_boundary) else c)
 coh = coh.sort_values("Cohort", ascending=False)
 _fmt_cols = {c: st.column_config.NumberColumn(c, format="%.0f%%") for c in coh.columns if c.startswith("M")}
 st.dataframe(coh, use_container_width=True, hide_index=True, column_config=_fmt_cols)
+st.caption(f"⚠️ The **{start_date:%b %Y}** cohort is left-censored (pre-existing users mislabeled as new) and is excluded from the KPI tiles and retention curve above.")
 
 st.download_button("📥 Download CSV", coh.to_csv(index=False),
                    f"retention_{metric.replace(' ', '_')}_{datetime.now():%Y%m%d}.csv", "text/csv")
