@@ -579,6 +579,77 @@ def _agg_by(frame, gcol, measure_choice, num_cols):
     return g, measure_choice
 
 
+def _build_visual_pdf(chart_type, grouped, group_col, measure_label,
+                      has_split, split_col, stack_mode, subtitle):
+    """Render the current chart + its data table to a presentation-ready PDF."""
+    import io
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    beige, green = "#C9A876", "#0D3B26"
+    scheme = DONUT_SCHEME
+    buf = io.BytesIO()
+    with PdfPages(buf) as pdf:
+        # ── page 1: chart ──
+        fig, ax = plt.subplots(figsize=(11, 6.5))
+        if has_split:
+            piv = grouped.pivot_table(index=group_col, columns=split_col,
+                                      values="Value", aggfunc="sum").fillna(0)
+            kind = "barh" if chart_type == "Horizontal Bar" else "bar"
+            piv.plot(kind=kind, stacked=(stack_mode == "Stacked"), ax=ax, color=scheme, width=0.8)
+            ax.legend(title=split_col, fontsize=7)
+        else:
+            cats = grouped[group_col].astype(str).tolist()
+            vals = pd.to_numeric(grouped["Value"], errors="coerce").fillna(0).tolist()
+            if chart_type == "Horizontal Bar":
+                ax.barh(cats, vals, color=beige); ax.invert_yaxis()
+            elif chart_type == "Line":
+                ax.plot(cats, vals, color=beige, marker="o", linewidth=2)
+            elif chart_type == "Area":
+                ax.fill_between(range(len(cats)), vals, color=beige, alpha=0.55)
+                ax.plot(range(len(cats)), vals, color=green, linewidth=2)
+                ax.set_xticks(range(len(cats))); ax.set_xticklabels(cats)
+            elif chart_type == "Donut":
+                ax.pie(vals, labels=cats, colors=scheme, autopct="%1.0f%%",
+                       wedgeprops=dict(width=0.42), textprops=dict(fontsize=8))
+            else:  # Vertical Bar / combo
+                ax.bar(cats, vals, color=beige)
+        if chart_type != "Donut":
+            ax.set_ylabel(measure_label)
+            if chart_type != "Horizontal Bar":
+                plt.setp(ax.get_xticklabels(), rotation=40, ha="right", fontsize=8)
+        ax.set_title(f"{measure_label} by {group_col}", fontsize=13, fontweight="bold")
+        fig.text(0.02, 0.015, subtitle, fontsize=7, color="#666")
+        fig.tight_layout(rect=[0, 0.03, 1, 1])
+        pdf.savefig(fig); plt.close(fig)
+
+        # ── table page(s): the numbers behind the chart ──
+        if has_split:
+            tdf = grouped.pivot_table(index=group_col, columns=split_col,
+                                      values="Value", aggfunc="sum").fillna(0).round(1).reset_index()
+        else:
+            tdf = grouped[[group_col, "Value"]].copy()
+            tdf.columns = [group_col, measure_label]
+            tdf[measure_label] = pd.to_numeric(tdf[measure_label], errors="coerce").round(1)
+        per_page = 26
+        for start in range(0, max(len(tdf), 1), per_page):
+            chunk = tdf.iloc[start:start + per_page]
+            fig, ax = plt.subplots(figsize=(11, 8.5)); ax.axis("off")
+            ax.set_title("Data table", fontsize=12, fontweight="bold", loc="left")
+            tbl = ax.table(cellText=chunk.astype(str).values,
+                           colLabels=[str(c) for c in chunk.columns],
+                           loc="upper center", cellLoc="left")
+            tbl.auto_set_font_size(False); tbl.set_fontsize(8); tbl.scale(1, 1.4)
+            for (r, _c), cell in tbl.get_celld().items():
+                if r == 0:
+                    cell.set_facecolor(green)
+                    cell.set_text_props(color="white", fontweight="bold")
+            pdf.savefig(fig); plt.close(fig)
+    return buf.getvalue()
+
+
 if view.empty:
     st.info("No rows to chart.")
 else:
@@ -733,5 +804,21 @@ else:
             chart = chart + _labels(dict(x=x_enc, y=alt.Y("Value:Q")))
 
     st.altair_chart(chart, use_container_width=True)
+
+    # ── PDF export (chart + table) ──────────────────────────────────────────
+    _subtitle = (f"{', '.join(info['objects'])}  ·  {measure_label} by {group_col}"
+                 f"  ·  {chart_type}  ·  generated {datetime.now().strftime('%b %d, %Y %I:%M %p')}")
+    if st.button("📄 Prepare presentation PDF (chart + table)"):
+        try:
+            st.session_state._de_pdf = _build_visual_pdf(
+                chart_type, grouped, group_col, measure_label,
+                has_split, split_col, stack_mode, _subtitle)
+        except Exception as e:
+            st.session_state._de_pdf = None
+            st.error(f"Couldn't build PDF: {e}")
+    if st.session_state.get("_de_pdf"):
+        st.download_button("📥 Download PDF", st.session_state._de_pdf,
+                           f"data_explorer_{datetime.now().strftime('%Y%m%d')}.pdf",
+                           "application/pdf")
 
 report_header_close()
