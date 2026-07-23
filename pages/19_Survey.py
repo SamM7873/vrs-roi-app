@@ -24,6 +24,12 @@ OBJECT = "feedback_submissions"
 PRIMARY = "#C9A876"
 GROUP_COLORS = {"PROMOTER": "#15803D", "PASSIVE": "#C9A876", "DETRACTOR": "#EF4444"}
 
+# 360 support team — override with a TEAM_360 secret (comma-separated owner names)
+_DEFAULT_360 = ["Alyssa Vela", "Jonah Hazelett", "Ilan Ben-Moshe", "Taylor Jamie",
+                "Ashley Thurman", "Danté Whitty", "Hannah Puent"]
+_t360_raw = str(get_secret("TEAM_360", "")).strip()
+TEAM_360 = [n.strip() for n in _t360_raw.split(",") if n.strip()] or _DEFAULT_360
+
 # candidate feedback properties (only those present in the schema are used)
 CANDIDATES = [
     "hs_survey_name", "hs_survey_type", "hs_survey_channel", "hs_value",
@@ -310,6 +316,37 @@ with c_right:
         st.altair_chart(chart, use_container_width=True)
 
 # ── detail table ────────────────────────────────────────────────────────────
+st.markdown("##### 360 Team — Responses & Avg Rating")
+_t = view[view["Ticket Owner"].isin(TEAM_360)].copy()
+if _t.empty:
+    st.caption("No survey responses from 360 team members in the current view.")
+else:
+    g360 = _t.groupby("Ticket Owner").agg(
+        Responses=("Ticket Owner", "count"),
+        AvgRating=("_score", "mean"),
+    ).reset_index()
+    g360["AvgRating"] = g360["AvgRating"].round(2)
+    gcol1, gcol2 = st.columns(2)
+    with gcol1:
+        st.altair_chart(
+            alt.Chart(g360).mark_bar(color=PRIMARY, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
+                x=alt.X("Responses:Q", title="Responses"),
+                y=alt.Y("Ticket Owner:N", sort="-x", title=None),
+                tooltip=["Ticket Owner", "Responses", alt.Tooltip("AvgRating:Q", title="Avg rating")],
+            ).properties(height=max(180, len(g360) * 30), title="Responses per 360 member"),
+            use_container_width=True)
+    with gcol2:
+        _gr = g360.dropna(subset=["AvgRating"])
+        if not _gr.empty:
+            st.altair_chart(
+                alt.Chart(_gr).mark_bar(color="#15803D", cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
+                    x=alt.X("AvgRating:Q", title="Avg rating"),
+                    y=alt.Y("Ticket Owner:N", sort="-x", title=None),
+                    tooltip=["Ticket Owner", alt.Tooltip("AvgRating:Q", title="Avg rating"), "Responses"],
+                ).properties(height=max(180, len(_gr) * 30), title="Avg rating per 360 member"),
+                use_container_width=True)
+    st.dataframe(g360.sort_values("Responses", ascending=False), use_container_width=True, hide_index=True)
+
 st.markdown("##### Submissions")
 search = st.text_input("Search responses", placeholder="Filter by comment, survey, value…",
                        label_visibility="collapsed")
