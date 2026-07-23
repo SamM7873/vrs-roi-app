@@ -280,70 +280,77 @@ with st.expander("ℹ️ How to read this report"):
 **Tip:** the metrics reflect the current **date range + filters**. For very wide ranges (This Year / All Time) with 10,000+ tickets, only the first 10,000 are measured — use a narrower range for exact numbers.
 """)
 
-# ── Charts ───────────────────────────────────────────────────────────────────
+# ── Charts (click a bar to filter the table below) ───────────────────────────
+st.markdown("###### 📊 Breakdown — **click any bar to filter the detail table below**")
+click_filters = {}
+
+
+def ibar(col, color, title, n=12):
+    """Interactive horizontal bar with value labels; returns clicked values."""
+    st.markdown(f"##### {title}")
+    d = df[df[col] != "—"][col].value_counts().head(n).reset_index()
+    d.columns = [col, "Tickets"]
+    if d.empty:
+        st.caption("No data.")
+        return
+    sel = alt.selection_point(fields=[col], name="pt")
+    base = alt.Chart(d).encode(
+        x=alt.X("Tickets:Q", title=None, axis=alt.Axis(grid=True, gridColor="#EFEADF", tickCount=4)),
+        y=alt.Y(f"{col}:N", sort="-x", title=None, axis=alt.Axis(labelLimit=180)),
+    )
+    bars = base.mark_bar(color=color, cornerRadiusTopRight=5, cornerRadiusBottomRight=5).encode(
+        opacity=alt.condition(sel, alt.value(1.0), alt.value(0.4)),
+        tooltip=[alt.Tooltip(f"{col}:N", title=col), alt.Tooltip("Tickets:Q")],
+    ).add_params(sel)
+    labels = base.mark_text(align="left", dx=4, fontSize=10, fontWeight="bold", color="#4B4B3A").encode(
+        text=alt.Text("Tickets:Q", format=","))
+    chart = (bars + labels).properties(height=max(170, len(d) * 30)).configure_view(strokeWidth=0)
+    ev = st.altair_chart(chart, use_container_width=True, on_select="rerun", key=f"ib_{col}")
+    picked = []
+    try:
+        raw = (ev or {}).get("selection", {}).get("pt", [])
+        if isinstance(raw, list):
+            picked = [i.get(col) for i in raw if isinstance(i, dict) and i.get(col) is not None]
+        elif isinstance(raw, dict):
+            picked = raw.get(col, [])
+    except Exception:
+        picked = []
+    if picked:
+        click_filters[col] = picked
+
+
 c1, c2 = st.columns(2)
 with c1:
-    st.markdown("##### Tickets by Category")
-    cat = df[df["Category"] != "—"]["Category"].value_counts().head(12).reset_index()
-    cat.columns = ["Category", "Tickets"]
-    if not cat.empty:
-        st.altair_chart(alt.Chart(cat).mark_bar(color=PRIMARY, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
-            x=alt.X("Tickets:Q"), y=alt.Y("Category:N", sort="-x", title=None), tooltip=["Category", "Tickets"]
-        ).properties(height=max(200, len(cat) * 24)), use_container_width=True)
+    ibar("Category", PRIMARY, "Tickets by Category")
 with c2:
-    st.markdown("##### Tickets by Stage")
-    stg = df["Stage"].value_counts().head(12).reset_index()
-    stg.columns = ["Stage", "Tickets"]
-    st.altair_chart(alt.Chart(stg).mark_bar(color=BLUE, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
-        x=alt.X("Tickets:Q"), y=alt.Y("Stage:N", sort="-x", title=None), tooltip=["Stage", "Tickets"]
-    ).properties(height=max(200, len(stg) * 24)), use_container_width=True)
-
+    ibar("Stage", BLUE, "Tickets by Stage")
 c3, c4 = st.columns(2)
 with c3:
+    ibar("Owner", GREEN, "Tickets by Owner")
+with c4:
+    ibar("Ticket Type", "#8B5CF6", "Tickets by Ticket Type")
+c5, c6 = st.columns(2)
+with c5:
+    ibar("VRS App", PRIMARY, "Tickets by VRS App")
+with c6:
+    ibar("Source", BLUE, "Tickets by Source")
+
+c7, c8 = st.columns(2)
+with c7:
     st.markdown("##### Tickets Created over Time")
     tdf = df.dropna(subset=["Created"]).copy()
     if not tdf.empty:
         tdf["Month"] = tdf["Created"].dt.to_period("M").dt.to_timestamp()
         bm = tdf.groupby("Month").size().reset_index(name="Tickets")
-        st.altair_chart(alt.Chart(bm).mark_bar(color=PRIMARY, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-            x=alt.X("Month:T", title=None), y=alt.Y("Tickets:Q"), tooltip=["Month:T", "Tickets"]
-        ).properties(height=260), use_container_width=True)
-with c4:
-    st.markdown("##### Avg Time to Close by Owner (days)")
-    od = df[df["_ttc_ms"].notna() & (df["Owner"] != "—")].copy()
-    if not od.empty:
-        od["days"] = od["_ttc_ms"] / 86_400_000
-        ob = od.groupby("Owner")["days"].mean().round(1).sort_values(ascending=False).head(12).reset_index()
-        st.altair_chart(alt.Chart(ob).mark_bar(color=GREEN, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
-            x=alt.X("days:Q", title="Avg days to close"), y=alt.Y("Owner:N", sort="-x", title=None),
-            tooltip=["Owner", "days"]
-        ).properties(height=max(200, len(ob) * 24)), use_container_width=True)
-
-c5, c6 = st.columns(2)
-
-
-def _bar_by(col, color):
-    d = df[df[col] != "—"][col].value_counts().head(12).reset_index()
-    d.columns = [col, "Tickets"]
-    if d.empty:
-        st.caption(f"No {col} data.")
-        return
-    st.altair_chart(alt.Chart(d).mark_bar(color=color, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
-        x=alt.X("Tickets:Q"), y=alt.Y(f"{col}:N", sort="-x", title=None), tooltip=[col, "Tickets"]
-    ).properties(height=max(180, len(d) * 26)), use_container_width=True)
-
-
-with c5:
-    st.markdown("##### Tickets by VRS App")
-    _bar_by("VRS App", PRIMARY)
-with c6:
-    st.markdown("##### Tickets by Ticket Type")
-    _bar_by("Ticket Type", "#8B5CF6")
-
-c7, c8 = st.columns(2)
-with c7:
-    st.markdown("##### Tickets by Source")
-    _bar_by("Source", BLUE)
+        _line = alt.Chart(bm).mark_area(
+            line={"color": PRIMARY, "strokeWidth": 2.5},
+            color=alt.Gradient(gradient="linear",
+                               stops=[alt.GradientStop(color="#F4F1E8", offset=0),
+                                      alt.GradientStop(color=PRIMARY, offset=1)],
+                               x1=1, x2=1, y1=1, y2=0)).encode(
+            x=alt.X("Month:T", title=None), y=alt.Y("Tickets:Q"),
+            tooltip=["Month:T", "Tickets"]).properties(height=260)
+        st.altair_chart(_line, use_container_width=True)
 with c8:
     st.markdown("##### Open Tickets by Days Since Activity")
     _open_ds = _days_since[_open_mask].dropna()
@@ -395,10 +402,20 @@ table_cols = ["Ticket ID", "Ticket Name", "Created", "Closed", "Time to Close (d
               "Ticket Type", "VRS App", "Usage Type", "Source", "Jira Key"]
 show = show[table_cols]
 
+# Apply click-to-filter selections from the charts above
+if click_filters:
+    for _col, _vals in click_filters.items():
+        if _col in show.columns and _vals:
+            show = show[show[_col].isin(_vals)]
+    _chips = " · ".join(f"**{c}**: {', '.join(map(str, v))}" for c, v in click_filters.items())
+    st.info(f"🔎 Showing tickets for → {_chips}  ·  _(click the same bar again, or clear a chart selection, to reset)_")
+
 if search.strip():
     q = search.strip().lower()
     show = show[show.astype(str).apply(lambda x: x.str.lower().str.contains(q, na=False)).any(axis=1)]
-    st.caption(f"{len(show):,} of {total:,} tickets match “{search}”")
+
+st.caption(f"Showing {len(show):,} of {total:,} tickets"
+           + (f" · matching “{search}”" if search.strip() else ""))
 
 st.dataframe(show, use_container_width=True, hide_index=True, height=460)
 
