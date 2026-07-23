@@ -159,6 +159,26 @@ for r in records:
     })
 df = pd.DataFrame(rows)
 
+# ── Filters ──────────────────────────────────────────────────────────────────
+fc1, fc2, fc3 = st.columns(3)
+_owner_opts = sorted([o for o in df["Owner"].unique() if o and o != "—"])
+sel_owner = fc1.multiselect("Ticket owner", _owner_opts)
+_pipe_opts = sorted([o for o in df["Pipeline"].unique() if o and o != "—"])
+sel_pipe = fc2.multiselect("Pipeline", _pipe_opts)
+_cat_opts = sorted([o for o in df["Category"].unique() if o and o != "—"])
+sel_cat = fc3.multiselect("Category", _cat_opts)
+
+if sel_owner:
+    df = df[df["Owner"].isin(sel_owner)]
+if sel_pipe:
+    df = df[df["Pipeline"].isin(sel_pipe)]
+if sel_cat:
+    df = df[df["Category"].isin(sel_cat)]
+
+if df.empty:
+    st.warning("No tickets match the selected filters.")
+    st.stop()
+
 # ── KPIs ─────────────────────────────────────────────────────────────────────
 total = len(df)
 closed = int(df["Closed"].notna().sum())
