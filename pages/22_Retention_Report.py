@@ -94,7 +94,9 @@ c1, c2, c3, c4 = st.columns([2, 1.6, 1.8, 1])
 metric = c1.selectbox("Active means…", ["VRS usage", "CfZ usage", "VRS or CfZ", "VRS and CfZ (both)"],
                       help="A user is 'active' in a month if they generated at least 1 minute of this usage. "
                            "'both' requires VRS and CfZ minutes in the same month.")
-lookback = c2.selectbox("Look back", ["Last 12 months", "Last 15 months", "Last 18 months", "Last 24 months"], index=1)
+lookback = c2.selectbox("Look back",
+                        ["Last 3 months", "Last 6 months", "Last 9 months", "Last 12 months",
+                         "Last 18 months", "Last 24 months"], index=3)
 unit = c3.selectbox("Count users by", ["VRS Number", "Person (email)"],
                     help="Person merges a customer's multiple numbers into one user via email.")
 with c4:
@@ -176,7 +178,7 @@ latest_ord = int(active["_mo"].max())
 cohort_size = active.groupby("cohort")["user"].nunique()
 retained = active.groupby(["cohort", "offset"])["user"].nunique().reset_index(name="retained")
 
-MAXO = 12
+MAXO = min(12, _months_back)  # can't measure further than the look-back window
 
 
 def overall_retention(o):
