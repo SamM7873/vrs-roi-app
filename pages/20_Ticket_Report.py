@@ -242,6 +242,44 @@ st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(6,1fr);gap
   {tile("Stale Open (7+ days)", f"{stale:,}", "open, no activity 7+ days", "#EF4444")}
 </div>""", unsafe_allow_html=True)
 
+# ── What to watch (dynamic insights) ─────────────────────────────────────────
+_insights = []
+if avg_ttfr_hrs is not None and avg_ttfr_hrs > 24:
+    _insights.append(f"⏱️ **First response is slow** — averaging **{avg_ttfr_hrs:.0f} h**. A same-business-day first reply (< 24 h) is the usual target.")
+if open_ct and stale:
+    _insights.append(f"🔴 **{stale:,} open tickets are stale** — no activity in 7+ days ({stale/open_ct*100:.0f}% of open). Check the **By Owner** table and the days-since-activity chart to see where they're piling up.")
+if close_rate < 60:
+    _insights.append(f"📉 **Close rate is {close_rate:.0f}%** — more tickets are opening than closing this period, so the open backlog is growing.")
+if avg_ttc_days is not None and avg_ttc_days > 5:
+    _insights.append(f"🐢 **Avg time to close is {avg_ttc_days:.1f} days** — worth checking which categories or owners take longest.")
+
+if _insights:
+    st.markdown("**⚠️ What to watch**")
+    for _m in _insights:
+        st.markdown(f"- {_m}")
+else:
+    st.success("✅ Looking healthy — fast first response, few stale tickets, and a solid close rate for this period.")
+
+with st.expander("ℹ️ How to read this report"):
+    st.markdown("""
+**Volume & speed**
+- **Tickets** — created in the selected date range (the HubSpot *Request* pipeline is excluded).
+- **Closed / Close rate** — resolved tickets and what share of the total that is.
+- **Open** — created in range, not yet closed.
+- **Avg Time to Close** — average days from ticket **created → closed** (closed tickets only). Lower = faster resolution.
+- **Avg First Response** — average time from **created → first agent reply**. This is your responsiveness; aim for under one business day.
+- **With Jira** — tickets linked to a Jira issue (engineering escalations).
+
+**Engagement & neglect**
+- **Avg Activities / Ticket** — average logged notes, calls, emails, meetings, tasks per ticket. Very low can mean under-documented work.
+- **Avg Days Since Activity** — on average, how long since the last logged action. High = things sitting untouched.
+- **Stale Open (7+ days)** — **open** tickets with no activity in 7+ days. These are the ones at risk of being forgotten — your daily cleanup list.
+
+**By Owner table** — per rep: tickets, closed, close %, avg time to close, avg first response, avg activities. Use it to spot workload imbalance or a rep who needs help.
+
+**Tip:** the metrics reflect the current **date range + filters**. For very wide ranges (This Year / All Time) with 10,000+ tickets, only the first 10,000 are measured — use a narrower range for exact numbers.
+""")
+
 # ── Charts ───────────────────────────────────────────────────────────────────
 c1, c2 = st.columns(2)
 with c1:
