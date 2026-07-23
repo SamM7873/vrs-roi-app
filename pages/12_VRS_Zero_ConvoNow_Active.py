@@ -593,4 +593,19 @@ st.download_button(
     mime="text/csv",
 )
 from utils import pdf_download_button
-pdf_download_button(df_view, "vrs_zero.pdf", "VRS Zero / Convo Now Active", key="vrszero")
+_pdf_metrics = [
+    ("Contacts", f"{total_contacts:,}"),
+    ("Convo Now Min", f"{total_cn_min:,.0f}"),
+    ("Convo Now Cost", f"${total_cn_cost:,.0f}"),
+    ("Avg Active Months", f"{avg_months:.1f}"),
+]
+_pdf_charts = []
+if "State" in df_view.columns:
+    _st = (df_view.assign(State=df_view["State"].replace("", "—"))
+           .groupby("State", as_index=False)["Convo Now Min"].sum()
+           .sort_values("Convo Now Min", ascending=False))
+    _pdf_charts.append({"data": _st, "kind": "bar", "x": "State", "y": "Convo Now Min",
+                        "title": "Convo Now Minutes by State"})
+pdf_download_button(df_view, "vrs_zero.pdf", "VRS Zero / Convo Now Active",
+                    subtitle="VRS = 0 · CfZ = 0 · Convo Now active",
+                    metrics=_pdf_metrics, charts=_pdf_charts, key="vrszero")

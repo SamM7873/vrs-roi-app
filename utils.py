@@ -508,7 +508,45 @@ def _fmt_num(v):
     return f"{v:,.1f}"
 
 
-def _draw_dashboard(fig, df, title, subtitle, numeric_cols, cat_cols):
+def _draw_chart_spec(ax, spec):
+    """Render a themed chart from a spec dict:
+    {data: df, kind: bar|barh|line|area, x: col, y: col, title: str}."""
+    import matplotlib.pyplot as plt
+    d = spec["data"]
+    if d is None or len(d) == 0:
+        return None
+    kind = spec.get("kind", "bar")
+    x, y = spec["x"], spec["y"]
+    d = d.head(20)
+    xs = [str(v)[:18] for v in d[x].tolist()]
+    ys = pd.to_numeric(d[y], errors="coerce").fillna(0).tolist()
+    if kind == "barh":
+        ax.barh(xs, ys, color=_PDF_BEIGE, edgecolor="white", linewidth=0.5, zorder=3); ax.invert_yaxis()
+        ax.set_xlabel(y, fontsize=9, color=_PDF_MUTE)
+    elif kind == "line":
+        ax.plot(xs, ys, color=_PDF_BEIGE, marker="o", markerfacecolor=_PDF_GREEN, linewidth=2.4, zorder=3)
+        ax.set_ylabel(y, fontsize=9, color=_PDF_MUTE)
+    elif kind == "area":
+        ax.fill_between(range(len(xs)), ys, color=_PDF_BEIGE, alpha=0.5, zorder=2)
+        ax.plot(range(len(xs)), ys, color=_PDF_GREEN, linewidth=2, zorder=3)
+        ax.set_xticks(range(len(xs))); ax.set_xticklabels(xs); ax.set_ylabel(y, fontsize=9, color=_PDF_MUTE)
+    else:
+        bars = ax.bar(xs, ys, color=_PDF_BEIGE, edgecolor="white", linewidth=0.5, zorder=3)
+        ax.bar_label(bars, labels=[_fmt_num(v) for v in ys], padding=2, fontsize=7, color=_PDF_INK)
+        ax.set_ylabel(y, fontsize=9, color=_PDF_MUTE)
+    ax.grid(axis=("x" if kind == "barh" else "y"), color="#E5E1D6", linewidth=0.7, zorder=0)
+    ax.set_axisbelow(True)
+    for sp in ("top", "right", "left"):
+        ax.spines[sp].set_visible(False)
+    ax.spines["bottom"].set_color("#CFC9BC")
+    ax.tick_params(length=0)
+    if kind != "barh":
+        plt.setp(ax.get_xticklabels(), rotation=35, ha="right", fontsize=8, color=_PDF_INK)
+    plt.setp(ax.get_yticklabels(), fontsize=7, color=_PDF_MUTE)
+    return spec.get("title") or f"{y} by {x}"
+
+
+def _draw_dashboard(fig, df, title, subtitle, numeric_cols, cat_cols, metrics=None, charts=None):
     """Cover/dashboard page: header band + KPI cards + chart."""
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyBboxPatch, Rectangle
@@ -527,12 +565,14 @@ def _draw_dashboard(fig, df, title, subtitle, numeric_cols, cat_cols):
     bg.text(0.955, 0.905, datetime.now().strftime("%b %d, %Y · %I:%M %p"),
             color="#D9E4DD", fontsize=8, ha="right", va="center", zorder=3)
 
-    # KPI cards
-    kpis = [("Records", f"{len(df):,}")]
-    for c in numeric_cols[:3]:
-        s = pd.to_numeric(df[c], errors="coerce")
-        kpis.append((f"Σ {str(c)[:20]}", _fmt_num(s.sum())))
-    n = len(kpis); gap = 0.02; left = 0.045; right = 0.955
+    # KPI cards — use the page's own metrics when provided, else derive
+    if metrics:
+        kpis = [(str(l), str(v)) for l, v in metrics][:5]
+    else:
+        kpis = [("Records", f"{len(df):,}")]
+        for c in numeric_cols[:3]:
+            kpis.append((f"Σ {str(c)[:20]}", _fmt_num(pd.to_numeric(df[c], errors='coerce').sum())))
+    n = max(1, len(kpis)); gap = 0.02; left = 0.045; right = 0.955
     cw = (right - left - gap * (n - 1)) / n
     y0, ch = 0.70, 0.13
     for i, (label, val) in enumerate(kpis):
@@ -540,20 +580,26 @@ def _draw_dashboard(fig, df, title, subtitle, numeric_cols, cat_cols):
         card = FancyBboxPatch((x, y0), cw, ch, boxstyle="round,pad=0.006,rounding_size=0.012",
                               linewidth=1, edgecolor="#E5E1D6", facecolor=_PDF_CREAM, zorder=2)
         bg.add_patch(card)
-        bg.text(x + 0.015, y0 + ch - 0.032, label.upper(), color=_PDF_MUTE, fontsize=7.5,
+        bg.text(x + 0.015, y0 + ch - 0.032, label.upper()[:26], color=_PDF_MUTE, fontsize=7.5,
                 fontweight="bold", va="center", zorder=3)
-        bg.text(x + 0.015, y0 + 0.045, val, color=_PDF_INK, fontsize=17, fontweight="bold",
+        bg.text(x + 0.015, y0 + 0.045, str(val), color=_PDF_INK, fontsize=16, fontweight="bold",
                 va="center", zorder=3)
 
-    # chart
+    # main chart — page's own first chart when provided, else auto
     ax = fig.add_axes([0.06, 0.09, 0.88, 0.52])
-    ch_title = _draw_chart(ax, df, numeric_cols, cat_cols)
+    ch_title = None
+    if charts:
+        try:
+            ch_title = _draw_chart_spec(ax, charts[0])
+        except Exception:
+            ch_title = None
+    if ch_title is None and not charts:
+        ch_title = _draw_chart(ax, df, numeric_cols, cat_cols)
     if ch_title:
         bg.text(0.045, 0.645, ch_title, color=_PDF_INK, fontsize=12, fontweight="bold", va="center", zorder=3)
     else:
         ax.axis("off")
-        ax.text(0.5, 0.5, "No chartable summary for this report", ha="center", va="center",
-                color=_PDF_MUTE, fontsize=10)
+        ax.text(0.5, 0.5, "No chart for this report", ha="center", va="center", color=_PDF_MUTE, fontsize=10)
     bg.text(0.045, 0.03, f"{title} · {len(df):,} rows", color=_PDF_MUTE, fontsize=7, va="center")
     bg.text(0.955, 0.03, "Page 1", color=_PDF_MUTE, fontsize=7, ha="right", va="center")
 
@@ -591,9 +637,11 @@ def _draw_chart(ax, df, numeric_cols, cat_cols):
     return f"{ylabel} by {gcol}"
 
 
-def _pdf_from_df(df, title, subtitle=""):
+def _pdf_from_df(df, title, subtitle="", metrics=None, charts=None):
     """Render a DataFrame to a designed presentation PDF:
-    a branded dashboard (header + KPI cards + chart) then styled table pages."""
+    a branded dashboard (header + KPI cards + chart) then styled table pages.
+    `metrics` = [(label, value), ...] and `charts` = [spec, ...] let a page pass
+    its own tiles and charts; otherwise sensible ones are derived."""
     import io
     import matplotlib
     matplotlib.use("Agg")
@@ -603,6 +651,7 @@ def _pdf_from_df(df, title, subtitle=""):
 
     numeric_cols, cat_cols = _pdf_profile(df)
     cols = [str(c) for c in list(df.columns)[:12]]
+    page_no = [1]
 
     def _cell(x):
         s = "" if x is None else str(x)
@@ -616,16 +665,30 @@ def _pdf_from_df(df, title, subtitle=""):
         # ── dashboard page ──
         fig = plt.figure(figsize=(11, 8.5))
         try:
-            _draw_dashboard(fig, df, title, subtitle, numeric_cols, cat_cols)
+            _draw_dashboard(fig, df, title, subtitle, numeric_cols, cat_cols, metrics, charts)
         except Exception:
             fig.clf()
             ax = fig.add_axes([0, 0, 1, 1]); ax.axis("off")
             ax.text(0.5, 0.6, title, ha="center", fontsize=20, fontweight="bold")
         pdf.savefig(fig); plt.close(fig)
 
+        # ── extra chart pages (2nd, 3rd chart the page passed) ──
+        for spec in (charts or [])[1:]:
+            try:
+                fig = plt.figure(figsize=(11, 8.5))
+                bg = fig.add_axes([0, 0, 1, 1]); bg.axis("off"); bg.set_xlim(0, 1); bg.set_ylim(0, 1)
+                bg.add_patch(Rectangle((0, 0.94), 1, 0.06, color=_PDF_GREEN))
+                page_no[0] += 1
+                bg.text(0.955, 0.97, f"Page {page_no[0]}", color="#D9E4DD", fontsize=8, ha="right", va="center")
+                ax = fig.add_axes([0.08, 0.1, 0.86, 0.76])
+                t = _draw_chart_spec(ax, spec)
+                bg.text(0.045, 0.97, t or "Chart", color="white", fontsize=12, fontweight="bold", va="center")
+                pdf.savefig(fig); plt.close(fig)
+            except Exception:
+                plt.close("all")
+
         # ── table pages ──
         per_page = 22
-        total_pages = max(1, (len(rows) + per_page - 1) // per_page)
         for pi, start in enumerate(range(0, max(len(rows), 1), per_page)):
             chunk = rows[start:start + per_page]
             fig = plt.figure(figsize=(11, 8.5))
@@ -633,7 +696,8 @@ def _pdf_from_df(df, title, subtitle=""):
             bg.add_patch(Rectangle((0, 0.94), 1, 0.06, color=_PDF_GREEN))
             bg.text(0.045, 0.97, f"{title} — data table", color="white",
                     fontsize=12, fontweight="bold", va="center")
-            bg.text(0.955, 0.97, f"Page {pi + 2}", color="#D9E4DD", fontsize=8, ha="right", va="center")
+            page_no[0] += 1
+            bg.text(0.955, 0.97, f"Page {page_no[0]}", color="#D9E4DD", fontsize=8, ha="right", va="center")
 
             ax = fig.add_axes([0.03, 0.04, 0.94, 0.86]); ax.axis("off")
             tbl = ax.table(cellText=chunk if chunk else [["" for _ in cols]],
@@ -653,15 +717,17 @@ def _pdf_from_df(df, title, subtitle=""):
     return buf.getvalue()
 
 
-def pdf_download_button(df, filename, title, subtitle="", label="📄 Prepare presentation PDF", key=None):
+def pdf_download_button(df, filename, title, subtitle="", metrics=None, charts=None,
+                        label="📄 Prepare presentation PDF", key=None):
     """Two-step PDF export: a button that builds the PDF, then a download button.
-    Safe no-op for empty/None frames. Call next to a page's CSV download."""
+    `metrics` = [(label, value), ...] and `charts` = [{data, kind, x, y, title}, ...]
+    let a page pass its own KPI tiles and charts. Safe no-op for empty/None frames."""
     if df is None or (hasattr(df, "empty") and df.empty):
         return
     key = key or filename
     if st.button(label, key=f"pdfbtn_{key}"):
         try:
-            st.session_state[f"pdfbytes_{key}"] = _pdf_from_df(df, title, subtitle)
+            st.session_state[f"pdfbytes_{key}"] = _pdf_from_df(df, title, subtitle, metrics, charts)
         except Exception as e:
             st.session_state[f"pdfbytes_{key}"] = None
             st.error(f"PDF failed: {e}")

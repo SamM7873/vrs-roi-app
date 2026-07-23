@@ -338,6 +338,24 @@ st.dataframe(tbl, use_container_width=True, hide_index=True, height=460)
 st.download_button("📥 Download CSV", tbl.to_csv(index=False),
                    f"survey_feedback_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
 from utils import pdf_download_button
-pdf_download_button(tbl, "survey_feedback.pdf", "Survey Feedback", key="survey")
+_pdf_metrics = [("Responses", f"{total:,}"),
+                ("Avg score", f"{avg_score:.2f}" if avg_score is not None else "—"),
+                ("With comment", f"{with_comment:,}")]
+_pdf_charts = []
+if view["_ts"].notna().any():
+    _tm = view.dropna(subset=["_ts"]).copy()
+    _tm["Month"] = _tm["_ts"].dt.to_period("M").dt.to_timestamp().dt.strftime("%Y-%m")
+    _bm = _tm.groupby("Month").size().reset_index(name="Responses").sort_values("Month")
+    _pdf_charts.append({"data": _bm, "kind": "line", "x": "Month", "y": "Responses",
+                        "title": "Responses over time"})
+if "Ticket Owner" in view.columns:
+    _ow = (view[view["Ticket Owner"] != "—"].groupby("Ticket Owner").size()
+           .reset_index(name="Responses").sort_values("Responses", ascending=False))
+    if not _ow.empty:
+        _pdf_charts.append({"data": _ow, "kind": "bar", "x": "Ticket Owner", "y": "Responses",
+                            "title": "Responses by ticket owner"})
+pdf_download_button(tbl, "survey_feedback.pdf", "Survey Feedback",
+                    subtitle="HubSpot feedback survey submissions",
+                    metrics=_pdf_metrics, charts=_pdf_charts, key="survey")
 
 report_header_close()
