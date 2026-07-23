@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import requests
+import re
 import time
 from datetime import date, datetime, timezone
 from utils import (
@@ -208,11 +209,25 @@ def _barh(col, color, title, n=12):
     ).properties(height=max(180, len(d) * 26)), use_container_width=True)
 
 
+def _prio_rank(p):
+    m = re.search(r"[Pp]\s*(\d)", str(p))
+    return int(m.group(1)) if m else 99  # P1 heaviest → 1; unknown last
+
+
 a1, a2 = st.columns(2)
 with a1:
     _barh("Status", PRIMARY, "By Jira Status")
 with a2:
-    _barh("Priority", PURPLE, "By Priority")
+    st.markdown("##### By Priority (heavy → low)")
+    _pr = df[df["Priority"] != "—"]["Priority"].value_counts().reset_index()
+    _pr.columns = ["Priority", "Tickets"]
+    _pr["_r"] = _pr["Priority"].map(_prio_rank)
+    _pr = _pr.sort_values("_r")
+    if not _pr.empty:
+        st.altair_chart(alt.Chart(_pr).mark_bar(color=PURPLE, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+            x=alt.X("Priority:N", sort=list(_pr["Priority"]), title=None),
+            y=alt.Y("Tickets:Q"), tooltip=["Priority", "Tickets"]
+        ).properties(height=260), use_container_width=True)
 a3, a4 = st.columns(2)
 with a3:
     _barh("Assignee", BLUE, "By Assignee")
@@ -226,12 +241,41 @@ with a4:
             x=alt.X("Month:T", title=None), y=alt.Y("Tickets:Q"), tooltip=["Month:T", "Tickets"]
         ).properties(height=260), use_container_width=True)
 
+# ── Top Jira issues by ticket count (same PS-XXXX grouped) ───────────────────
+st.markdown("##### Top Jira Issues by Ticket Count")
+st.caption("Each Jira issue (PS-XXXX) with how many HubSpot tickets point to it — sorted by count, then priority (heavy first).")
+_grp = df[df["Jira Key"] != "—"].groupby("Jira Key").agg(
+    Tickets=("Ticket ID", "count"),
+    Summary=("Jira Summary", "first"),
+    Status=("Status", "first"),
+    Priority=("Priority", "first"),
+    Assignee=("Assignee", "first"),
+    Link=("Jira Link", "first"),
+).reset_index()
+_grp["_r"] = _grp["Priority"].map(_prio_rank)
+_grp = _grp.sort_values(["Tickets", "_r"], ascending=[False, True]).drop(columns="_r")
+
+gt1, gt2 = st.columns([2, 3])
+with gt1:
+    _top = _grp.head(15).copy()
+    _top["Label"] = _top["Jira Key"] + "  (" + _top["Priority"].astype(str) + ")"
+    st.altair_chart(alt.Chart(_top).mark_bar(color=GREEN, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
+        x=alt.X("Tickets:Q"), y=alt.Y("Label:N", sort="-x", title=None),
+        tooltip=["Jira Key", "Priority", "Status", "Tickets"]
+    ).properties(height=max(200, len(_top) * 26)), use_container_width=True)
+with gt2:
+    st.dataframe(_grp[["Jira Key", "Tickets", "Priority", "Status", "Assignee", "Summary", "Link"]],
+                 use_container_width=True, hide_index=True, height=max(200, min(len(_grp), 15) * 35),
+                 column_config={"Link": st.column_config.LinkColumn("Jira", display_text="Open ↗")})
+
 # ── Table ────────────────────────────────────────────────────────────────────
 st.markdown("##### Jira Ticket Detail")
 search = st.text_input("Search", placeholder="Filter by name, Jira key, summary, assignee…",
                        label_visibility="collapsed")
 show = df.copy()
 show["Age (days)"] = (_now - show["Created"]).dt.days
+show["_r"] = show["Priority"].map(_prio_rank)
+show = show.sort_values(["_r", "Age (days)"], ascending=[True, False]).drop(columns="_r")
 for c in ("Created", "Closed"):
     show[c] = show[c].dt.strftime("%b %d, %Y")
 table_cols = ["Ticket ID", "Ticket Name", "Jira Key", "Jira Summary", "Status", "Priority",
