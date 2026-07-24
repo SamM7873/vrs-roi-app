@@ -66,6 +66,8 @@ def _load():
                         + _btw("number_deleted_at", m0, m1)),
         "portout": _count([VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portouts"}]
                           + _btw("number_deleted_at", m0, m1)),
+        "portin": _count([VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portins"}]
+                         + _btw("number_created_at", m0, m1)),
         "month_label": m0.strftime("%B %Y"),
         "ts": time.time(),
     }
@@ -101,6 +103,7 @@ reg = _c["reg"] or 0
 reg_p = _c["reg_prev"] or 0
 deact = _c["deact"] or 0
 portout = _c["portout"] or 0
+portin = _c.get("portin") or 0
 
 
 def _spark(color, kind, ycol):
@@ -161,11 +164,12 @@ with k4:
 st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
 _net = vrs_m + cn_m - deact
 stat = [
-    ("🚫", f"{deact:,} Deactivated", "closed / deleted this month", RED),
+    ("📥", f"{portin:,} Port-In", "ported in from another provider", BLUE),
     ("📤", f"{portout:,} Port-Out", "ported to another provider", AMBER),
+    ("🚫", f"{deact:,} Deactivated", "closed / deleted this month", RED),
     ("📈", f"{_net:,} Net new", "VRS + Convo − deactivated", GREEN if _net >= 0 else RED),
 ]
-sc = st.columns(3)
+sc = st.columns(4)
 for col, (icon, title, sub, color) in zip(sc, stat):
     with col:
         st.markdown(f"""
