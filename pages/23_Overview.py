@@ -209,14 +209,16 @@ with g1:
     st.altair_chart(bars, use_container_width=True)
 with g2:
     st.markdown("<div class='tblr-label' style='margin-bottom:0.4rem;'>Status breakdown</div>", unsafe_allow_html=True)
-    other = max(total - live - susp, 0)
-    donut_df = pd.DataFrame({"Status": ["Live", "Suspended", "Other"], "Count": [live, susp, other]})
+    other = max(total - live - susp - deact, 0)
+    donut_df = pd.DataFrame({"Status": ["Live", "Suspended", "Deactivated", "Other"],
+                             "Count": [live, susp, deact, other]})
     donut = alt.Chart(donut_df).mark_arc(innerRadius=62, cornerRadius=3).encode(
         theta="Count:Q",
-        color=alt.Color("Status:N", scale=alt.Scale(domain=["Live", "Suspended", "Other"],
-                                                     range=[GREEN, AMBER, "#CBD5E1"]),
+        color=alt.Color("Status:N", scale=alt.Scale(domain=["Live", "Suspended", "Deactivated", "Other"],
+                                                     range=[GREEN, AMBER, RED, "#CBD5E1"]),
                         legend=alt.Legend(orient="bottom", title=None)),
         tooltip=["Status", "Count"]).properties(height=300)
+    st.caption("‘Other’ = numbers in any status besides Live, Suspended, or Deactivated.")
     st.altair_chart(donut, use_container_width=True)
 
 st.caption("Use the sidebar to open any report — this dashboard is your at-a-glance home.")
