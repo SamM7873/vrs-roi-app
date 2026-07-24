@@ -163,11 +163,13 @@ with k4:
 # ── small stat cards ──────────────────────────────────────────────────────────
 st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
 _net = vrs_m - deact
+_net_pct = (_net / vrs_m * 100) if vrs_m else 0
+_deact_pct = (deact / vrs_m * 100) if vrs_m else 0
 stat = [
     ("📥", f"{portin:,} Port-In", "ported in from another provider", BLUE),
     ("📤", f"{portout:,} Port-Out", "ported to another provider", AMBER),
-    ("🚫", f"{deact:,} Deactivated", "closed / deleted this month", RED),
-    ("📈", f"{_net:,} Net new", "New VRS − deactivated", GREEN if _net >= 0 else RED),
+    ("🚫", f"{deact:,} Deactivated", f"{_deact_pct:.0f}% of new VRS · deleted this month", RED),
+    ("📈", f"{_net:,} Net new", f"New VRS − deactivated · {_net_pct:.0f}% net", GREEN if _net >= 0 else RED),
 ]
 sc = st.columns(4)
 for col, (icon, title, sub, color) in zip(sc, stat):
