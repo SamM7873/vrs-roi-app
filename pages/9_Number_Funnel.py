@@ -106,7 +106,7 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 
 # A stable key for this exact filter combination. The same filters reload the
 # saved result from disk instead of re-fetching 45k records every time.
-_key = f"number_funnel_v1_{preset}_{date_field}_{usage_filter}_{filter_start}_{filter_end}"
+_key = f"number_funnel_v2_{preset}_{date_field}_{usage_filter}_{filter_start}_{filter_end}"
 
 run = st.button("Run Number Funnel", use_container_width=False)
 
@@ -139,10 +139,16 @@ if run:
         st.warning("No live VRS number records found.")
         st.stop()
 
-    # Build date boundary in UTC
+    # Build date boundary in Central time (to match HubSpot, which filters in
+    # CDT/CST). The picked dates are treated as Central-local day boundaries,
+    # then compared against the UTC timestamps returned by the API. Using UTC
+    # midnight here shifted the window ~5h earlier and over-counted the baseline.
+    def _central_tz(mm):
+        # CDT (UTC-5) roughly Mar–Nov, CST (UTC-6) otherwise — matches the sidebar sync widget.
+        return timezone(timedelta(hours=-5 if 3 <= mm <= 11 else -6))
     if filter_start and filter_end:
-        fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=timezone.utc)
-        fe = datetime(filter_end.year,   filter_end.month,   filter_end.day, 23, 59, 59, tzinfo=timezone.utc)
+        fs = datetime(filter_start.year, filter_start.month, filter_start.day, 0, 0, 0, tzinfo=_central_tz(filter_start.month))
+        fe = datetime(filter_end.year,   filter_end.month,   filter_end.day, 23, 59, 59, tzinfo=_central_tz(filter_end.month))
         def in_range(v):
             dt = _parse(v)
             return dt is not None and fs <= dt <= fe
