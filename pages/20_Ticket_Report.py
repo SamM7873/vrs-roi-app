@@ -48,20 +48,25 @@ def _floor(label):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _owners():
-    out, after = {}, None
-    for _ in range(50):
-        url = f"{BASE_URL}/crm/v3/owners?limit=100" + (f"&after={after}" if after else "")
-        r = requests.get(url, headers=_headers, timeout=30)
-        if r.status_code != 200:
-            break
-        d = r.json()
-        for o in d.get("results", []):
-            nm = f"{o.get('firstName','')} {o.get('lastName','')}".strip() or o.get("email")
-            if nm:
-                out[str(o.get("id"))] = nm
-        after = d.get("paging", {}).get("next", {}).get("after")
-        if not after:
-            break
+    """Include deactivated (archived) owners, tagged '(deactivated)'."""
+    out = {}
+    for _archived in (False, True):
+        after = None
+        for _ in range(50):
+            url = (f"{BASE_URL}/crm/v3/owners?limit=100"
+                   + ("&archived=true" if _archived else "")
+                   + (f"&after={after}" if after else ""))
+            r = requests.get(url, headers=_headers, timeout=30)
+            if r.status_code != 200:
+                break
+            d = r.json()
+            for o in d.get("results", []):
+                nm = f"{o.get('firstName','')} {o.get('lastName','')}".strip() or o.get("email")
+                if nm:
+                    out[str(o.get("id"))] = f"{nm} (deactivated)" if _archived else nm
+            after = d.get("paging", {}).get("next", {}).get("after")
+            if not after:
+                break
     return out
 
 

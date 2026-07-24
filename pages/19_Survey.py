@@ -72,24 +72,30 @@ def _owner_name_from(o):
 
 
 def _fetch_owners():
-    """owner id -> 'First Last' (or email) for all HubSpot owners."""
-    out, after = {}, None
-    for _ in range(50):
-        url = f"{BASE_URL}/crm/v3/owners?limit=100" + (f"&after={after}" if after else "")
-        try:
-            r = requests.get(url, headers=_headers, timeout=30)
-        except requests.exceptions.RequestException:
-            break
-        if r.status_code != 200:
-            break
-        data = r.json()
-        for o in data.get("results", []):
-            nm = _owner_name_from(o)
-            if nm:
-                out[str(o.get("id"))] = nm
-        after = data.get("paging", {}).get("next", {}).get("after")
-        if not after:
-            break
+    """owner id -> 'First Last' (or email) for all HubSpot owners, including
+    deactivated (archived) ones — their names are tagged '(deactivated)'."""
+    out = {}
+    # active owners first, then archived (deactivated) so we can label them.
+    for _archived in (False, True):
+        after = None
+        for _ in range(50):
+            url = (f"{BASE_URL}/crm/v3/owners?limit=100"
+                   + ("&archived=true" if _archived else "")
+                   + (f"&after={after}" if after else ""))
+            try:
+                r = requests.get(url, headers=_headers, timeout=30)
+            except requests.exceptions.RequestException:
+                break
+            if r.status_code != 200:
+                break
+            data = r.json()
+            for o in data.get("results", []):
+                nm = _owner_name_from(o)
+                if nm:
+                    out[str(o.get("id"))] = f"{nm} (deactivated)" if _archived else nm
+            after = data.get("paging", {}).get("next", {}).get("after")
+            if not after:
+                break
     return out
 
 
