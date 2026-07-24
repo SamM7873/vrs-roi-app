@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import time
+import json
+import streamlit.components.v1 as components
 from datetime import datetime, timezone, timedelta, date
 from utils import dash_spinner, require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close, save_report, load_report
 
@@ -324,22 +326,45 @@ chart_df["x1"] = (_maxc + chart_df["Count"]) / 2
 st.markdown("##### Funnel")
 _base = alt.Chart(chart_df)
 
-# 1) Classic tapering funnel (centered bands, narrowing stage to stage)
-_funnel = _base.mark_bar(cornerRadius=6).encode(
-    y=alt.Y("Stage:N", sort=_stage_order, axis=alt.Axis(title=None, labelLimit=200)),
-    x=alt.X("x0:Q", axis=None, scale=alt.Scale(domain=[0, _maxc])),
-    x2="x1:Q",
-    color=alt.Color("Color:N", scale=None, legend=None),
-    tooltip=["Stage", alt.Tooltip("Count:Q", format=","), alt.Tooltip("Pct:Q", format=".1f", title="% of total")],
-).properties(height=60 * len(stages))
-# center the label within each band by anchoring at the horizontal midpoint (=_maxc/2)
-_ftext = _base.transform_calculate(mid=str(_maxc / 2)).mark_text(
-    color="#1F2937", fontWeight="bold", fontSize=13).encode(
-    y=alt.Y("Stage:N", sort=_stage_order),
-    x=alt.X("mid:Q", axis=None, scale=alt.Scale(domain=[0, _maxc])),
-    text="Label:N",
-)
-st.altair_chart(_funnel + _ftext, use_container_width=True)
+# 1) Highcharts funnel with a neck (matches the classic funnel look)
+_hc_data = [[s[0], int(s[1])] for s in stages]
+_hc_colors = _colors[:len(stages)]
+_hc_html = f"""
+<div id="funnel_container" style="width:100%;height:460px;"></div>
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/modules/funnel.js"></script>
+<script>
+Highcharts.chart('funnel_container', {{
+  chart: {{ type: 'funnel', backgroundColor: 'transparent',
+            style: {{ fontFamily: 'Inter, -apple-system, Segoe UI, sans-serif' }} }},
+  title: {{ text: null }},
+  colors: {json.dumps(_hc_colors)},
+  plotOptions: {{
+    series: {{
+      dataLabels: {{
+        enabled: true,
+        format: '<b>{{point.name}}</b> ({{point.y:,.0f}})',
+        softConnector: true,
+        style: {{ fontSize: '13px', color: '#1F2937', textOutline: 'none' }}
+      }},
+      center: ['40%', '50%'],
+      neckWidth: '30%',
+      neckHeight: '25%',
+      width: '80%'
+    }}
+  }},
+  legend: {{ enabled: false }},
+  credits: {{ enabled: false }},
+  series: [{{ name: 'Numbers', data: {json.dumps(_hc_data)} }}],
+  responsive: {{ rules: [{{
+    condition: {{ maxWidth: 500 }},
+    chartOptions: {{ plotOptions: {{ series: {{
+      dataLabels: {{ inside: true }}, center: ['50%', '50%'], width: '100%' }} }} }}
+  }}] }}
+}});
+</script>
+"""
+components.html(_hc_html, height=480)
 
 with st.expander("Other chart views (horizontal bars · vertical bars)"):
     # 2) Horizontal bar funnel (left-aligned, longest at top)
