@@ -21,6 +21,15 @@ HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 _headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 PRIMARY, GREEN, BLUE, AMBER = "#C9A876", "#0D3B26", "#3B82F6", "#F59E0B"
 
+# 360 support team — override with a TEAM_360 secret (comma-separated owner names)
+_DEFAULT_360 = ["Alyssa Vela", "Jonah Hazelett", "Ilan Ben-Moshe", "Taylor Jamie",
+                "Ashley Thurman", "Danté Whitty", "Hannah Puent",
+                "Joseph Pfaff", "Lisa Anderson", "OluQuea Siffre", "Clayton Lawson",
+                "D.J. Garrison", "Xavius Turner", "Mayra Castrejon-Hernandez",
+                "Yader Martinez", "Melisa Winston"]
+_t360_raw = str(get_secret("TEAM_360", "")).strip()
+TEAM_360 = [n.strip() for n in _t360_raw.split(",") if n.strip()] or _DEFAULT_360
+
 PROPS = [
     "hs_object_id", "subject", "createdate", "closed_date",
     "time_to_close", "time_to_first_agent_reply",
@@ -192,12 +201,19 @@ sel_type = fc5.multiselect("Ticket type", _opts("Ticket Type"))
 sel_app = fc6.multiselect("VRS app", _opts("VRS App"))
 sel_usage = fc7.multiselect("Usage type", _opts("Usage Type"))
 sel_source = fc8.multiselect("Source", _opts("Source"))
+team_360_only = st.checkbox("360 team only", value=False,
+                            help="Only tickets whose owner is on the 360 team (includes deactivated members).")
 
 for _col, _sel in [("Owner", sel_owner), ("Pipeline", sel_pipe), ("Category", sel_cat),
                    ("Subcategory", sel_sub), ("Ticket Type", sel_type), ("VRS App", sel_app),
                    ("Usage Type", sel_usage), ("Source", sel_source)]:
     if _sel:
         df = df[df[_col].isin(_sel)]
+
+if team_360_only:
+    # match on the base name so "(deactivated)"-tagged owners still count
+    _base_owner = df["Owner"].str.replace(" (deactivated)", "", regex=False)
+    df = df[_base_owner.isin(TEAM_360)]
 
 if df.empty:
     st.warning("No tickets match the selected filters.")
