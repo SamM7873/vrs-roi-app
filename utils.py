@@ -1031,11 +1031,32 @@ COMMON_CSS = """
     [data-testid="metric-container"] {
         background: var(--card);
         border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 1rem 1.25rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        border-radius: 14px;
+        padding: 1.1rem 1.3rem;
+        box-shadow: 0 1px 2px rgba(24,36,51,0.04), 0 4px 12px rgba(24,36,51,0.05);
+        transition: box-shadow 0.15s, transform 0.15s;
     }
-    [data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+    [data-testid="metric-container"]:hover {
+        box-shadow: 0 2px 4px rgba(24,36,51,0.06), 0 8px 24px rgba(24,36,51,0.08);
+        transform: translateY(-1px);
+    }
+    [data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+    /* Tabler-style polish, applied app-wide */
+    div.stButton > button:active { transform: translateY(1px); }
+    .tblr-card {
+        background: var(--card); border: 1px solid var(--border);
+        border-radius: 16px; padding: 1.15rem 1.3rem;
+        box-shadow: 0 1px 2px rgba(24,36,51,0.04), 0 4px 14px rgba(24,36,51,0.05);
+        transition: box-shadow 0.15s, transform 0.15s; height: 100%;
+    }
+    .tblr-card:hover { box-shadow: 0 2px 6px rgba(24,36,51,0.07), 0 10px 28px rgba(24,36,51,0.09);
+                       transform: translateY(-2px); }
+    .tblr-label { font-size:0.66rem; font-weight:700; letter-spacing:0.09em;
+                  text-transform:uppercase; color:#8792A2; }
+    .tblr-value { font-size:1.85rem; font-weight:800; color:var(--text); line-height:1.1; letter-spacing:-0.5px; }
+    .tblr-sub { font-size:0.76rem; color:#9AA5B1; margin-top:0.15rem; }
+    .tblr-chip { width:42px;height:42px;border-radius:12px;display:flex;
+                 align-items:center;justify-content:center;font-size:1.15rem; }
 </style>
 """
 

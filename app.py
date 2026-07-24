@@ -78,7 +78,8 @@ def render_sync_widget():
             st.caption(f"Data refreshes every 5 min · {age_mins}m ago")
             st.caption(f"Last sync: {last_sync}")
 
-lookup_page   = st.Page("pages/0_Lookup.py",              title="VRS Lookup",           icon="🔍", default=True)
+overview_page = st.Page("pages/23_Overview.py",           title="Overview",             icon="📊", default=True)
+lookup_page   = st.Page("pages/0_Lookup.py",              title="VRS Lookup",           icon="🔍")
 numbers_page  = st.Page("pages/1_Numbers_Report.py",      title="Numbers Report",        icon="📊")
 ursa_page     = st.Page("pages/2_URSA_Login_Report.py",   title="URSA Login Report",     icon="👤")
 geo_page      = st.Page("pages/3_Geographic_Report.py",   title="Geographic Report",     icon="🗺️")
@@ -102,6 +103,6 @@ ticket_rpt_page  = st.Page("pages/20_Ticket_Report.py",               title="Tic
 jira_rpt_page    = st.Page("pages/21_Jira_Report.py",                  title="Jira Ticket Report",           icon="🧩")
 retention_page   = st.Page("pages/22_Retention_Report.py",             title="Retention Report",             icon="🔁")
 
-pg = st.navigation([lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page, numfunnel_page, winback_page, cs_tickets_page, vrs_zero_page, age_demo_page, pendo_page, dq_page, yoy_page, explorer_page, survey_page, ticket_rpt_page, jira_rpt_page, retention_page, audit_page])
+pg = st.navigation([overview_page, lookup_page, numbers_page, ursa_page, geo_page, bulk_page, churn_page, funnel_page, portin_page, journey_page, numfunnel_page, winback_page, cs_tickets_page, vrs_zero_page, age_demo_page, pendo_page, dq_page, yoy_page, explorer_page, survey_page, ticket_rpt_page, jira_rpt_page, retention_page, audit_page])
 render_sync_widget()
 pg.run()
