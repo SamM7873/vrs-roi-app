@@ -261,24 +261,31 @@ with st.expander("ℹ️ How retention is calculated"):
 """)
 
 # ── retention curve ──────────────────────────────────────────────────────────
+# x-axis is labeled with real calendar months (window timeline) instead of a bare
+# 0/1/2 offset. Offset o maps to (window start month + o).
+_start_period = pd.Period(start_date, "M")
 curve = []
 for o in range(0, MAXO + 1):
     v, base = overall_retention(o)
     if v is not None:
-        curve.append({"Month": o, "Retention": round(v, 1), "Users": base})
+        curve.append({"Month": o, "MonthLabel": (_start_period + o).strftime("%b %Y"),
+                      "Retention": round(v, 1), "Users": base})
 curve_df = pd.DataFrame(curve)
 
 st.markdown("##### Retention Curve — % of cohort still active by month")
 if not curve_df.empty:
+    _order = list(curve_df["MonthLabel"])
     line = alt.Chart(curve_df).mark_area(
         line={"color": PRIMARY, "strokeWidth": 3},
         point=alt.OverlayMarkDef(color=GREEN, size=60),
         color=alt.Gradient(gradient="linear",
                            stops=[alt.GradientStop(color="#F4F1E8", offset=0),
                                   alt.GradientStop(color=PRIMARY, offset=1)], x1=1, x2=1, y1=1, y2=0)).encode(
-        x=alt.X("Month:O", title="Months since first active"),
+        x=alt.X("MonthLabel:N", sort=_order, title="Calendar month", axis=alt.Axis(labelAngle=-40)),
         y=alt.Y("Retention:Q", title="% still active", scale=alt.Scale(domain=[0, 100])),
-        tooltip=["Month", "Retention", "Users"]).properties(height=300)
+        tooltip=[alt.Tooltip("MonthLabel:N", title="Month"),
+                 alt.Tooltip("Retention:Q", title="Retention %"),
+                 alt.Tooltip("Users:Q", title="Users")]).properties(height=300)
     st.altair_chart(line, use_container_width=True)
 
 # ── active users per calendar month (data-completeness table) ────────────────
@@ -333,8 +340,9 @@ st.download_button("📥 Download CSV", coh.to_csv(index=False),
 _pdf_metrics = [(f"{_unit_label.title()}", f"{active['user'].nunique():,}"),
                 ("1-Mo", _pct(r1)), ("3-Mo", _pct(r3)), ("6-Mo", _pct(r6)),
                 ("9-Mo", _pct(r9)), ("12-Mo", _pct(r12))]
-_pdf_charts = [{"data": curve_df.rename(columns={"Month": "Month #"}), "kind": "line",
-                "x": "Month #", "y": "Retention", "title": "Retention curve (% active by month)"}] if not curve_df.empty else []
+_pdf_charts = [{"data": curve_df[["MonthLabel", "Retention"]].rename(columns={"MonthLabel": "Month"}),
+                "kind": "line", "x": "Month", "y": "Retention",
+                "title": "Retention curve (% active by calendar month)"}] if not curve_df.empty else []
 pdf_download_button(coh, "retention_report.pdf", f"Retention Report — {metric}",
                     subtitle=f"{lookback} · active = ≥1 min {metric}",
                     metrics=_pdf_metrics, charts=_pdf_charts, key="retention")
