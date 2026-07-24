@@ -162,12 +162,12 @@ with k4:
 
 # ── small stat cards ──────────────────────────────────────────────────────────
 st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
-_net = vrs_m + cn_m - deact
+_net = vrs_m - deact
 stat = [
     ("📥", f"{portin:,} Port-In", "ported in from another provider", BLUE),
     ("📤", f"{portout:,} Port-Out", "ported to another provider", AMBER),
     ("🚫", f"{deact:,} Deactivated", "closed / deleted this month", RED),
-    ("📈", f"{_net:,} Net new", "VRS + Convo − deactivated", GREEN if _net >= 0 else RED),
+    ("📈", f"{_net:,} Net new", "New VRS − deactivated", GREEN if _net >= 0 else RED),
 ]
 sc = st.columns(4)
 for col, (icon, title, sub, color) in zip(sc, stat):
