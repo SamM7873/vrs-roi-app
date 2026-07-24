@@ -300,19 +300,29 @@ st.dataframe(_mdf, use_container_width=True, hide_index=True,
 st.caption(f"Median active users across full months: **{_median:,.0f}**. "
            f"Months below {_SPARSE_FRAC:.0%} of that are flagged as a likely gap.")
 
-# ── cohort table (triangle) ──────────────────────────────────────────────────
-st.markdown("##### Cohort Retention (%) by starting month")
-pivot = retained.pivot(index="cohort", columns="offset", values="retained")
-pct = pivot.divide(cohort_size, axis=0) * 100
-pct = pct[[c for c in range(0, MAXO + 1) if c in pct.columns]]
-pct.columns = [f"M{c}" for c in pct.columns]
-coh = pct.reset_index()
-coh.insert(0, "Cohort", coh.pop("cohort").astype(str))
-coh.insert(1, "Users", cohort_size.reindex([pd.Period(c, "M") for c in coh["Cohort"]]).values)
+# ── cohort table (by actual calendar month) ──────────────────────────────────
+st.markdown("##### Cohort Retention (%) by calendar month")
+st.caption("Each row is a cohort (its first-active month); each column is a real calendar month. "
+           "A vertical column that dips across every cohort = a data gap, not churn.")
+# % of each cohort still active in each ACTUAL calendar month (not a generic offset).
+_cal = active.groupby(["cohort", "month"])["user"].nunique().reset_index(name="retained")
+cal_pivot = _cal.pivot(index="cohort", columns="month", values="retained")
+cal_pct = cal_pivot.divide(cohort_size, axis=0) * 100
+_month_cols = sorted(cal_pct.columns)                      # Period columns, chronological
+cal_pct = cal_pct[_month_cols]
+_col_labels = [m.strftime("%b %Y") for m in _month_cols]   # e.g. "Oct 2025"
+cal_pct.columns = _col_labels
+coh = cal_pct.reset_index()
+_cohort_periods = list(coh["cohort"])                       # Period objects, row order
+coh["cohort"] = [p.strftime("%b %Y") for p in _cohort_periods]
+coh.rename(columns={"cohort": "Cohort"}, inplace=True)
+coh.insert(1, "Users", cohort_size.reindex(_cohort_periods).values)
 # flag the excluded, left-censored boundary cohort so it's obvious in the table
-coh["Cohort"] = coh["Cohort"].apply(lambda c: f"{c} ⚠️ excluded" if c == str(_boundary) else c)
-coh = coh.sort_values("Cohort", ascending=False)
-_fmt_cols = {c: st.column_config.NumberColumn(c, format="%.0f%%") for c in coh.columns if c.startswith("M")}
+_boundary_label = _boundary.strftime("%b %Y")
+coh["_sort"] = _cohort_periods
+coh["Cohort"] = coh["Cohort"].apply(lambda c: f"{c} ⚠️ excluded" if c == _boundary_label else c)
+coh = coh.sort_values("_sort", ascending=False).drop(columns=["_sort"])
+_fmt_cols = {c: st.column_config.NumberColumn(c, format="%.0f%%") for c in _col_labels}
 st.dataframe(coh, use_container_width=True, hide_index=True, column_config=_fmt_cols)
 st.caption(f"⚠️ The **{start_date:%b %Y}** cohort is left-censored (pre-existing users mislabeled as new) and is excluded from the KPI tiles and retention curve above.")
 
