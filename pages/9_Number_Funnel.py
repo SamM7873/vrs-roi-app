@@ -81,20 +81,16 @@ def _date_range_for_preset(preset):
 
 # ── filter UI ─────────────────────────────────────────────────────────────────
 
-col_preset, col_from, col_to, col_field, col_usage, col_lang = st.columns([2, 1, 1, 1.5, 1, 1])
+# Only the date range is a control now — baseline is always Number Created At and
+# usage/language filters were removed for a clean, single-funnel view.
+date_field_label = "Number Created At"
+date_field = "number_created_at"
+usage_filter = "All"
+lang_filter = "All"
+
+col_preset, col_from, col_to = st.columns([2, 1, 1])
 with col_preset:
     preset = st.selectbox("Date range", PRESETS, index=0)
-with col_field:
-    date_field_label = st.selectbox(
-        "Filter baseline by",
-        ["Number Created At", "Registered At"],
-        index=0,
-    )
-    date_field = "number_created_at" if date_field_label == "Number Created At" else "registered_at"
-with col_usage:
-    usage_filter = st.selectbox("Usage Type", ["All", "Personal", "Business", "Other"], index=0)
-with col_lang:
-    lang_filter = st.selectbox("Language", ["All", "English", "Spanish", "Other"], index=0)
 
 if preset == "Custom Range":
     with col_from:
@@ -310,24 +306,61 @@ if _missing_reg:
     _mdf = pd.DataFrame(_missing_reg)[["Name", "Email", "Number", "Language", "Number Created", "Registered At"]]
     st.dataframe(_mdf, use_container_width=True, hide_index=True)
 
-# ── Bar chart ─────────────────────────────────────────────────────────────
+# ── Funnel visualizations ──────────────────────────────────────────────────
+_stage_order = [s[0] for s in stages]
+_colors = ["#6B7280", "#3B82F6", "#8B5CF6", "#00A651", "#F59E0B", "#EF4444"]
 chart_df = pd.DataFrame({
-    "Stage": [s[0] for s in stages],
+    "Stage": _stage_order,
     "Count": [s[1] for s in stages],
-    "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#00A651", "#F59E0B", "#EF4444"],
+    "Pct": [s[1] / total * 100 if total else 0 for s in stages],
+    "Color": _colors[:len(stages)],
 })
-chart = (
-    alt.Chart(chart_df)
-    .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-    .encode(
-        x=alt.X("Stage:N", sort=[s[0] for s in stages], axis=alt.Axis(title=None, labelAngle=-20)),
+chart_df["Label"] = chart_df.apply(lambda r: f"{int(r['Count']):,}  ({r['Pct']:.0f}%)", axis=1)
+_maxc = float(chart_df["Count"].max()) or 1.0
+# centered band for the classic tapering funnel: x from (max-count)/2 to (max+count)/2
+chart_df["x0"] = (_maxc - chart_df["Count"]) / 2
+chart_df["x1"] = (_maxc + chart_df["Count"]) / 2
+
+st.markdown("##### Funnel")
+_base = alt.Chart(chart_df)
+
+# 1) Classic tapering funnel (centered bands, narrowing stage to stage)
+_funnel = _base.mark_bar(cornerRadius=6).encode(
+    y=alt.Y("Stage:N", sort=_stage_order, axis=alt.Axis(title=None, labelLimit=200)),
+    x=alt.X("x0:Q", axis=None, scale=alt.Scale(domain=[0, _maxc])),
+    x2="x1:Q",
+    color=alt.Color("Color:N", scale=None, legend=None),
+    tooltip=["Stage", alt.Tooltip("Count:Q", format=","), alt.Tooltip("Pct:Q", format=".1f", title="% of total")],
+).properties(height=60 * len(stages))
+# center the label within each band by anchoring at the horizontal midpoint (=_maxc/2)
+_ftext = _base.transform_calculate(mid=str(_maxc / 2)).mark_text(
+    color="#1F2937", fontWeight="bold", fontSize=13).encode(
+    y=alt.Y("Stage:N", sort=_stage_order),
+    x=alt.X("mid:Q", axis=None, scale=alt.Scale(domain=[0, _maxc])),
+    text="Label:N",
+)
+st.altair_chart(_funnel + _ftext, use_container_width=True)
+
+with st.expander("Other chart views (horizontal bars · vertical bars)"):
+    # 2) Horizontal bar funnel (left-aligned, longest at top)
+    _hbar = _base.mark_bar(cornerRadius=4).encode(
+        y=alt.Y("Stage:N", sort=_stage_order, axis=alt.Axis(title=None, labelLimit=200)),
+        x=alt.X("Count:Q", title="Count"),
+        color=alt.Color("Color:N", scale=None, legend=None),
+        tooltip=["Stage", alt.Tooltip("Count:Q", format=","), alt.Tooltip("Pct:Q", format=".1f", title="% of total")],
+    ).properties(height=50 * len(stages))
+    _hlabel = _base.mark_text(align="left", dx=5, color="#374151", fontWeight="bold").encode(
+        y=alt.Y("Stage:N", sort=_stage_order), x="Count:Q", text="Label:N")
+    st.altair_chart(_hbar + _hlabel, use_container_width=True)
+
+    # 3) Vertical bars
+    _vbar = _base.mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+        x=alt.X("Stage:N", sort=_stage_order, axis=alt.Axis(title=None, labelAngle=-20)),
         y=alt.Y("Count:Q", title="Count"),
         color=alt.Color("Color:N", scale=None, legend=None),
-        tooltip=["Stage", "Count"],
-    )
-    .properties(height=260)
-)
-st.altair_chart(chart, use_container_width=True)
+        tooltip=["Stage", alt.Tooltip("Count:Q", format=",")],
+    ).properties(height=260)
+    st.altair_chart(_vbar, use_container_width=True)
 
 # ── Detail table ──────────────────────────────────────────────────────────
 with st.expander("View per-number detail"):
