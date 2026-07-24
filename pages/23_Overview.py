@@ -7,8 +7,7 @@ from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
 from utils import require_auth, get_secret, COMMON_CSS, log_report_view
 
-st.set_page_config(page_title="Dashboard", layout="wide", page_icon="📊",
-                   initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Dashboard", layout="wide", page_icon="📊")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
 log_report_view("Overview")
