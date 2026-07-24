@@ -178,6 +178,29 @@ latest_ord = int(active["_mo"].max())
 cohort_size = active.groupby("cohort")["user"].nunique()
 retained = active.groupby(["cohort", "offset"])["user"].nunique().reset_index(name="retained")
 
+# ── data-completeness check ──────────────────────────────────────────────────
+# Count distinct active users per CALENDAR month. A month with far fewer active
+# users than the surrounding trend almost always means missing/unsynced source
+# data (not real churn). We flag those so the retention curve can't silently
+# mislead — a genuine dip tracks a cohort's age, a data gap hits every cohort in
+# the same calendar month at once.
+_by_month = active.groupby("month")["user"].nunique().sort_index()
+_full_months = _by_month.iloc[:-1] if len(_by_month) > 1 else _by_month  # drop current (partial) month
+_median = float(_full_months.median()) if len(_full_months) else 0.0
+_SPARSE_FRAC = 0.15  # < 15% of the median monthly active = suspect gap
+_sparse = set(m for m, v in _by_month.items()
+              if m != _by_month.index[-1] and _median > 0 and v < _SPARSE_FRAC * _median)
+
+if _sparse:
+    _names = ", ".join(f"{m:%b %Y}" for m in sorted(_sparse))
+    st.warning(
+        f"⚠️ **Possible data gap.** These month(s) have almost no active users "
+        f"compared to the trend, which usually means usage records didn't sync: "
+        f"**{_names}**. Retention that crosses these months will look artificially "
+        f"low (every cohort dips in the same calendar month, then rebounds). "
+        f"Backfill Monthly Values for these months in HubSpot for an accurate curve."
+    )
+
 MAXO = min(12, _months_back)  # can't measure further than the look-back window
 
 # Left-censoring: the window's FIRST month cohort is contaminated — long-standing
@@ -257,6 +280,25 @@ if not curve_df.empty:
         y=alt.Y("Retention:Q", title="% still active", scale=alt.Scale(domain=[0, 100])),
         tooltip=["Month", "Retention", "Users"]).properties(height=300)
     st.altair_chart(line, use_container_width=True)
+
+# ── active users per calendar month (data-completeness table) ────────────────
+st.markdown("##### Active Users per Calendar Month")
+st.caption("Distinct active users in each calendar month. Sharp drops that hit **one calendar month** "
+           "(not a cohort's age) indicate missing/unsynced data, and are flagged ⚠️ below.")
+_cur_month = _by_month.index[-1]
+_mrows = []
+for m, v in _by_month.items():
+    _is_partial = (m == _cur_month)
+    _is_gap = (m in _sparse)
+    _flag = "🟡 partial (current month)" if _is_partial else ("⚠️ likely data gap" if _is_gap else "✓ ok")
+    _vs_med = f"{(v / _median * 100):.0f}%" if _median > 0 else "—"
+    _mrows.append({"Month": f"{m:%b %Y}", "Active users": int(v),
+                   "% of median month": _vs_med, "Status": _flag})
+_mdf = pd.DataFrame(_mrows)
+st.dataframe(_mdf, use_container_width=True, hide_index=True,
+             column_config={"Active users": st.column_config.NumberColumn("Active users", format="%d")})
+st.caption(f"Median active users across full months: **{_median:,.0f}**. "
+           f"Months below {_SPARSE_FRAC:.0%} of that are flagged as a likely gap.")
 
 # ── cohort table (triangle) ──────────────────────────────────────────────────
 st.markdown("##### Cohort Retention (%) by starting month")
