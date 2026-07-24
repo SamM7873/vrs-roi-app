@@ -10,7 +10,8 @@ from datetime import datetime
 from collections import defaultdict
 from utils import dash_spinner, vrs_rate_for_month as _vrs_rate
 
-from utils import require_auth, get_secret
+from utils import require_auth, get_secret, COMMON_CSS
+st.markdown(COMMON_CSS, unsafe_allow_html=True)   # global Tabler theme
 require_auth()
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 
