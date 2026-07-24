@@ -126,7 +126,7 @@ def _search_over_cap(object_id, properties, filter_groups):
             window_count += len(results)
             last_id = results[-1].get("properties", {}).get("hs_object_id") or results[-1].get("id")
             loader.markdown(
-                f"<div style='padding:0.6rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;"
+                f"<div style='padding:0.6rem 1rem;background:#FFFFFF;border:1px solid #E6E9F0;"
                 f"border-radius:10px;'>Fetching… <strong>{len(all_results):,}</strong> records</div>",
                 unsafe_allow_html=True,
             )
@@ -351,7 +351,7 @@ def fetch_object_constrained(oid, props, base_filters, key_prop, key_values, lab
         fg = [{"filters": base_filters + [{"propertyName": key_prop, "operator": "IN", "values": chunk}]}]
         all_recs.extend(_search_over_cap(oid, props, fg))
         loader.markdown(
-            f"<div style='padding:0.6rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;"
+            f"<div style='padding:0.6rem 1rem;background:#FFFFFF;border:1px solid #E6E9F0;"
             f"border-radius:10px;'>Fetching {label} for matched keys… <strong>{len(all_recs):,}</strong></div>",
             unsafe_allow_html=True,
         )
@@ -382,7 +382,7 @@ def resolve_ticket_numbers(ticket_ids):
                     tid_to_nids[tid] = nids
                     all_nids.update(nids)
         loader.markdown(
-            f"<div style='padding:0.6rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;'>"
+            f"<div style='padding:0.6rem 1rem;background:#FFFFFF;border:1px solid #E6E9F0;border-radius:10px;'>"
             f"Resolving ticket → number associations… {min(i + 100, len(ids)):,}/{len(ids):,}</div>",
             unsafe_allow_html=True)
 
@@ -769,7 +769,7 @@ else:
         chart = (alt.Chart(grouped)
                  .mark_area(line={"color": PRIMARY}, color=alt.Gradient(
                      gradient="linear",
-                     stops=[alt.GradientStop(color="#F4F1E8", offset=0),
+                     stops=[alt.GradientStop(color="#FFFFFF", offset=0),
                             alt.GradientStop(color=PRIMARY, offset=1)],
                      x1=1, x2=1, y1=1, y2=0))
                  .encode(x=x_enc, y=alt.Y("Value:Q", title=measure_label), tooltip=tip)

@@ -134,7 +134,7 @@ def _resolve_ticket_info(submission_ids):
                     sid_to_tids[sid] = tids
                     all_tids.update(tids)
         loader.markdown(
-            f"<div style='padding:0.5rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;'>"
+            f"<div style='padding:0.5rem 1rem;background:#FFFFFF;border:1px solid #E6E9F0;border-radius:10px;'>"
             f"Resolving ticket info… {min(i+100, len(ids)):,}/{len(ids):,}</div>", unsafe_allow_html=True)
 
     tid_to_owner, tid_to_subject = {}, {}

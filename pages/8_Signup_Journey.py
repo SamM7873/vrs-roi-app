@@ -233,22 +233,22 @@ if st.button("Run Sign-Up Journey Report", use_container_width=False):
     ]
 
     table_html = """
-<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:12px;overflow:hidden;margin-bottom:1.5rem;">
+<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:12px;overflow:hidden;margin-bottom:1.5rem;">
   <div style="display:grid;grid-template-columns:1fr 120px 140px;padding:0.6rem 1.25rem;
-              background:#e8e4db;border-bottom:1px solid #DDD9CC;">
+              background:#e8e4db;border-bottom:1px solid #E6E9F0;">
     <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#5a6a5a;">Stage</div>
     <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#5a6a5a;">Count</div>
     <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#5a6a5a;">% of Created</div>
   </div>
 """
     for i, (stage, count, pct_val) in enumerate(funnel_rows):
-        bg = "#F4F1E8" if i % 2 == 0 else "#EFECE3"
+        bg = "#FFFFFF" if i % 2 == 0 else "#EFECE3"
         count_color = "#1F2937" if count > 0 else "#9CA3AF"
         count_display = f"{count:,}" if count > 0 else "0"
         pct_display = pct_val if count > 0 else "—"
         table_html += f"""
   <div style="display:grid;grid-template-columns:1fr 120px 140px;padding:0.75rem 1.25rem;
-              background:{bg};border-bottom:1px solid #DDD9CC;">
+              background:{bg};border-bottom:1px solid #E6E9F0;">
     <div style="font-size:0.9rem;color:#374151;font-weight:500;">{stage}</div>
     <div style="font-size:0.9rem;font-weight:700;color:{count_color};font-variant-numeric:tabular-nums;">{count_display}</div>
     <div style="font-size:0.9rem;color:#6B7280;font-variant-numeric:tabular-nums;">{pct_display}</div>

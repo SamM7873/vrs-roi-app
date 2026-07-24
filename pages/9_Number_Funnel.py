@@ -270,20 +270,20 @@ st.markdown(f"""
 
 # ── Funnel table ──────────────────────────────────────────────────────────
 table_html = """
-<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:12px;overflow:hidden;margin-bottom:1.5rem;">
+<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:12px;overflow:hidden;margin-bottom:1.5rem;">
   <div style="display:grid;grid-template-columns:1fr 120px 140px;padding:0.6rem 1.25rem;
-              background:#e8e4db;border-bottom:1px solid #DDD9CC;">
+              background:#e8e4db;border-bottom:1px solid #E6E9F0;">
     <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#5a6a5a;">Stage</div>
     <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#5a6a5a;">Count</div>
     <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#5a6a5a;">% of Total</div>
   </div>
 """
 for i, (label, n, pct_val) in enumerate(stages):
-    bg = "#F4F1E8" if i % 2 == 0 else "#EFECE3"
+    bg = "#FFFFFF" if i % 2 == 0 else "#EFECE3"
     color = "#1F2937" if n > 0 else "#9CA3AF"
     table_html += f"""
   <div style="display:grid;grid-template-columns:1fr 120px 140px;padding:0.75rem 1.25rem;
-              background:{bg};border-bottom:1px solid #DDD9CC;">
+              background:{bg};border-bottom:1px solid #E6E9F0;">
     <div style="font-size:0.9rem;color:#374151;font-weight:500;">{label}</div>
     <div style="font-size:0.9rem;font-weight:700;color:{color};font-variant-numeric:tabular-nums;">{n:,}</div>
     <div style="font-size:0.9rem;color:#6B7280;font-variant-numeric:tabular-nums;">{pct_val if n > 0 else "—"}</div>

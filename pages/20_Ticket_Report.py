@@ -345,7 +345,7 @@ with c7:
         _line = alt.Chart(bm).mark_area(
             line={"color": PRIMARY, "strokeWidth": 2.5},
             color=alt.Gradient(gradient="linear",
-                               stops=[alt.GradientStop(color="#F4F1E8", offset=0),
+                               stops=[alt.GradientStop(color="#FFFFFF", offset=0),
                                       alt.GradientStop(color=PRIMARY, offset=1)],
                                x1=1, x2=1, y1=1, y2=0)).encode(
             x=alt.X("Month:T", title=None), y=alt.Y("Tickets:Q"),

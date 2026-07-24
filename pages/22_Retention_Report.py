@@ -72,7 +72,7 @@ def _paged_search(base_groups, props):
             window += len(res)
             last = res[-1].get("properties", {}).get("hs_object_id") or res[-1].get("id")
             loader.markdown(
-                f"<div style='padding:0.6rem 1rem;background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;'>"
+                f"<div style='padding:0.6rem 1rem;background:#FFFFFF;border:1px solid #E6E9F0;border-radius:10px;'>"
                 f"Fetching active user-months… <strong>{len(out):,}</strong></div>", unsafe_allow_html=True)
             after = data.get("paging", {}).get("next", {}).get("after")
             if not after:
@@ -301,7 +301,7 @@ if not curve_df.empty:
         line={"color": PRIMARY, "strokeWidth": 3},
         point=alt.OverlayMarkDef(color=GREEN, size=60),
         color=alt.Gradient(gradient="linear",
-                           stops=[alt.GradientStop(color="#F4F1E8", offset=0),
+                           stops=[alt.GradientStop(color="#FFFFFF", offset=0),
                                   alt.GradientStop(color=PRIMARY, offset=1)], x1=1, x2=1, y1=1, y2=0)).encode(
         x=alt.X("MonthLabel:N", sort=_order, title="Calendar month", axis=alt.Axis(labelAngle=-40)),
         y=alt.Y("Retention:Q", title="% still active", scale=alt.Scale(domain=[0, 100])),
