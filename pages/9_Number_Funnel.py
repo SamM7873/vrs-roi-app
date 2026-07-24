@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import time
 from datetime import datetime, timezone, timedelta, date
-from utils import dash_spinner, require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import dash_spinner, require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close, save_report, load_report
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -103,8 +104,16 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 
 # ── run ───────────────────────────────────────────────────────────────────────
 
-if st.button("Run Number Funnel", use_container_width=False):
+# A stable key for this exact filter combination. The same filters reload the
+# saved result from disk instead of re-fetching 45k records every time.
+_key = f"number_funnel_v1_{preset}_{date_field}_{usage_filter}_{filter_start}_{filter_end}"
 
+run = st.button("Run Number Funnel", use_container_width=False)
+
+# Load a previously saved run for these filters (disk survives app restarts).
+payload = load_report(_key)
+
+if run:
     raw = list_all(
         "2-40974683",
         ["number", "email", "first_name", "last_name",
@@ -180,7 +189,43 @@ if st.button("Run Number Funnel", use_container_width=False):
         for label, n, pct in stages
     ]
 
-    st.markdown(f"""
+    # Pre-build the per-number detail rows so the whole report is picklable.
+    detail_rows = [{
+        "Name":            f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
+        "Email":           p.get("email") or "—",
+        "Number":          p.get("number") or "—",
+        "Registered At":   _fmt(p.get("registered_at")),
+        "Number Created":  _fmt(p.get("number_created_at")),
+        "First Login":     _fmt(p.get("ursa_first_login")),
+        "First Outbound":  _fmt(p.get("ursa_first_outbound_call")),
+        "Second Outbound": _fmt(p.get("ursa_second_outbound_call")),
+    } for p in records]
+
+    payload = {"stages": stages, "detail_rows": detail_rows, "total": total,
+               "range_label": range_label, "date_field_label": date_field_label}
+    save_report(_key, payload)
+    payload = load_report(_key)  # reload so we pick up the saved_at timestamp
+
+# ── render (from the saved payload) ───────────────────────────────────────────
+if payload is None:
+    st.info("Click **Run Number Funnel** to build the report. Your result is saved "
+            "automatically and will reload here next time — no need to start over.")
+    report_header_close()
+    st.stop()
+
+stages           = payload["stages"]
+detail_rows      = payload["detail_rows"]
+total            = payload["total"]
+range_label      = payload["range_label"]
+date_field_label = payload["date_field_label"]
+_saved_at        = payload.get("saved_at")
+
+if _saved_at:
+    _a = int(time.time() - _saved_at)
+    _ago = "just now" if _a < 90 else (f"{_a // 60} min ago" if _a < 3600 else f"{_a // 3600} h ago")
+    st.caption(f"📌 Saved result · refreshed {_ago} · click **Run Number Funnel** to rebuild.")
+
+st.markdown(f"""
 <div style="font-size:0.8rem;color:#9dc8b0;margin-bottom:1rem;">
   Snapshot: <strong style="color:#E6F2EC;">{range_label}</strong>
   &nbsp;·&nbsp; Baseline filtered by <strong style="color:#E6F2EC;">{date_field_label}</strong>
@@ -188,8 +233,8 @@ if st.button("Run Number Funnel", use_container_width=False):
 </div>
 """, unsafe_allow_html=True)
 
-    # ── Funnel table ──────────────────────────────────────────────────────────
-    table_html = """
+# ── Funnel table ──────────────────────────────────────────────────────────
+table_html = """
 <div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:12px;overflow:hidden;margin-bottom:1.5rem;">
   <div style="display:grid;grid-template-columns:1fr 120px 140px;padding:0.6rem 1.25rem;
               background:#e8e4db;border-bottom:1px solid #DDD9CC;">
@@ -198,63 +243,53 @@ if st.button("Run Number Funnel", use_container_width=False):
     <div style="font-size:0.68rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#5a6a5a;">% of Total</div>
   </div>
 """
-    for i, (label, n, pct_val) in enumerate(stages):
-        bg = "#F4F1E8" if i % 2 == 0 else "#EFECE3"
-        color = "#1F2937" if n > 0 else "#9CA3AF"
-        table_html += f"""
+for i, (label, n, pct_val) in enumerate(stages):
+    bg = "#F4F1E8" if i % 2 == 0 else "#EFECE3"
+    color = "#1F2937" if n > 0 else "#9CA3AF"
+    table_html += f"""
   <div style="display:grid;grid-template-columns:1fr 120px 140px;padding:0.75rem 1.25rem;
               background:{bg};border-bottom:1px solid #DDD9CC;">
     <div style="font-size:0.9rem;color:#374151;font-weight:500;">{label}</div>
     <div style="font-size:0.9rem;font-weight:700;color:{color};font-variant-numeric:tabular-nums;">{n:,}</div>
     <div style="font-size:0.9rem;color:#6B7280;font-variant-numeric:tabular-nums;">{pct_val if n > 0 else "—"}</div>
   </div>"""
-    table_html += "</div>"
-    st.markdown(table_html, unsafe_allow_html=True)
+table_html += "</div>"
+st.markdown(table_html, unsafe_allow_html=True)
 
-    # ── Bar chart ─────────────────────────────────────────────────────────────
-    chart_df = pd.DataFrame({
-        "Stage": [s[0] for s in stages],
-        "Count": [s[1] for s in stages],
-        "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#00A651", "#F59E0B", "#EF4444"],
-    })
-    chart = (
-        alt.Chart(chart_df)
-        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-        .encode(
-            x=alt.X("Stage:N", sort=[s[0] for s in stages], axis=alt.Axis(title=None, labelAngle=-20)),
-            y=alt.Y("Count:Q", title="Count"),
-            color=alt.Color("Color:N", scale=None, legend=None),
-            tooltip=["Stage", "Count"],
-        )
-        .properties(height=260)
+# ── Bar chart ─────────────────────────────────────────────────────────────
+chart_df = pd.DataFrame({
+    "Stage": [s[0] for s in stages],
+    "Count": [s[1] for s in stages],
+    "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#00A651", "#F59E0B", "#EF4444"],
+})
+chart = (
+    alt.Chart(chart_df)
+    .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+    .encode(
+        x=alt.X("Stage:N", sort=[s[0] for s in stages], axis=alt.Axis(title=None, labelAngle=-20)),
+        y=alt.Y("Count:Q", title="Count"),
+        color=alt.Color("Color:N", scale=None, legend=None),
+        tooltip=["Stage", "Count"],
     )
-    st.altair_chart(chart, use_container_width=True)
+    .properties(height=260)
+)
+st.altair_chart(chart, use_container_width=True)
 
-    # ── Detail table ──────────────────────────────────────────────────────────
-    with st.expander("View per-number detail"):
-        rows = [{
-            "Name":            f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
-            "Email":           p.get("email") or "—",
-            "Number":          p.get("number") or "—",
-            "Registered At":   _fmt(p.get("registered_at")),
-            "Number Created":  _fmt(p.get("number_created_at")),
-            "First Login":     _fmt(p.get("ursa_first_login")),
-            "First Outbound":  _fmt(p.get("ursa_first_outbound_call")),
-            "Second Outbound": _fmt(p.get("ursa_second_outbound_call")),
-        } for p in records]
-        df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        st.download_button(
-            "Download CSV",
-            df.to_csv(index=False),
-            f"number_funnel_{datetime.now().strftime('%Y%m%d')}.csv",
-            "text/csv",
-        )
-        from utils import pdf_download_button
-        _pdf_metrics = [(str(s[0]), f"{s[1]:,}") for s in stages][:4]
-        _pdf_charts = [{"data": chart_df[["Stage", "Count"]], "kind": "bar",
-                        "x": "Stage", "y": "Count", "title": "Number funnel"}]
-        pdf_download_button(df, "number_funnel.pdf", "Number Funnel",
-                            metrics=_pdf_metrics, charts=_pdf_charts, key="numfun")
+# ── Detail table ──────────────────────────────────────────────────────────
+with st.expander("View per-number detail"):
+    df = pd.DataFrame(detail_rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.download_button(
+        "Download CSV",
+        df.to_csv(index=False),
+        f"number_funnel_{datetime.now().strftime('%Y%m%d')}.csv",
+        "text/csv",
+    )
+    from utils import pdf_download_button
+    _pdf_metrics = [(str(s[0]), f"{s[1]:,}") for s in stages][:4]
+    _pdf_charts = [{"data": chart_df[["Stage", "Count"]], "kind": "bar",
+                    "x": "Stage", "y": "Count", "title": "Number funnel"}]
+    pdf_download_button(df, "number_funnel.pdf", "Number Funnel",
+                        metrics=_pdf_metrics, charts=_pdf_charts, key="numfun")
 
 report_header_close()
