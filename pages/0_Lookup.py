@@ -12,6 +12,11 @@ from utils import dash_spinner, vrs_rate_for_month as _vrs_rate
 
 from utils import require_auth, get_secret, COMMON_CSS
 st.markdown(COMMON_CSS, unsafe_allow_html=True)   # global Tabler theme
+st.markdown("""<style>
+/* Equal-height result cards across a row */
+[data-testid="stHorizontalBlock"] { align-items: stretch !important; }
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > div { height: 100%; }
+</style>""", unsafe_allow_html=True)
 require_auth()
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 
@@ -781,17 +786,17 @@ section[data-testid="stSidebar"] [aria-selected="true"] {
 }
 /* Search card container */
 .search-card-col {
-    background: #F4F1E8 !important;
+    background: #FFFFFF !important;
     border-radius: 12px !important;
-    border: 1px solid #DDD9CC !important;
+    border: 1px solid #E6E9F0 !important;
     box-shadow: 0 4px 18px rgba(24,36,51,0.10) !important;
     overflow: hidden !important;
     padding: 0 !important;
 }
 [data-testid="stHorizontalBlock"]:has([data-testid="stColumn"]) [data-testid="stColumn"]:nth-child(2) {
-    background: #F4F1E8;
+    background: #FFFFFF;
     border-radius: 12px;
-    border: 1px solid #DDD9CC;
+    border: 1px solid #E6E9F0;
     box-shadow: 0 4px 18px rgba(24,36,51,0.10);
     overflow: hidden;
     padding: 0 !important;
@@ -799,7 +804,7 @@ section[data-testid="stSidebar"] [aria-selected="true"] {
 /* Text inputs */
 .stTextInput > div > div > input {
     border-radius: 8px !important;
-    border: 1.5px solid #DDD9CC !important;
+    border: 1.5px solid #E6E9F0 !important;
     padding: 0.6rem 1rem !important;
     font-size: 0.93rem !important;
     color: #1F2937 !important;
@@ -854,7 +859,7 @@ with mid:
   <div style="color:rgba(255,255,255,0.75);font-size:0.72rem;margin-top:0.35rem;
               letter-spacing:1px;text-transform:uppercase;font-weight:500;">VRS Consumer Lookup</div>
 </div>
-<div style="padding:1.5rem 1.75rem 1.75rem;background:#F4F1E8;">
+<div style="padding:1.5rem 1.75rem 1.75rem;background:#FFFFFF;">
 """, unsafe_allow_html=True)
     search_input = st.text_input("search", placeholder="Search by phone number or email...", label_visibility="collapsed")
     c1, c2 = st.columns(2)
@@ -1078,7 +1083,7 @@ if "search_results" in st.session_state:
 
     def status_badge(status):
         s = norm(status)
-        color = "#C9A876" if s == "live" else "#EF4444" if s == "suspended" else "#F59E0B" if s in ("inactive", "cancelled") else "#6B7280"
+        color = "#2FB344" if s == "live" else "#EF4444" if s == "suspended" else "#F59E0B" if s in ("inactive", "cancelled") else "#6B7280"
         return f'<span style="background:{color};color:#fff;padding:3px 12px;border-radius:6px;font-size:0.75rem;font-weight:700;">{status or "—"}</span>'
 
     def ursa_badge(v):
@@ -1092,13 +1097,13 @@ if "search_results" in st.session_state:
 
     def info_row(label, value):
         return f"""<div style="display:flex;justify-content:space-between;align-items:flex-start;
-                    padding:0.5rem 0;border-bottom:1px solid #DDD9CC;">
+                    padding:0.5rem 0;border-bottom:1px solid #E6E9F0;">
           <span style="color:#6B7280;font-size:0.8rem;font-weight:600;min-width:140px;">{label}</span>
           <span style="color:#1F2937;font-size:0.9rem;font-weight:600;text-align:right;">{value}</span>
         </div>"""
 
     def card_header(title):
-        return f'<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#C9A876;margin-bottom:0.75rem;">{title}</div>'
+        return f'<div style="font-size:0.7rem;font-weight:800;letter-spacing:0.11em;text-transform:uppercase;color:#0D3B26;margin-bottom:0.75rem;">{title}</div>'
 
     if not matched_numbers:
         st.info("No number object records found — showing registration records only.")
@@ -1174,10 +1179,10 @@ if "search_results" in st.session_state:
             show_monthly = not is_vrs and not is_suspended
 
             contact_col_html = (
-                '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;height:100%;">'
+                '<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:14px;padding:1.15rem;height:100%;box-shadow:0 1px 2px rgba(24,36,51,.04),0 4px 14px rgba(24,36,51,.06);">'
                 + card_header("Contact Summary")
-                + f'<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:1px solid #DDD9CC;">'
-                + f'<div style="width:44px;height:44px;border-radius:50%;background:#C9A876;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
+                + f'<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:1px solid #E6E9F0;">'
+                + f'<div style="width:44px;height:44px;border-radius:50%;background:#0D3B26;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;">{initials}</div>'
                 + f'<div><div style="font-size:0.97rem;font-weight:700;color:#1F2937;">{name}</div>'
                 + f'<div style="font-size:0.78rem;color:#6B7280;">{fmt(p.get("email"))}</div></div>'
                 + f'<div style="margin-left:auto;">{status_badge(p.get("number_status"))}</div>'
@@ -1191,9 +1196,9 @@ if "search_results" in st.session_state:
             _num_deleted = p.get("number_deleted_at") or ""
             _del_reason  = p.get("deleted_reason") or ""
             number_col_html = (
-                '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;height:100%;">'
+                '<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:14px;padding:1.15rem;height:100%;box-shadow:0 1px 2px rgba(24,36,51,.04),0 4px 14px rgba(24,36,51,.06);">'
                 + card_header("Number")
-                + f'<div style="font-size:1.4rem;font-weight:800;color:#1F2937;margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #DDD9CC;">{fmt(p.get("number"))}</div>'
+                + f'<div style="font-size:1.4rem;font-weight:800;color:#1F2937;margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #E6E9F0;">{fmt(p.get("number"))}</div>'
                 + info_row("Status", status_badge(p.get("number_status")))
                 + info_row("Service Type", fmt(p.get("service_type")))
                 + info_row("Usage Type", fmt(p.get("usage_type")))
@@ -1206,12 +1211,12 @@ if "search_results" in st.session_state:
 
             if is_vrs:
                 ursa_col_html = (
-                    '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;height:100%;">'
+                    '<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:14px;padding:1.15rem;height:100%;box-shadow:0 1px 2px rgba(24,36,51,.04),0 4px 14px rgba(24,36,51,.06);">'
                     + card_header("URSA Activity")
-                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #DDD9CC;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">First Login</div>' + ursa_badge(p.get("ursa_first_login")) + '</div>'
-                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #DDD9CC;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">1st Outbound Call</div>' + ursa_badge(p.get("ursa_first_outbound_call")) + '</div>'
-                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #DDD9CC;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">2nd Outbound Call</div>' + ursa_badge(p.get("ursa_second_outbound_call")) + '</div>'
-                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #DDD9CC;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">Last Outbound Call</div>' + ursa_badge(p.get("ursa_last_outbound_call")) + '</div>'
+                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #E6E9F0;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">First Login</div>' + ursa_badge(p.get("ursa_first_login")) + '</div>'
+                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #E6E9F0;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">1st Outbound Call</div>' + ursa_badge(p.get("ursa_first_outbound_call")) + '</div>'
+                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #E6E9F0;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">2nd Outbound Call</div>' + ursa_badge(p.get("ursa_second_outbound_call")) + '</div>'
+                    + '<div style="padding:0.45rem 0;border-bottom:1px solid #E6E9F0;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">Last Outbound Call</div>' + ursa_badge(p.get("ursa_last_outbound_call")) + '</div>'
                     + '<div style="padding:0.45rem 0;"><div style="color:#6B7280;font-size:0.75rem;margin-bottom:3px;">Last Inbound Call</div>' + ursa_badge(p.get("ursa_last_inbound_call")) + '</div>'
                     + '</div>'
                 )
@@ -1222,7 +1227,7 @@ if "search_results" in st.session_state:
                     if vals.get("convo") and sum(vals["convo"]) > 0
                 ) or info_row("No data", "—")
                 ursa_col_html = (
-                    '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;height:100%;">'
+                    '<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:14px;padding:1.15rem;height:100%;box-shadow:0 1px 2px rgba(24,36,51,.04),0 4px 14px rgba(24,36,51,.06);">'
                     + card_header("Monthly Usage (Convo Now)")
                     + convo_rows_html
                     + '</div>'
@@ -1241,10 +1246,10 @@ if "search_results" in st.session_state:
                 diff_color = "#C9A876" if diff_m >= 0 else "#EF4444"
                 diff_sign = "+" if diff_m >= 0 else ""
                 monthly_col_html = (
-                    '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;height:100%;">'
+                    '<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:14px;padding:1.15rem;height:100%;box-shadow:0 1px 2px rgba(24,36,51,.04),0 4px 14px rgba(24,36,51,.06);">'
                     + card_header("Monthly Value (VRS)")
                     + f'<div style="font-size:1.3rem;font-weight:800;color:#C9A876;margin-bottom:0.3rem;">{current_m:,.1f} min</div>'
-                    + f'<div style="font-size:0.75rem;color:{diff_color};margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #DDD9CC;">{diff_sign}{diff_m:,.1f} vs prev month</div>'
+                    + f'<div style="font-size:0.75rem;color:{diff_color};margin-bottom:0.85rem;padding-bottom:0.75rem;border-bottom:1px solid #E6E9F0;">{diff_sign}{diff_m:,.1f} vs prev month</div>'
                     + mv_rows
                     + '</div>'
                 )
@@ -1349,7 +1354,7 @@ if "search_results" in st.session_state:
                     _trend_html = "—"
                 _num = lambda v: f"{float(v):,.0f}" if v not in (None, "") else "—"
                 pendo_html = (
-                    '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;margin-bottom:1rem;">'
+                    '<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:10px;padding:1.1rem;margin-bottom:1rem;">'
                     + card_header("Pendo Engagement (App Usage)")
                     + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0.75rem;">'
                     + "".join(
@@ -1538,7 +1543,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             _lc1, _lc2 = st.columns([9, 1])
             with _lc1:
                 st.markdown(f"""
-<div style="background:#F4F1E8;border:1px solid #DDD9CC;
+<div style="background:#FFFFFF;border:1px solid #E6E9F0;
     border-left:3px solid {_svc_color};
     border-radius:10px;padding:0.85rem 1.15rem;
     display:flex;align-items:center;gap:0.9rem;">
@@ -1646,14 +1651,14 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             )
 
             reg_html = (
-                '<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:10px;padding:1.1rem;margin-bottom:1rem;">'
+                '<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:10px;padding:1.1rem;margin-bottom:1rem;">'
                 + card_header("Registration")
                 + f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">'
                 + f'<div style="font-size:1.1rem;font-weight:800;color:#1F2937;">#{reg_id}</div>'
                 + (f'<span style="background:#FEE2E2;color:#B91C1C;padding:2px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;">Cancelled</span>' if cancelled else '')
                 + f'</div>'
                 + steps_html
-                + f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;padding-top:0.75rem;border-top:1px solid #DDD9CC;">'
+                + f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;padding-top:0.75rem;border-top:1px solid #E6E9F0;">'
                 + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Type</div><div style="font-size:0.82rem;font-weight:600;color:#1F2937;">{reg_type or "—"}</div></div>'
                 + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Number</div><div style="font-size:0.82rem;font-weight:600;color:#1F2937;">{number_val}</div></div>'
                 + f'<div><div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px;">Usage</div><div style="font-size:0.82rem;color:#1F2937;">{(p.get("usage_type") or "—").title()}</div></div>'
@@ -2150,7 +2155,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
   {status_badge(row['Status'])}
 </div>
   </div>
-  <div style="display:flex;gap:1.5rem;margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid #DDD9CC;flex-wrap:wrap;">
+  <div style="display:flex;gap:1.5rem;margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid #E6E9F0;flex-wrap:wrap;">
 <span style="font-size:0.78rem;color:#6B7280;">🗂️ <b>{row['Pipeline']}</b></span>
 <span style="font-size:0.78rem;color:#6B7280;">👤 <b>{row['Owner']}</b></span>
 <span style="font-size:0.78rem;color:#6B7280;">📂 <b>{row['Category']}</b></span>
