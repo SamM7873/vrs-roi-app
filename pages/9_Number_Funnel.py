@@ -83,16 +83,18 @@ def _date_range_for_preset(preset):
 
 # ── filter UI ─────────────────────────────────────────────────────────────────
 
-# Only the date range is a control now — baseline is always Number Created At and
-# usage/language filters were removed for a clean, single-funnel view.
+# Baseline is always Number Created At; language filter removed. Date range and
+# Usage Type (Personal / Org / All) are the controls.
 date_field_label = "Number Created At"
 date_field = "number_created_at"
-usage_filter = "All"
 lang_filter = "All"
 
-col_preset, col_from, col_to = st.columns([2, 1, 1])
+col_preset, col_from, col_to, col_usage = st.columns([2, 1, 1, 1.2])
 with col_preset:
     preset = st.selectbox("Date range", PRESETS, index=0)
+with col_usage:
+    usage_filter = st.selectbox("Usage Type", ["All", "Personal", "Org"], index=0,
+                                help="Analyze Personal numbers only, Organization (business) numbers only, or all together.")
 
 if preset == "Custom Range":
     with col_from:
@@ -139,8 +141,12 @@ if run:
             continue
         if norm(p.get("number_status") or "") != "live":
             continue
-        if usage_filter != "All" and norm(p.get("usage_type") or "") != norm(usage_filter):
-            continue
+        if usage_filter != "All":
+            _ut = norm(p.get("usage_type") or "")
+            if usage_filter == "Personal" and _ut != "personal":
+                continue
+            if usage_filter == "Org" and _ut not in ("business", "org", "organization", "organisation"):
+                continue
         if lang_filter != "All":
             _lg = _lang(p.get("language_preference"))
             if lang_filter in ("English", "Spanish"):
@@ -257,6 +263,7 @@ st.markdown(f"""
 <div style="font-size:0.8rem;color:#9dc8b0;margin-bottom:1rem;">
   Snapshot: <strong style="color:#E6F2EC;">{range_label}</strong>
   &nbsp;·&nbsp; Baseline filtered by <strong style="color:#E6F2EC;">{date_field_label}</strong>
+  &nbsp;·&nbsp; Usage: <strong style="color:#E6F2EC;">{usage_filter}</strong>
   &nbsp;·&nbsp; {total:,} numbers
 </div>
 """, unsafe_allow_html=True)
