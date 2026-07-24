@@ -289,33 +289,39 @@ _LIVE = {
 }
 
 
-def _pill(_url):
+def _stat(_url, _color):
+    """Right-side live stat: big number + unit, or a subtle arrow if no data."""
     v = _LIVE.get(_url)
     if not v:
-        return ""
-    return (f'<span style="margin-left:auto;flex-shrink:0;background:#E7F6EC;color:#0D3B26;'
-            f'font-size:0.7rem;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap;">'
-            f'● {v}</span>')
+        return (f'<div style="margin-left:auto;flex-shrink:0;color:#C7CDD8;font-size:1.1rem;">›</div>')
+    _num, _, _unit = v.partition(" ")
+    return (f'<div style="margin-left:auto;flex-shrink:0;text-align:right;">'
+            f'<div style="font-size:1.15rem;font-weight:800;color:{_color};line-height:1;'
+            f'font-variant-numeric:tabular-nums;">{_num}</div>'
+            f'<div style="font-size:0.62rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;'
+            f'color:#9AA5B1;margin-top:2px;">{_unit}</div></div>')
 
 
 for (_sec, _color), _items in _SECTIONS.items():
-    st.markdown(f"<div style='font-weight:800;color:#1A2234;font-size:0.98rem;"
-                f"margin:1.1rem 0 0.5rem;'>{_sec}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='display:flex;align-items:center;gap:0.5rem;margin:1.15rem 0 0.55rem;'>"
+                f"<span style='width:9px;height:9px;border-radius:3px;background:{_color};'></span>"
+                f"<span style='font-weight:800;color:#1A2234;font-size:0.98rem;'>{_sec}</span></div>",
+                unsafe_allow_html=True)
     _cards = "".join(
         f'<a href="{_url}" target="_self" style="text-decoration:none;">'
-        f'<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:14px;'
-        f'padding:0.95rem 1.05rem;display:flex;align-items:center;gap:0.75rem;height:100%;'
+        f'<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-left:4px solid {_color};'
+        f'border-radius:14px;padding:0.95rem 1.1rem;display:flex;align-items:center;gap:0.8rem;height:100%;'
         f'box-shadow:0 1px 2px rgba(24,36,51,0.04),0 4px 12px rgba(24,36,51,0.05);transition:.14s;"'
-        f' onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 6px 18px rgba(24,36,51,0.11)\';"'
+        f' onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 6px 18px rgba(24,36,51,0.12)\';"'
         f' onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'0 1px 2px rgba(24,36,51,0.04),0 4px 12px rgba(24,36,51,0.05)\';">'
-        f'<div style="width:40px;height:40px;border-radius:11px;flex-shrink:0;background:{_color}18;'
-        f'display:flex;align-items:center;justify-content:center;font-size:1.2rem;">{_icon}</div>'
+        f'<div style="width:42px;height:42px;border-radius:11px;flex-shrink:0;background:{_color}1A;'
+        f'display:flex;align-items:center;justify-content:center;font-size:1.25rem;">{_icon}</div>'
         f'<div style="min-width:0;"><div style="font-weight:800;color:#1A2234;font-size:0.92rem;line-height:1.15;">{_title}</div>'
-        f'<div style="font-size:0.75rem;color:#9AA5B1;margin-top:2px;">{_desc}</div></div>'
-        f'{_pill(_url)}'
+        f'<div style="font-size:0.74rem;color:#9AA5B1;margin-top:2px;">{_desc}</div></div>'
+        f'{_stat(_url, _color)}'
         f'</div></a>'
         for _url, _title, _icon, _desc in _items
     )
     st.markdown(
-        f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));'
-        f'gap:0.7rem;margin-bottom:0.4rem;">{_cards}</div>', unsafe_allow_html=True)
+        f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));'
+        f'gap:0.75rem;margin-bottom:0.4rem;">{_cards}</div>', unsafe_allow_html=True)
