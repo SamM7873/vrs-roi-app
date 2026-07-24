@@ -212,3 +212,53 @@ with g2:
     st.altair_chart(donut, use_container_width=True)
 
 st.caption("Use the sidebar to open any report — this dashboard is your at-a-glance home.")
+
+# ── all reports (quick links) ─────────────────────────────────────────────────
+st.markdown("<div style='height:1.6rem;'></div>", unsafe_allow_html=True)
+st.markdown("<div class='tblr-label' style='font-size:0.72rem;margin-bottom:0.2rem;'>Browse all reports</div>",
+            unsafe_allow_html=True)
+st.markdown("<style>div[data-testid='stPageLink'] a{border:1px solid #E6E9F0;border-radius:12px;"
+            "padding:0.55rem 0.85rem !important;background:#fff;font-weight:600 !important;"
+            "box-shadow:0 1px 2px rgba(24,36,51,0.04);transition:.12s;}"
+            "div[data-testid='stPageLink'] a:hover{box-shadow:0 4px 14px rgba(24,36,51,0.09);"
+            "transform:translateY(-1px);border-color:#0D3B2633;}</style>", unsafe_allow_html=True)
+
+_SECTIONS = {
+    "Numbers": [
+        ("pages/1_Numbers_Report.py", "Numbers Report", "📊"),
+        ("pages/9_Number_Funnel.py", "Number Funnel", "🔢"),
+        ("pages/6_Registration_Funnel.py", "Registration Funnel", "📋"),
+        ("pages/7_Port_In_Report.py", "Port-In Report", "📲"),
+        ("pages/10_Port_Out_Winback.py", "Port-Out Winback", "🔄"),
+        ("pages/3_Geographic_Report.py", "Geographic Report", "🗺️"),
+        ("pages/16_YoY_Comparison.py", "Year-over-Year", "📆"),
+    ],
+    "Customers": [
+        ("pages/0_Lookup.py", "VRS Lookup", "🔍"),
+        ("pages/2_URSA_Login_Report.py", "URSA Login Report", "👤"),
+        ("pages/8_Signup_Journey.py", "Sign-Up Journey", "🧭"),
+        ("pages/13_Age_Demographics.py", "Age Demographics", "👥"),
+        ("pages/5_Churn_Risk.py", "Churn Risk Report", "🚨"),
+        ("pages/12_VRS_Zero_ConvoNow_Active.py", "VRS Zero / Convo Now", "🔄"),
+        ("pages/22_Retention_Report.py", "Retention Report", "🔁"),
+    ],
+    "Support": [
+        ("pages/11_Consumer_Success_Tickets.py", "Consumer Success Tickets", "🎫"),
+        ("pages/20_Ticket_Report.py", "Ticket Report", "🎟️"),
+        ("pages/21_Jira_Report.py", "Jira Ticket Report", "🧩"),
+        ("pages/19_Survey.py", "Survey", "📝"),
+    ],
+    "Tools": [
+        ("pages/4_Bulk_Search.py", "Bulk Search", "🔎"),
+        ("pages/17_Data_Explorer.py", "Data Explorer", "📊"),
+        ("pages/14_Pendo_Report.py", "Pendo Report", "📱"),
+        ("pages/15_Data_Quality.py", "Data Quality", "🧹"),
+        ("pages/18_Audit_Log.py", "Audit Log", "🛡️"),
+    ],
+}
+for _sec, _items in _SECTIONS.items():
+    st.markdown(f"<div style='font-weight:800;color:#1A2234;font-size:0.95rem;"
+                f"margin:0.9rem 0 0.45rem;'>{_sec}</div>", unsafe_allow_html=True)
+    _cols = st.columns(4)
+    for _j, (_path, _label, _icon) in enumerate(_items):
+        _cols[_j % 4].page_link(_path, label=_label, icon=_icon)

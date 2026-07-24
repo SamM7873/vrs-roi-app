@@ -1140,18 +1140,20 @@ def log_report_view(report_name):
 
 def report_header(title, subtitle, section="Analytics"):
     log_report_view(title)
+    # Tabler-style page header: light card, green eyebrow + accent bar, dark title.
     st.markdown(f"""
-<div style="margin-top:1.5rem;">
-<div style="background:linear-gradient(135deg,#C9A876 0%,#B59467 100%);
-            border-radius:12px 12px 0 0;padding:1.25rem 1.75rem 1rem;">
-    <div style="font-size:0.68rem;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;
-                color:rgba(255,255,255,0.65);margin-bottom:0.3rem;">{section}</div>
-    <div style="font-size:1.45rem;font-weight:800;color:#fff;letter-spacing:-0.3px;">{title}</div>
-    <div style="color:rgba(255,255,255,0.75);font-size:0.88rem;margin-top:0.2rem;">{subtitle}</div>
+<div style="margin-top:1rem;">
+<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-bottom:none;
+            border-radius:16px 16px 0 0;padding:1.3rem 1.9rem 1.15rem;
+            border-left:4px solid #0D3B26;">
+    <div style="font-size:0.66rem;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;
+                color:#0D3B26;margin-bottom:0.25rem;">{section}</div>
+    <div style="font-size:1.5rem;font-weight:800;color:#1A2234;letter-spacing:-0.4px;">{title}</div>
+    <div style="color:#667085;font-size:0.9rem;margin-top:0.2rem;">{subtitle}</div>
 </div>
-<div style="background:#FFFFFF;border-radius:0 0 12px 12px;padding:1.75rem 2rem 2rem;
-            border:1px solid #E5E7EB;border-top:none;
-            box-shadow:0 2px 8px rgba(0,0,0,0.05);margin-bottom:2rem;">
+<div style="background:#FFFFFF;border-radius:0 0 16px 16px;padding:1.75rem 2rem 2rem;
+            border:1px solid #E6E9F0;border-top:1px solid #EEF1F6;border-left:4px solid #0D3B26;
+            box-shadow:0 1px 2px rgba(24,36,51,0.04),0 4px 14px rgba(24,36,51,0.05);margin-bottom:2rem;">
 """, unsafe_allow_html=True)
 
 
