@@ -368,12 +368,14 @@ _who = _who.sort_values("Total minutes", ascending=False)
 _wc1, _wc2 = st.columns(2)
 _wc1.metric("Total VRS minutes", f"{_who['VRS minutes'].sum():,.0f}")
 _wc2.metric("Total CfZ minutes", f"{_who['CfZ minutes'].sum():,.0f}")
+st.caption("Values under 1 minute show with decimals so they don't read as a flat 0. "
+           "Sorted by total minutes (largest first).")
 st.dataframe(
     _who, use_container_width=True, hide_index=True,
     column_config={
-        "VRS minutes": st.column_config.NumberColumn("VRS minutes", format="%.0f"),
-        "CfZ minutes": st.column_config.NumberColumn("CfZ minutes", format="%.0f"),
-        "Total minutes": st.column_config.NumberColumn("Total minutes", format="%.0f"),
+        "VRS minutes": st.column_config.NumberColumn("VRS minutes", format="%.1f"),
+        "CfZ minutes": st.column_config.NumberColumn("CfZ minutes", format="%.1f"),
+        "Total minutes": st.column_config.NumberColumn("Total minutes", format="%.1f"),
         "Active months": st.column_config.NumberColumn("Active months", format="%d"),
     },
 )
