@@ -268,6 +268,18 @@ for i, (label, n, pct_val) in enumerate(stages):
 table_html += "</div>"
 st.markdown(table_html, unsafe_allow_html=True)
 
+# ── Numbers created in-window but missing a registration date ──────────────
+_missing_reg = [r for r in detail_rows if r.get("Registered At") in (None, "—")]
+if _missing_reg:
+    st.markdown(
+        f"<div style='font-size:0.8rem;color:#b45309;margin:0.25rem 0 0.5rem;'>"
+        f"⚠️ <strong>{len(_missing_reg)}</strong> number(s) were created in this window "
+        f"but have no <em>Registered At</em> date:</div>",
+        unsafe_allow_html=True,
+    )
+    _mdf = pd.DataFrame(_missing_reg)[["Name", "Email", "Number", "Number Created", "Registered At"]]
+    st.dataframe(_mdf, use_container_width=True, hide_index=True)
+
 # ── Bar chart ─────────────────────────────────────────────────────────────
 chart_df = pd.DataFrame({
     "Stage": [s[0] for s in stages],
