@@ -435,7 +435,7 @@ st.markdown("""
     }
     .stTabs [data-baseweb="tab"] {
         border-radius: 999px !important;
-        color: #9dc8b0 !important;
+        color: #667085 !important;
         font-weight: 600 !important;
         font-size: 0.88rem !important;
         padding: 0.4rem 1.2rem !important;
@@ -562,7 +562,7 @@ def render_table_and_summary(df):
 
     header = """<div style="display:grid;grid-template-columns:130px 1fr 1fr 1fr 1fr 1fr 110px;
                 gap:0.75rem;padding:0.7rem 1.25rem;background:#F5F3F0;border-radius:10px 10px 0 0;
-                font-size:0.72rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:#9dc8b0;">
+                font-size:0.72rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:#667085;">
   <div>Month</div><div>VRS Min</div><div>Convo Now Min</div>
   <div>VRS Cost</div><div>Convo Now Cost</div><div>Saved ($)</div><div style="text-align:center;">ROI</div>
 </div>"""
@@ -612,12 +612,12 @@ def render_profit_loss_summary(df):
     cost_loss_months   = month_rows[month_rows["Cost ROI"] == "LOSS"]
 
     def _sec_head(text):
-        st.markdown(f"<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:#9dc8b0;margin:1.25rem 0 0.6rem;'>{text}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:#667085;margin:1.25rem 0 0.6rem;'>{text}</div>", unsafe_allow_html=True)
 
     def _mini_tiles(*items):
         tiles = "".join(
             f"""<div style="background:#F5F3F0;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
-  <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">{lbl}</div>
+  <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#667085;margin-bottom:0.4rem;">{lbl}</div>
   <div style="font-size:1.3rem;font-weight:800;color:#3d3430;font-variant-numeric:tabular-nums;">{val}</div>
   {f'<div style="font-size:0.75rem;color:#6aab85;margin-top:0.2rem;">{sub}</div>' if sub else ''}
 </div>"""
@@ -647,23 +647,23 @@ def render_profit_loss_summary(df):
     _sec_head("Cost Summary")
     st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.85rem;margin-bottom:0.5rem;">
   <div style="background:#F5F3F0;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
-    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">PROFIT Months</div>
+    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#667085;margin-bottom:0.4rem;">PROFIT Months</div>
     <div style="font-size:1.3rem;font-weight:800;color:#C9A876;">{len(cost_profit_months)}</div>
     <div style="font-size:0.75rem;color:#6aab85;">+${cost_diff[cost_diff > 0].sum():,.2f}</div>
   </div>
   <div style="background:#F5F3F0;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
-    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">LOSS Months</div>
+    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#667085;margin-bottom:0.4rem;">LOSS Months</div>
     <div style="font-size:1.3rem;font-weight:800;color:#EF4444;">{len(cost_loss_months)}</div>
     <div style="font-size:0.75rem;color:#f87171;">-${abs(cost_diff[cost_diff < 0].sum()):,.2f}</div>
   </div>
   <div style="background:#F5F3F0;border:1px solid #2d6b47;border-radius:12px;padding:0.9rem 1.1rem;">
-    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9dc8b0;margin-bottom:0.4rem;">Net Cost (VRS − Convo Now)</div>
+    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#667085;margin-bottom:0.4rem;">Net Cost (VRS − Convo Now)</div>
     <div style="font-size:1.3rem;font-weight:800;color:{net_color};font-variant-numeric:tabular-nums;">${net:,.2f}</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
     st.markdown("""<div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
-                   color:#9dc8b0;margin:1.25rem 0 0.6rem;">Loss Months Detail</div>""", unsafe_allow_html=True)
+                   color:#667085;margin:1.25rem 0 0.6rem;">Loss Months Detail</div>""", unsafe_allow_html=True)
     if loss_months.empty:
         st.markdown('<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:0.75rem 1rem;color:#15803D;font-size:0.85rem;">No LOSS months — all months are profitable.</div>', unsafe_allow_html=True)
     else:
@@ -746,12 +746,12 @@ h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.2; }
 /* Tabs typography */
 .stTabs [data-baseweb="tab"] { font-size: 0.875rem !important; font-weight: 600 !important; letter-spacing: 0.01em !important; }
 /* Metric/label text — force readable colors on dark background */
-[data-testid="stMetricLabel"] { font-size: 0.72rem !important; font-weight: 700 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; color: #9dc8b0 !important; }
+[data-testid="stMetricLabel"] { font-size: 0.72rem !important; font-weight: 700 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; color: #667085 !important; }
 [data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 800 !important; color: #3d3430 !important; }
 [data-testid="stMetricDelta"] { font-size: 0.82rem !important; }
 /* Tab styling on dark background */
 .stTabs [data-baseweb="tab-list"] { background: transparent !important; border-bottom: 2px solid #1e5438 !important; gap: 0.25rem !important; }
-.stTabs [data-baseweb="tab"] { background: transparent !important; color: #9dc8b0 !important; border-radius: 8px 8px 0 0 !important; padding: 0.5rem 1rem !important; }
+.stTabs [data-baseweb="tab"] { background: transparent !important; color: #667085 !important; border-radius: 8px 8px 0 0 !important; padding: 0.5rem 1rem !important; }
 .stTabs [data-baseweb="tab"][aria-selected="true"] { background: #F5F3F0 !important; color: #3d3430 !important; border-bottom: 2px solid #C9A876 !important; }
 .stTabs [data-baseweb="tab"]:hover { background: #163e28 !important; color: #3d3430 !important; }
 .stTabs [data-baseweb="tab-panel"] { padding-top: 1.25rem !important; }
@@ -816,7 +816,7 @@ section[data-testid="stSidebar"] [aria-selected="true"] {
 /* Streamlit widget labels on dark background */
 .stSelectbox label, .stMultiSelect label, .stTextInput label,
 .stSlider label, .stRadio label, .stCheckbox label,
-[data-testid="stWidgetLabel"] { color: #9dc8b0 !important; font-weight: 600 !important; font-size: 0.85rem !important; }
+[data-testid="stWidgetLabel"] { color: #667085 !important; font-weight: 600 !important; font-size: 0.85rem !important; }
 /* Selectbox/dropdown on dark background */
 .stSelectbox [data-baseweb="select"] > div { background: #F5F3F0 !important; border-color: #2d6b47 !important; color: #3d3430 !important; }
 .stSelectbox [data-baseweb="select"] span { color: #3d3430 !important; }
@@ -1273,7 +1273,7 @@ if "search_results" in st.session_state:
                     # Section header
                     st.markdown("""
 <div style="font-size:0.85rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;
-    color:#F4F1E8;margin:0.75rem 0 0.5rem;">Address Map</div>
+    color:#1A2234;margin:0.75rem 0 0.5rem;">Address Map</div>
 """, unsafe_allow_html=True)
                     # Custom HTML legend — pill badges matching VRS/Convo Now style
                     legend_items = "".join(
@@ -1282,7 +1282,7 @@ if "search_results" in st.session_state:
                         f'font-size:0.72rem;font-weight:800;letter-spacing:1.5px;'
                         f'text-transform:uppercase;padding:0.25rem 0.9rem;'
                         f'border-radius:6px;">{pt["label"]}</span>'
-                        f'<span style="font-size:0.88rem;color:#F4F1E8;font-weight:700;">{pt["addr"]}</span>'
+                        f'<span style="font-size:0.88rem;color:#1A2234;font-weight:700;">{pt["addr"]}</span>'
                         f'</div>'
                         for pt in map_points
                     )
@@ -1452,7 +1452,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
         _n_people = len(_person_groups)
         st.markdown(f"""
 <div style="font-size:0.7rem;font-weight:700;letter-spacing:1.2px;
-    text-transform:uppercase;color:#9dc8b0;margin-bottom:0.6rem;">
+    text-transform:uppercase;color:#667085;margin-bottom:0.6rem;">
   {_n_people} consumer{'s' if _n_people != 1 else ''} found — click to open profile
 </div>
 <style>
@@ -1617,7 +1617,7 @@ div[data-testid="stButton"] button[kind="secondary"]:hover {{
             bg = "#C9A876" if done else "#E5E7EB"
             return f'<div style="flex:1;height:2px;background:{bg};margin-top:14px;"></div>'
 
-        st.markdown('<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#9dc8b0;margin:0.5rem 0 0.75rem;">Registrations</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#667085;margin:0.5rem 0 0.75rem;">Registrations</div>', unsafe_allow_html=True)
 
         for reg in matched_registrations:
             p = reg.get("properties", {})
