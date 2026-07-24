@@ -233,42 +233,57 @@ div[data-testid='stPageLink'] a span[data-testid='stIconMaterial'],
 div[data-testid='stPageLink'] a > span:first-child{font-size:1.35rem !important;}
 </style>""", unsafe_allow_html=True)
 
+# (url_path, title, icon, description) — url_path is the page route (filename stem).
 _SECTIONS = {
-    "Numbers": [
-        ("pages/1_Numbers_Report.py", "Numbers Report", "📊"),
-        ("pages/9_Number_Funnel.py", "Number Funnel", "🔢"),
-        ("pages/6_Registration_Funnel.py", "Registration Funnel", "📋"),
-        ("pages/7_Port_In_Report.py", "Port-In Report", "📲"),
-        ("pages/10_Port_Out_Winback.py", "Port-Out Winback", "🔄"),
-        ("pages/3_Geographic_Report.py", "Geographic Report", "🗺️"),
-        ("pages/16_YoY_Comparison.py", "Year-over-Year", "📆"),
+    ("Numbers", BLUE): [
+        ("Numbers_Report", "Numbers Report", "📊", "Live VRS numbers & billable minutes"),
+        ("Number_Funnel", "Number Funnel", "🔢", "Registration → activation funnel"),
+        ("Registration_Funnel", "Registration Funnel", "📋", "Sign-up completion stages"),
+        ("Port_In_Report", "Port-In Report", "📲", "Numbers ported in"),
+        ("Port_Out_Winback", "Port-Out Winback", "🔄", "Port-outs & win-back"),
+        ("Geographic_Report", "Geographic Report", "🗺️", "Numbers by state & region"),
+        ("YoY_Comparison", "Year-over-Year", "📆", "Year-over-year trends"),
     ],
-    "Customers": [
-        ("pages/0_Lookup.py", "VRS Lookup", "🔍"),
-        ("pages/2_URSA_Login_Report.py", "URSA Login Report", "👤"),
-        ("pages/8_Signup_Journey.py", "Sign-Up Journey", "🧭"),
-        ("pages/13_Age_Demographics.py", "Age Demographics", "👥"),
-        ("pages/5_Churn_Risk.py", "Churn Risk Report", "🚨"),
-        ("pages/12_VRS_Zero_ConvoNow_Active.py", "VRS Zero / Convo Now", "🔄"),
-        ("pages/22_Retention_Report.py", "Retention Report", "🔁"),
+    ("Customers", GREEN): [
+        ("Lookup", "VRS Lookup", "🔍", "Look up any number or customer"),
+        ("URSA_Login_Report", "URSA Login Report", "👤", "URSA login activity"),
+        ("Signup_Journey", "Sign-Up Journey", "🧭", "Sign-up journey stages"),
+        ("Age_Demographics", "Age Demographics", "👥", "Customer age breakdown"),
+        ("Churn_Risk", "Churn Risk Report", "🚨", "At-risk customers"),
+        ("VRS_Zero_ConvoNow_Active", "VRS Zero / Convo Now", "🔄", "Zero-usage & Convo Now active"),
+        ("Retention_Report", "Retention Report", "🔁", "Cohort retention over time"),
     ],
-    "Support": [
-        ("pages/11_Consumer_Success_Tickets.py", "Consumer Success Tickets", "🎫"),
-        ("pages/20_Ticket_Report.py", "Ticket Report", "🎟️"),
-        ("pages/21_Jira_Report.py", "Jira Ticket Report", "🧩"),
-        ("pages/19_Survey.py", "Survey", "📝"),
+    ("Support", AMBER): [
+        ("Consumer_Success_Tickets", "Consumer Success Tickets", "🎫", "CS ticket overview"),
+        ("Ticket_Report", "Ticket Report", "🎟️", "Support ticket KPIs & trends"),
+        ("Jira_Report", "Jira Ticket Report", "🧩", "Jira engineering tickets"),
+        ("Survey", "Survey", "📝", "CSAT & feedback submissions"),
     ],
-    "Tools": [
-        ("pages/4_Bulk_Search.py", "Bulk Search", "🔎"),
-        ("pages/17_Data_Explorer.py", "Data Explorer", "📊"),
-        ("pages/14_Pendo_Report.py", "Pendo Report", "📱"),
-        ("pages/15_Data_Quality.py", "Data Quality", "🧹"),
-        ("pages/18_Audit_Log.py", "Audit Log", "🛡️"),
+    ("Tools", PURPLE): [
+        ("Bulk_Search", "Bulk Search", "🔎", "Search many numbers at once"),
+        ("Data_Explorer", "Data Explorer", "📊", "Build your own query & chart"),
+        ("Pendo_Report", "Pendo Report", "📱", "App engagement analytics"),
+        ("Data_Quality", "Data Quality", "🧹", "Data health & duplicates"),
+        ("Audit_Log", "Audit Log", "🛡️", "Login & report-usage audit"),
     ],
 }
-for _sec, _items in _SECTIONS.items():
-    st.markdown(f"<div style='font-weight:800;color:#1A2234;font-size:0.95rem;"
-                f"margin:0.9rem 0 0.45rem;'>{_sec}</div>", unsafe_allow_html=True)
-    _cols = st.columns(4)
-    for _j, (_path, _label, _icon) in enumerate(_items):
-        _cols[_j % 4].page_link(_path, label=_label, icon=_icon)
+for (_sec, _color), _items in _SECTIONS.items():
+    st.markdown(f"<div style='font-weight:800;color:#1A2234;font-size:0.98rem;"
+                f"margin:1.1rem 0 0.5rem;'>{_sec}</div>", unsafe_allow_html=True)
+    _cards = "".join(
+        f'<a href="{_url}" target="_self" style="text-decoration:none;">'
+        f'<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:14px;'
+        f'padding:0.95rem 1.05rem;display:flex;align-items:center;gap:0.75rem;height:100%;'
+        f'box-shadow:0 1px 2px rgba(24,36,51,0.04),0 4px 12px rgba(24,36,51,0.05);transition:.14s;"'
+        f' onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 6px 18px rgba(24,36,51,0.11)\';"'
+        f' onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'0 1px 2px rgba(24,36,51,0.04),0 4px 12px rgba(24,36,51,0.05)\';">'
+        f'<div style="width:40px;height:40px;border-radius:11px;flex-shrink:0;background:{_color}18;'
+        f'display:flex;align-items:center;justify-content:center;font-size:1.2rem;">{_icon}</div>'
+        f'<div><div style="font-weight:800;color:#1A2234;font-size:0.92rem;line-height:1.15;">{_title}</div>'
+        f'<div style="font-size:0.75rem;color:#9AA5B1;margin-top:2px;">{_desc}</div></div>'
+        f'</div></a>'
+        for _url, _title, _icon, _desc in _items
+    )
+    st.markdown(
+        f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));'
+        f'gap:0.7rem;margin-bottom:0.4rem;">{_cards}</div>', unsafe_allow_html=True)
