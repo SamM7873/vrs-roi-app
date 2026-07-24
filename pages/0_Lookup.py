@@ -1051,23 +1051,25 @@ if "search_results" in st.session_state:
     cost_saved = (total_vrs_min * VRS_RATE_PER_MINUTE) - (total_convo_min * CONVO_NOW_RATE_PER_MINUTE)
     saved_color = "#C9A876" if cost_saved >= 0 else "#EF4444"
 
-    def _tile(label, value, sub="", color="#1F2937", accent=False):
-        border = "border-top:3px solid #C9A876;" if accent else "border-top:3px solid transparent;"
-        return (f'<div style="background:#F4F1E8;border:1px solid #DDD9CC;border-radius:12px;'
-                f'padding:1rem 1.2rem;{border}">'
-                f'<div style="font-size:0.68rem;font-weight:700;letter-spacing:0.09em;'
-                f'text-transform:uppercase;color:#7A8A7A;margin-bottom:0.4rem;">{label}</div>'
-                f'<div style="font-size:1.45rem;font-weight:800;color:{color};line-height:1.1;'
-                f'letter-spacing:-0.02em;font-variant-numeric:tabular-nums;">{value}</div>'
-                + (f'<div style="font-size:0.75rem;color:#8A907A;margin-top:0.25rem;font-weight:500;">{sub}</div>' if sub else '')
+    def _tile(label, value, icon="📊", color="#1A2234", chip="#EEF1F6", sub=""):
+        return (f'<div style="background:#FFFFFF;border:1px solid #E6E9F0;border-radius:16px;'
+                f'padding:1.05rem 1.25rem;box-shadow:0 1px 2px rgba(24,36,51,0.04),0 4px 14px rgba(24,36,51,0.05);'
+                f'display:flex;align-items:center;justify-content:space-between;gap:0.6rem;">'
+                f'<div><div style="font-size:0.64rem;font-weight:800;letter-spacing:0.11em;'
+                f'text-transform:uppercase;color:#8792A2;margin-bottom:0.3rem;">{label}</div>'
+                f'<div style="font-size:1.55rem;font-weight:800;color:{color};line-height:1.05;'
+                f'letter-spacing:-0.4px;font-variant-numeric:tabular-nums;">{value}</div>'
+                + (f'<div style="font-size:0.72rem;color:#9AA5B1;margin-top:0.15rem;">{sub}</div>' if sub else '')
+                + f'</div><div style="width:40px;height:40px;border-radius:11px;flex-shrink:0;'
+                f'background:{chip};display:flex;align-items:center;justify-content:center;font-size:1.1rem;">{icon}</div>'
                 + '</div>')
 
-    st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.55rem;margin-bottom:1.25rem;">
-  {_tile("Numbers Found", total_nums, accent=True)}
-  {_tile("Registrations", total_regs)}
-  {_tile("Live VRS", live_vrs, color="#C9A876")}
-  {_tile("Account Age", account_age)}
-  {_tile("Total VRS Min", f"{total_vrs_min:,.1f}")}
+    st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.7rem;margin-bottom:1.25rem;">
+  {_tile("Numbers Found", total_nums, icon="📇", color="#206BC4", chip="#E8F1FE")}
+  {_tile("Registrations", total_regs, icon="✅", color="#8B5CF6", chip="#F1EBFC")}
+  {_tile("Live VRS", live_vrs, icon="🟢", color="#2FB344", chip="#E7F6EC")}
+  {_tile("Account Age", account_age, icon="⏳", color="#F59F00", chip="#FEF3E2")}
+  {_tile("Total VRS Min", f"{total_vrs_min:,.1f}", icon="⏱️", color="#0EA5E9", chip="#E4F5FC")}
 </div>""", unsafe_allow_html=True)
 
     # ── Contact dashboard cards ──
