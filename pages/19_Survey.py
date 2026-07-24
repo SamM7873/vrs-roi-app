@@ -26,7 +26,11 @@ GROUP_COLORS = {"PROMOTER": "#15803D", "PASSIVE": "#C9A876", "DETRACTOR": "#EF44
 
 # 360 support team — override with a TEAM_360 secret (comma-separated owner names)
 _DEFAULT_360 = ["Alyssa Vela", "Jonah Hazelett", "Ilan Ben-Moshe", "Taylor Jamie",
-                "Ashley Thurman", "Danté Whitty", "Hannah Puent"]
+                "Ashley Thurman", "Danté Whitty", "Hannah Puent",
+                # deactivated 360 team members (former agents)
+                "Joseph Pfaff", "Lisa Anderson", "OluQuea Siffre", "Clayton Lawson",
+                "D.J. Garrison", "Xavius Turner", "Mayra Castrejon-Hernandez",
+                "Yader Martinez", "Melisa Winston"]
 _t360_raw = str(get_secret("TEAM_360", "")).strip()
 TEAM_360 = [n.strip() for n in _t360_raw.split(",") if n.strip()] or _DEFAULT_360
 
@@ -247,7 +251,9 @@ sel_name = []
 
 view = df.copy()
 if team_360_only:
-    view = view[view["Ticket Owner"].isin(TEAM_360)]
+    # match on the base name so "(deactivated)"-tagged owners still count
+    _base_owner = view["Ticket Owner"].str.replace(" (deactivated)", "", regex=False)
+    view = view[_base_owner.isin(TEAM_360)]
 if sel_type:
     view = view[view["hs_survey_type"].isin(sel_type)]
 if sel_owner:
