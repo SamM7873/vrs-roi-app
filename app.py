@@ -141,7 +141,7 @@ _all_pages = [overview_page, lookup_page, numbers_page, numfunnel_page, funnel_p
               winback_page, geo_page, yoy_page, ursa_page, journey_page, age_demo_page, churn_page,
               vrs_zero_page, retention_page, cs_tickets_page, ticket_rpt_page, jira_rpt_page,
               survey_page, bulk_page, explorer_page, pendo_page, dq_page, audit_page]
-_PER_ROW = 8
+_PER_ROW = 6
 for _i in range(0, len(_all_pages), _PER_ROW):
     _row = st.columns(_PER_ROW)
     for _col, _p in zip(_row, _all_pages[_i:_i + _PER_ROW]):

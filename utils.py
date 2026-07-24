@@ -383,9 +383,9 @@ def require_auth():
     with st.sidebar:
         uname = st.session_state.get("username", "user")
         st.markdown(
-            f"<div style='margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.15);"
-            f"font-size:0.8rem;color:rgba(255,255,255,0.7);'>Logged in as "
-            f"<strong style='color:#fff;'>{uname}</strong></div>",
+            f"<div style='margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid #E6E9F0;"
+            f"font-size:0.8rem;color:#667085;'>Logged in as "
+            f"<strong style='color:#1A2234;'>{uname}</strong></div>",
             unsafe_allow_html=True,
         )
         if st.button("Log out", key="_logout_btn", use_container_width=True):
