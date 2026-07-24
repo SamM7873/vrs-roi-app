@@ -330,28 +330,14 @@ _maxc = float(chart_df["Count"].max()) or 1.0
 chart_df["x0"] = (_maxc - chart_df["Count"]) / 2
 chart_df["x1"] = (_maxc + chart_df["Count"]) / 2
 
-st.markdown("##### Funnel")
 _base = alt.Chart(chart_df)
 
-# 1) PRIMARY — horizontal bar funnel: bar length is exactly proportional to the
-# count (one-to-one), so small stages stay readable and it never collapses to a
-# triangle. Bands drawn widest-at-top for a funnel feel.
-_hbar = _base.mark_bar(cornerRadiusTopRight=5, cornerRadiusBottomRight=5).encode(
-    y=alt.Y("Stage:N", sort=_stage_order, axis=alt.Axis(title=None, labelLimit=220, labelFontSize=12)),
-    x=alt.X("Count:Q", title=None, axis=alt.Axis(grid=True)),
-    color=alt.Color("Color:N", scale=None, legend=None),
-    tooltip=["Stage", alt.Tooltip("Count:Q", format=","), alt.Tooltip("Pct:Q", format=".1f", title="% of total")],
-).properties(height=54 * len(stages))
-_hlabel = _base.mark_text(align="left", dx=6, color="#1F2937", fontWeight="bold", fontSize=13).encode(
-    y=alt.Y("Stage:N", sort=_stage_order), x="Count:Q", text="Label:N")
-st.altair_chart(_hbar + _hlabel, use_container_width=True)
-
-with st.expander("Other chart views (classic funnel · vertical bars)"):
-    # 2) Highcharts funnel (neck restored so it reads as a funnel, not a triangle)
-    _hc_data = [{"name": s[0], "y": int(s[1]),
-                 "pct": round(s[1] / total * 100, 1) if total else 0} for s in stages]
-    _hc_colors = _colors[:len(stages)]
-    _hc_html = f"""
+# ── TOP: classic funnel (Highcharts, with neck so it reads as a funnel) ────────
+st.markdown("##### Funnel")
+_hc_data = [{"name": s[0], "y": int(s[1]),
+             "pct": round(s[1] / total * 100, 1) if total else 0} for s in stages]
+_hc_colors = _colors[:len(stages)]
+_hc_html = f"""
 <div id="funnel_container" style="width:100%;height:460px;"></div>
 <script src="https://code.highcharts.com/highcharts.js"></script>
 <script src="https://code.highcharts.com/modules/funnel.js"></script>
@@ -386,9 +372,21 @@ Highcharts.chart('funnel_container', {{
 }});
 </script>
 """
-    components.html(_hc_html, height=480)
+components.html(_hc_html, height=480)
 
-    # 3) Vertical bars
+# ── BOTTOM: proportional bars (horizontal + vertical) ─────────────────────────
+st.markdown("##### Bars — proportional to actual counts")
+_hbar = _base.mark_bar(cornerRadiusTopRight=5, cornerRadiusBottomRight=5).encode(
+    y=alt.Y("Stage:N", sort=_stage_order, axis=alt.Axis(title=None, labelLimit=220, labelFontSize=12)),
+    x=alt.X("Count:Q", title=None, axis=alt.Axis(grid=True)),
+    color=alt.Color("Color:N", scale=None, legend=None),
+    tooltip=["Stage", alt.Tooltip("Count:Q", format=","), alt.Tooltip("Pct:Q", format=".1f", title="% of total")],
+).properties(height=54 * len(stages))
+_hlabel = _base.mark_text(align="left", dx=6, color="#1F2937", fontWeight="bold", fontSize=13).encode(
+    y=alt.Y("Stage:N", sort=_stage_order), x="Count:Q", text="Label:N")
+st.altair_chart(_hbar + _hlabel, use_container_width=True)
+
+with st.expander("Vertical bars"):
     _vbar = _base.mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
         x=alt.X("Stage:N", sort=_stage_order, axis=alt.Axis(title=None, labelAngle=-20)),
         y=alt.Y("Count:Q", title="Count"),
