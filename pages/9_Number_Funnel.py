@@ -327,7 +327,8 @@ st.markdown("##### Funnel")
 _base = alt.Chart(chart_df)
 
 # 1) Highcharts funnel with a neck (matches the classic funnel look)
-_hc_data = [[s[0], int(s[1])] for s in stages]
+_hc_data = [{"name": s[0], "y": int(s[1]),
+             "pct": round(s[1] / total * 100, 1) if total else 0} for s in stages]
 _hc_colors = _colors[:len(stages)]
 _hc_html = f"""
 <div id="funnel_container" style="width:100%;height:460px;"></div>
@@ -343,7 +344,7 @@ Highcharts.chart('funnel_container', {{
     series: {{
       dataLabels: {{
         enabled: true,
-        format: '<b>{{point.name}}</b> ({{point.y:,.0f}})',
+        format: '<b>{{point.name}}</b><br>{{point.y:,.0f}} ({{point.pct}}%)',
         softConnector: true,
         style: {{ fontSize: '13px', color: '#1F2937', textOutline: 'none' }}
       }},
