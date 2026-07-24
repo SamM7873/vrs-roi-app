@@ -69,13 +69,17 @@ def _load():
     now = datetime.now(timezone.utc)
     mo_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     # last 12 months of new-number counts (real trend)
+    _CN = {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}
     trend = []
     for i in range(11, -1, -1):
         s = (mo_start - relativedelta(months=i))
         e = (s + relativedelta(months=1))
-        c = _count([VRS, {"propertyName": "number_created_at", "operator": "GTE", "value": _ms(s)},
-                    {"propertyName": "number_created_at", "operator": "LT", "value": _ms(e)}])
-        trend.append({"Month": s.strftime("%b"), "MonthKey": s.strftime("%Y-%m"), "New": c or 0})
+        _lo = {"propertyName": "number_created_at", "operator": "GTE", "value": _ms(s)}
+        _hi = {"propertyName": "number_created_at", "operator": "LT", "value": _ms(e)}
+        c = _count([VRS, _lo, _hi])
+        cn = _count([_CN, _lo, _hi])
+        trend.append({"Month": s.strftime("%b"), "MonthKey": s.strftime("%Y-%m"),
+                      "New": c or 0, "ConvoNow": cn or 0})
     return {
         "total": _count([VRS]),
         "live": _status(["Live", "live", "LIVE", "Active", "active"]),
@@ -224,13 +228,20 @@ for col, (icon, title, sub, color) in zip(sc, stat):
 st.markdown("<div style='height:1.3rem;'></div>", unsafe_allow_html=True)
 g1, g2 = st.columns([2, 1])
 with g1:
-    st.markdown("<div class='tblr-label' style='margin-bottom:0.4rem;'>New VRS numbers · last 12 months</div>",
+    st.markdown("<div class='tblr-label' style='margin-bottom:0.4rem;'>New numbers · last 12 months "
+                "<span style='color:#206BC4;'>▬ VRS</span> · <span style='color:#2FB344;'>▬ Convo Now</span></div>",
                 unsafe_allow_html=True)
-    bars = alt.Chart(trend_df).mark_bar(color=BLUE, cornerRadiusTopLeft=3, cornerRadiusTopRight=3, size=22).encode(
-        x=alt.X("Month:N", sort=_order, axis=alt.Axis(title=None, labelAngle=0)),
+    _tbase = alt.Chart(trend_df).encode(x=alt.X("Month:N", sort=_order, axis=alt.Axis(title=None, labelAngle=0)))
+    bars = _tbase.mark_bar(color=BLUE, cornerRadiusTopLeft=3, cornerRadiusTopRight=3, size=22).encode(
         y=alt.Y("New:Q", title=None),
-        tooltip=["Month", "New"]).properties(height=300)
-    st.altair_chart(bars, use_container_width=True)
+        tooltip=[alt.Tooltip("Month"), alt.Tooltip("New:Q", title="New VRS"),
+                 alt.Tooltip("ConvoNow:Q", title="New Convo Now")])
+    cn_line = _tbase.mark_line(color=GREEN, strokeWidth=3,
+                               point=alt.OverlayMarkDef(color=GREEN, size=45)).encode(
+        y=alt.Y("ConvoNow:Q", title=None),
+        tooltip=[alt.Tooltip("Month"), alt.Tooltip("ConvoNow:Q", title="New Convo Now")])
+    st.altair_chart((bars + cn_line).resolve_scale(y="independent").properties(height=300),
+                    use_container_width=True)
 with g2:
     st.markdown("<div class='tblr-label' style='margin-bottom:0.4rem;'>Status breakdown</div>", unsafe_allow_html=True)
     other = max(total - live - susp - deact, 0)
