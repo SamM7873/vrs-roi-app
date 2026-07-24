@@ -290,10 +290,6 @@ div[data-testid='stPageLink'] a > span:first-child{font-size:1.35rem !important;
 
 # (url_path, title, icon, description) — url_path is the page route (filename stem).
 _SECTIONS = {
-    ("Dashboards", GREEN): [
-        ("This_Month", "This Month", "🗓️", "Current-month activity dashboard"),
-        ("Last_Month", "Last Month", "📅", "Previous-month snapshot"),
-    ],
     ("Numbers", BLUE): [
         ("Numbers_Report", "Numbers Report", "📊", "Live VRS numbers & billable minutes"),
         ("Number_Funnel", "Number Funnel", "🔢", "Registration → activation funnel"),
