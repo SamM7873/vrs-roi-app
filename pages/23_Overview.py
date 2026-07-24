@@ -40,6 +40,9 @@ def _status(vals):
     return _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": vals}])
 
 
+_DEACT = ["Deactivated", "deactivated", "Deleted", "deleted", "Inactive", "inactive", "Cancelled", "cancelled"]
+
+
 def _ms(dt):
     return str(int(dt.timestamp() * 1000))
 
@@ -60,6 +63,9 @@ def _load():
         "live": _status(["Live", "live", "LIVE", "Active", "active"]),
         "suspended": _status(["Suspended", "suspended", "SUSPENDED"]),
         "registered": _count([VRS, {"propertyName": "registered_at", "operator": "HAS_PROPERTY"}]),
+        "deactivated": _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": _DEACT}]),
+        "port_out": _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": _DEACT},
+                            {"propertyName": "bandwidth_order_type", "operator": "CONTAINS_TOKEN", "value": "*port*"}]),
         "new_month": trend[-1]["New"] if trend else 0,
         "prev_month": trend[-2]["New"] if len(trend) > 1 else 0,
         "trend": trend,
@@ -93,6 +99,8 @@ reg = _c["registered"] or 0
 susp = _c["suspended"] or 0
 new_m = _c["new_month"] or 0
 prev_m = _c["prev_month"] or 0
+deact = _c.get("deactivated") or 0
+port_out = _c.get("port_out") or 0
 reg_pct = (reg / total * 100) if total else 0
 live_pct = (live / total * 100) if total else 0
 mom = ((new_m - prev_m) / prev_m * 100) if prev_m else 0
@@ -173,12 +181,13 @@ with k4:
 # ── small stat cards row ──────────────────────────────────────────────────────
 st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
 stat = [
-    ("💳", f"{reg:,} Registered", f"{reg_pct:.0f}% of numbers", BLUE),
     ("🟢", f"{live:,} Live", "currently active", GREEN),
     ("⏸️", f"{susp:,} Suspended", "not active", AMBER),
-    ("✨", f"{new_m:,} New", "this month", PURPLE),
+    ("🚫", f"{deact:,} Deactivated", "closed / inactive", RED),
+    ("📤", f"{port_out:,} Port-Out", "ported to another provider", "#8B5CF6"),
+    ("✨", f"{new_m:,} New", "this month", "#0EA5E9"),
 ]
-sc = st.columns(4)
+sc = st.columns(5)
 for col, (icon, title, sub, color) in zip(sc, stat):
     with col:
         st.markdown(f"""
@@ -275,6 +284,7 @@ _LIVE = {
     "Registration_Funnel": f"{reg:,} reg",
     "Retention_Report": f"{live:,} live",
     "VRS_Zero_ConvoNow_Active": f"{susp:,} susp",
+    "Port_Out_Winback": f"{port_out:,} port-out",
 }
 
 
