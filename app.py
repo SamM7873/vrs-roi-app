@@ -49,7 +49,7 @@ def render_sync_widget():
     seg = st.session_state.get("_retention_summary", {})
 
     with st.sidebar:
-        st.markdown("""<div style="border-top:1px solid rgba(255,255,255,0.1);margin:0.5rem 0;"></div>""",
+        st.markdown("""<div style="border-top:1px solid #E6E9F0;margin:0.5rem 0;"></div>""",
                     unsafe_allow_html=True)
         age_mins = int((time.time() - d["ts"]) / 60)
         # Format in Central Time (UTC-5 CDT / UTC-6 CST) — auto pick offset by month
@@ -63,12 +63,12 @@ def render_sync_widget():
   <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
     <div style="width:8px;height:8px;border-radius:50%;background:{dot};
                 box-shadow:0 0 6px {dot};flex-shrink:0;"></div>
-    <span style="font-size:0.78rem;font-weight:700;color:rgba(255,255,255,0.9);">HubSpot {label}</span>
+    <span style="font-size:0.78rem;font-weight:700;color:#1A2234;">HubSpot {label}</span>
   </div>
-  <div style="font-size:0.68rem;color:rgba(255,255,255,0.45);margin-bottom:0.75rem;">
+  <div style="font-size:0.68rem;color:#667085;margin-bottom:0.75rem;">
     Last sync: {last_sync}
   </div>
-  <div style="font-size:0.68rem;color:rgba(255,255,255,0.35);">
+  <div style="font-size:0.68rem;color:#8792A2;">
     Data refreshes every 5 min · {age_mins}m ago
   </div>
 </div>

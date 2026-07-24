@@ -982,26 +982,40 @@ COMMON_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
     :root {
-        --primary: #C9A876;
-        --primary-dark: #B59467;
-        --background: #F6F8FA;
+        --primary: #0D3B26;
+        --primary-dark: #0A2E1E;
+        --accent: #C9A876;
+        --background: #F5F7FB;
         --card: #FFFFFF;
-        --text: #1F2937;
-        --border: #E5E7EB;
+        --text: #1A2234;
+        --muted: #667085;
+        --border: #E6E9F0;
     }
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: var(--text); }
     .stApp { background-color: var(--background); }
+    .block-container { padding-top: 2.2rem; }
+    /* ── Tabler-style light sidebar ─────────────────────────────────────── */
     section[data-testid="stSidebar"] {
-        background-color: #0D3B26;
-        border-right: none;
+        background-color: #FFFFFF;
+        border-right: 1px solid var(--border);
     }
-    section[data-testid="stSidebar"] * { color: rgba(255,255,255,0.85) !important; }
+    section[data-testid="stSidebar"] * { color: #3B4657 !important; }
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a {
+        border-radius: 9px; margin: 1px 6px; padding: 0.35rem 0.6rem;
+        font-weight: 500; transition: background 0.12s;
+    }
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a:hover {
+        background-color: #F1F3F8 !important;
+    }
     section[data-testid="stSidebar"] a[aria-selected="true"],
     section[data-testid="stSidebar"] [aria-selected="true"] {
-        background-color: rgba(0,166,81,0.25) !important;
-        color: #fff !important;
-        border-radius: 8px;
+        background-color: rgba(13,59,38,0.10) !important;
+        color: #0D3B26 !important;
+        border-radius: 9px;
+        font-weight: 700 !important;
+        box-shadow: inset 3px 0 0 #0D3B26;
     }
+    section[data-testid="stSidebar"] a[aria-selected="true"] * { color: #0D3B26 !important; }
     div.stButton > button {
         background-color: var(--primary); color: #fff;
         border-radius: 8px; border: none;
