@@ -1,31 +1,31 @@
 import streamlit as st
+import pandas as pd
+import altair as alt
 import requests
 import time
 from datetime import datetime, timezone
-from utils import require_auth, get_secret, COMMON_CSS, report_header, report_header_close
+from dateutil.relativedelta import relativedelta
+from utils import require_auth, get_secret, COMMON_CSS, log_report_view
 
-st.set_page_config(page_title="Overview", layout="wide", page_icon="📊")
+st.set_page_config(page_title="Dashboard", layout="wide", page_icon="📊")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
+log_report_view("Overview")
 
 BASE_URL = "https://api.hubapi.com"
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 _headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 NUM_OBJECT = "2-40974683"
-TTL = 300  # refresh KPIs every 5 min
+TTL = 300
 
-GREEN, BLUE, AMBER, PURPLE, RED, TEAL = "#0D3B26", "#3B82F6", "#F59E0B", "#8B5CF6", "#EF4444", "#0EA5E9"
+BLUE, GREEN, CYAN, AMBER, PURPLE, RED, INK = "#206BC4", "#2FB344", "#4299E1", "#F59F00", "#8B5CF6", "#D63939", "#1A2234"
 
 
 def _count(filters):
-    """Return the total matching a filter set (cheap — limit 1, read total)."""
     try:
-        r = requests.post(
-            f"{BASE_URL}/crm/v3/objects/{NUM_OBJECT}/search",
-            headers=_headers,
-            json={"filterGroups": [{"filters": filters}], "properties": ["number_status"], "limit": 1},
-            timeout=10,
-        )
+        r = requests.post(f"{BASE_URL}/crm/v3/objects/{NUM_OBJECT}/search", headers=_headers,
+                          json={"filterGroups": [{"filters": filters}], "properties": ["number_status"], "limit": 1},
+                          timeout=10)
         if r.status_code == 200:
             return r.json().get("total", 0)
     except Exception:
@@ -33,104 +33,182 @@ def _count(filters):
     return None
 
 
-def _count_status(status_values):
-    """Count VRS numbers whose status is any of the given values (OR across
-    values via IN, so casing/label variants all count)."""
-    return _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": status_values}])
-
-
 VRS = {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}
 
 
-def _load_kpis():
-    _mo_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    _mo_ms = str(int(_mo_start.timestamp() * 1000))
+def _status(vals):
+    return _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": vals}])
+
+
+def _ms(dt):
+    return str(int(dt.timestamp() * 1000))
+
+
+def _load():
+    now = datetime.now(timezone.utc)
+    mo_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # last 12 months of new-number counts (real trend)
+    trend = []
+    for i in range(11, -1, -1):
+        s = (mo_start - relativedelta(months=i))
+        e = (s + relativedelta(months=1))
+        c = _count([VRS, {"propertyName": "number_created_at", "operator": "GTE", "value": _ms(s)},
+                    {"propertyName": "number_created_at", "operator": "LT", "value": _ms(e)}])
+        trend.append({"Month": s.strftime("%b"), "MonthKey": s.strftime("%Y-%m"), "New": c or 0})
     return {
-        "total":      _count([VRS]),
-        "live":       _count_status(["Live", "live", "LIVE", "Active", "active"]),
-        "suspended":  _count_status(["Suspended", "suspended", "SUSPENDED"]),
+        "total": _count([VRS]),
+        "live": _status(["Live", "live", "LIVE", "Active", "active"]),
+        "suspended": _status(["Suspended", "suspended", "SUSPENDED"]),
         "registered": _count([VRS, {"propertyName": "registered_at", "operator": "HAS_PROPERTY"}]),
-        "new_month":  _count([VRS, {"propertyName": "number_created_at", "operator": "GTE", "value": _mo_ms}]),
+        "new_month": trend[-1]["New"] if trend else 0,
+        "prev_month": trend[-2]["New"] if len(trend) > 1 else 0,
+        "trend": trend,
         "ts": time.time(),
     }
 
 
-report_header("Overview", "Live snapshot of VRS numbers and activity", section="Dashboard")
+# ── page head (Tabler style) ──────────────────────────────────────────────────
+h1, h2 = st.columns([6, 1.4])
+with h1:
+    st.markdown(
+        "<div style='font-size:0.7rem;font-weight:800;letter-spacing:0.12em;color:#8792A2;text-transform:uppercase;'>Overview</div>"
+        "<div style='font-size:1.7rem;font-weight:800;color:#1A2234;letter-spacing:-0.5px;margin-top:-2px;'>Dashboard</div>",
+        unsafe_allow_html=True)
+with h2:
+    st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
+    refresh = st.button("↻ Refresh", use_container_width=True)
 
-# cached KPI snapshot (refresh button or 5-min TTL)
-_c = st.session_state.get("_overview_kpis")
-_stale = (not _c) or (time.time() - _c.get("ts", 0)) > TTL
-top = st.columns([6, 1])
-with top[1]:
-    if st.button("↻ Refresh", use_container_width=True):
-        _stale = True
-if _stale:
-    with st.spinner("Loading live metrics…"):
-        _c = _load_kpis()
-        st.session_state["_overview_kpis"] = _c
+_c = st.session_state.get("_ov")
+if refresh or (not _c) or (time.time() - _c.get("ts", 0)) > TTL:
+    with st.spinner("Loading live metrics from HubSpot…"):
+        _c = _load()
+        st.session_state["_ov"] = _c
 
-_age = int(time.time() - _c.get("ts", time.time()))
-_ago = "just now" if _age < 60 else f"{_age // 60} min ago"
-st.caption(f"📡 Live from HubSpot · updated {_ago} · auto-refreshes every 5 min")
+_age = int(time.time() - _c["ts"])
+st.caption(f"📡 Live from HubSpot · updated {'just now' if _age < 60 else f'{_age//60} min ago'} · auto-refreshes every 5 min")
+
+total = _c["total"] or 0
+live = _c["live"] or 0
+reg = _c["registered"] or 0
+susp = _c["suspended"] or 0
+new_m = _c["new_month"] or 0
+prev_m = _c["prev_month"] or 0
+reg_pct = (reg / total * 100) if total else 0
+live_pct = (live / total * 100) if total else 0
+mom = ((new_m - prev_m) / prev_m * 100) if prev_m else 0
+trend_df = pd.DataFrame(_c["trend"])
+_order = list(trend_df["Month"])
 
 
-def _fmt(v):
-    return f"{v:,}" if isinstance(v, (int, float)) else "—"
+def _spark(df, color, kind="area"):
+    base = alt.Chart(df).encode(
+        x=alt.X("Month:N", sort=_order, axis=None),
+        y=alt.Y("New:Q", axis=None))
+    if kind == "bar":
+        ch = base.mark_bar(color=color, size=6, cornerRadiusTopLeft=2, cornerRadiusTopRight=2)
+    elif kind == "line":
+        ch = base.mark_line(color=color, strokeWidth=2)
+    else:
+        ch = base.mark_area(line={"color": color, "strokeWidth": 2},
+                            color=alt.Gradient(gradient="linear",
+                                               stops=[alt.GradientStop(color=color + "05", offset=0),
+                                                      alt.GradientStop(color=color + "55", offset=1)],
+                                               x1=1, x2=1, y1=1, y2=0))
+    return ch.properties(height=46).configure_view(strokeWidth=0)
 
 
-live, total = _c.get("live"), _c.get("total")
-reg = _c.get("registered")
-_reg_pct = f"{reg / total * 100:.0f}% of all numbers" if (reg is not None and total) else ""
-_susp = _c.get("suspended")
-_susp_pct = f"{_susp / total * 100:.0f}% of all numbers" if (_susp is not None and total) else ""
+def _delta(v):
+    if v > 0:
+        return f"<span style='color:{GREEN};font-weight:700;'>{v:.0f}% ↗</span>"
+    if v < 0:
+        return f"<span style='color:{RED};font-weight:700;'>{v:.0f}% ↘</span>"
+    return "<span style='color:#8792A2;font-weight:700;'>0% —</span>"
 
-cards = [
-    ("Total VRS Numbers", _fmt(total),        "all service numbers",  GREEN,  "📇", "#E7F0EB"),
-    ("Live Numbers",      _fmt(live),          "currently active",     BLUE,   "🟢", "#E8F1FE"),
-    ("Registered",        _fmt(reg),           _reg_pct,               PURPLE, "✅", "#F1EBFC"),
-    ("New This Month",    _fmt(_c.get("new_month")), "created this month", TEAL, "✨", "#E4F5FC"),
-    ("Suspended",         _fmt(_susp),         _susp_pct,               AMBER,  "⏸️", "#FEF3E2"),
+
+# ── KPI cards row ─────────────────────────────────────────────────────────────
+st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+k1, k2, k3, k4 = st.columns(4)
+
+with k1:
+    st.markdown(f"""
+<div class="tblr-card" style="padding-bottom:0.6rem;">
+  <div style="display:flex;justify-content:space-between;"><span class="tblr-label">Registered rate</span>
+    <span style="font-size:0.68rem;color:#B0B7C3;">of {total:,}</span></div>
+  <div class="tblr-value">{reg_pct:.0f}%</div>
+  <div style="height:6px;background:#EEF1F6;border-radius:4px;margin-top:0.6rem;overflow:hidden;">
+    <div style="width:{reg_pct:.0f}%;height:100%;background:{BLUE};"></div></div>
+  <div class="tblr-sub" style="margin-top:0.5rem;">{reg:,} registered numbers</div>
+</div>""", unsafe_allow_html=True)
+
+with k2:
+    st.markdown(f"""
+<div class="tblr-card" style="padding-bottom:0.2rem;">
+  <div style="display:flex;justify-content:space-between;"><span class="tblr-label">Total VRS numbers</span></div>
+  <div class="tblr-value">{total:,}</div>
+  <div class="tblr-sub">all service numbers</div>
+</div>""", unsafe_allow_html=True)
+    st.altair_chart(_spark(trend_df.assign(New=trend_df["New"].cumsum() + (total - trend_df["New"].sum())),
+                           BLUE, "area"), use_container_width=True)
+
+with k3:
+    st.markdown(f"""
+<div class="tblr-card" style="padding-bottom:0.2rem;">
+  <div style="display:flex;justify-content:space-between;"><span class="tblr-label">New this month</span>
+    <span style="font-size:0.72rem;">{_delta(mom)}</span></div>
+  <div class="tblr-value">{new_m:,}</div>
+  <div class="tblr-sub">vs {prev_m:,} last month</div>
+</div>""", unsafe_allow_html=True)
+    st.altair_chart(_spark(trend_df, GREEN, "bar"), use_container_width=True)
+
+with k4:
+    st.markdown(f"""
+<div class="tblr-card" style="padding-bottom:0.2rem;">
+  <div style="display:flex;justify-content:space-between;"><span class="tblr-label">Live numbers</span>
+    <span style="font-size:0.72rem;color:#8792A2;font-weight:700;">{live_pct:.0f}%</span></div>
+  <div class="tblr-value" style="color:{GREEN};">{live:,}</div>
+  <div class="tblr-sub">{susp:,} suspended</div>
+</div>""", unsafe_allow_html=True)
+    st.altair_chart(_spark(trend_df, CYAN, "line"), use_container_width=True)
+
+# ── small stat cards row ──────────────────────────────────────────────────────
+st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
+stat = [
+    ("💳", f"{reg:,} Registered", f"{reg_pct:.0f}% of numbers", BLUE),
+    ("🟢", f"{live:,} Live", "currently active", GREEN),
+    ("⏸️", f"{susp:,} Suspended", "not active", AMBER),
+    ("✨", f"{new_m:,} New", "this month", PURPLE),
 ]
-
-st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
-cols = st.columns(len(cards))
-for col, (label, value, sub, color, icon, chip_bg) in zip(cols, cards):
+sc = st.columns(4)
+for col, (icon, title, sub, color) in zip(sc, stat):
     with col:
         st.markdown(f"""
-<div class="tblr-card">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
-    <div>
-      <div class="tblr-label">{label}</div>
-      <div class="tblr-value" style="color:{color};">{value}</div>
-      <div class="tblr-sub">{sub or '&nbsp;'}</div>
-    </div>
-    <div class="tblr-chip" style="background:{chip_bg};">{icon}</div>
-  </div>
+<div class="tblr-card" style="display:flex;align-items:center;gap:0.85rem;padding:0.9rem 1.1rem;">
+  <div class="tblr-chip" style="background:{color}18;">{icon}</div>
+  <div><div style="font-weight:800;color:#1A2234;font-size:1.02rem;">{title}</div>
+       <div style="font-size:0.75rem;color:#9AA5B1;">{sub}</div></div>
 </div>""", unsafe_allow_html=True)
 
-# ── quick links into the reports ─────────────────────────────────────────────
-st.markdown("<div style='height:1.6rem;'></div>", unsafe_allow_html=True)
-st.markdown("##### Jump to a report")
+# ── traffic-style chart + status donut ────────────────────────────────────────
+st.markdown("<div style='height:1.3rem;'></div>", unsafe_allow_html=True)
+g1, g2 = st.columns([2, 1])
+with g1:
+    st.markdown("<div class='tblr-label' style='margin-bottom:0.4rem;'>New VRS numbers · last 12 months</div>",
+                unsafe_allow_html=True)
+    bars = alt.Chart(trend_df).mark_bar(color=BLUE, cornerRadiusTopLeft=3, cornerRadiusTopRight=3, size=22).encode(
+        x=alt.X("Month:N", sort=_order, axis=alt.Axis(title=None, labelAngle=0)),
+        y=alt.Y("New:Q", title=None),
+        tooltip=["Month", "New"]).properties(height=300)
+    st.altair_chart(bars, use_container_width=True)
+with g2:
+    st.markdown("<div class='tblr-label' style='margin-bottom:0.4rem;'>Status breakdown</div>", unsafe_allow_html=True)
+    other = max(total - live - susp, 0)
+    donut_df = pd.DataFrame({"Status": ["Live", "Suspended", "Other"], "Count": [live, susp, other]})
+    donut = alt.Chart(donut_df).mark_arc(innerRadius=62, cornerRadius=3).encode(
+        theta="Count:Q",
+        color=alt.Color("Status:N", scale=alt.Scale(domain=["Live", "Suspended", "Other"],
+                                                     range=[GREEN, AMBER, "#CBD5E1"]),
+                        legend=alt.Legend(orient="bottom", title=None)),
+        tooltip=["Status", "Count"]).properties(height=300)
+    st.altair_chart(donut, use_container_width=True)
 
-links = [
-    ("🔍", "VRS Lookup", "Look up any number or customer", GREEN),
-    ("🔢", "Number Funnel", "Registration → activation funnel", BLUE),
-    ("🔁", "Retention Report", "Cohort retention over time", PURPLE),
-    ("🎫", "Ticket Report", "Support ticket KPIs & trends", AMBER),
-    ("📝", "Survey", "CSAT & feedback submissions", TEAL),
-    ("📊", "Data Explorer", "Build your own query & chart", RED),
-]
-lc = st.columns(3)
-for i, (icon, title, desc, color) in enumerate(links):
-    with lc[i % 3]:
-        st.markdown(f"""
-<div class="tblr-card" style="margin-bottom:1rem;display:flex;align-items:center;gap:0.85rem;">
-  <div class="tblr-chip" style="background:{color}18;font-size:1.25rem;">{icon}</div>
-  <div>
-    <div style="font-weight:700;color:#1F2937;font-size:0.98rem;">{title}</div>
-    <div style="font-size:0.78rem;color:#9AA5B1;">{desc}</div>
-  </div>
-</div>""", unsafe_allow_html=True)
-st.caption("Use the sidebar to open any report — this overview is your at-a-glance home.")
-
-report_header_close()
+st.caption("Use the sidebar to open any report — this dashboard is your at-a-glance home.")
