@@ -192,7 +192,7 @@ _sparse = set(m for m, v in _by_month.items()
               if m != _by_month.index[-1] and _median > 0 and v < _SPARSE_FRAC * _median)
 
 if _sparse:
-    _names = ", ".join(f"{m:%b %Y}" for m in sorted(_sparse))
+    _names = ", ".join(m.strftime("%b %Y") for m in sorted(_sparse))
     st.warning(
         f"⚠️ **Possible data gap.** These month(s) have almost no active users "
         f"compared to the trend, which usually means usage records didn't sync: "
@@ -292,7 +292,7 @@ for m, v in _by_month.items():
     _is_gap = (m in _sparse)
     _flag = "🟡 partial (current month)" if _is_partial else ("⚠️ likely data gap" if _is_gap else "✓ ok")
     _vs_med = f"{(v / _median * 100):.0f}%" if _median > 0 else "—"
-    _mrows.append({"Month": f"{m:%b %Y}", "Active users": int(v),
+    _mrows.append({"Month": m.strftime("%b %Y"), "Active users": int(v),
                    "% of median month": _vs_med, "Status": _flag})
 _mdf = pd.DataFrame(_mrows)
 st.dataframe(_mdf, use_container_width=True, hide_index=True,
