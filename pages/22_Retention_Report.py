@@ -113,17 +113,29 @@ start_date = date(_y, _m, 1)
 start_ms = str(int(datetime(start_date.year, start_date.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
 
 # active user-months are cached by metric+window only (unit-independent)
-_BASE = f"retention_base_{metric.replace(' ', '_')}_{_months_back}m_{start_date}"
+# v2 = also stores usage_minutes / cfz_minutes for the "who generated minutes" table
+_BASE = f"retention_base_v2_{metric.replace(' ', '_')}_{_months_back}m_{start_date}"
 base = None if run else load_report(_BASE)
 if base is None and not run:
     st.info("Choose what counts as **active**, a look-back window and unit, then **Run Report**. "
             "The first run scans active user-months (can take a minute); results are then saved.")
     st.stop()
 
+
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 if run or base is None:
-    recs = _paged_search(_groups(metric, start_ms), ["number", "month_date"])
+    recs = _paged_search(_groups(metric, start_ms),
+                         ["number", "month_date", "usage_minutes", "cfz_minutes"])
     rows = [{"number": str(r.get("properties", {}).get("number") or "").strip(),
-             "month_date": r.get("properties", {}).get("month_date")} for r in recs]
+             "month_date": r.get("properties", {}).get("month_date"),
+             "usage_minutes": _num(r.get("properties", {}).get("usage_minutes")),
+             "cfz_minutes": _num(r.get("properties", {}).get("cfz_minutes"))} for r in recs]
     save_report(_BASE, {"rows": rows})
     _saved_at = time.time()
 else:
@@ -166,7 +178,17 @@ else:
 
 # ── build cohorts (keyed by user) ────────────────────────────────────────────
 active["month"] = pd.to_datetime(active["month_date"], errors="coerce").dt.to_period("M")
-active = active.dropna(subset=["month"]).drop_duplicates(["user", "month"])
+active = active.dropna(subset=["month"])
+
+# Per-user minutes totals — captured BEFORE the (user, month) de-dup so a person
+# with multiple numbers keeps every number's minutes.
+_um = active.groupby("user").agg(
+    VRS_minutes=("usage_minutes", "sum"),
+    CfZ_minutes=("cfz_minutes", "sum"),
+    Active_months=("month", "nunique"),
+).reset_index()
+
+active = active.drop_duplicates(["user", "month"])
 
 first = active.groupby("user")["month"].min().rename("cohort")
 active = active.merge(first, on="user")
@@ -332,6 +354,32 @@ coh = coh.sort_values("_sort", ascending=False).drop(columns=["_sort"])
 _fmt_cols = {c: st.column_config.NumberColumn(c, format="%.0f%%") for c in _col_labels}
 st.dataframe(coh, use_container_width=True, hide_index=True, column_config=_fmt_cols)
 st.caption(f"⚠️ The **{start_date:%b %Y}** cohort is left-censored (pre-existing users mislabeled as new) and is excluded from the KPI tiles and retention curve above.")
+
+# ── who generated the minutes ────────────────────────────────────────────────
+st.markdown(f"##### Who generated minutes — by {'person' if unit == 'Person (email)' else 'number'}")
+st.caption("Total VRS usage and CfZ minutes each user generated across the look-back window.")
+_who = _um.rename(columns={"user": ("Person" if unit == "Person (email)" else "Number"),
+                           "VRS_minutes": "VRS minutes", "CfZ_minutes": "CfZ minutes",
+                           "Active_months": "Active months"})
+_who["Total minutes"] = _who["VRS minutes"] + _who["CfZ minutes"]
+_id_col = "Person" if unit == "Person (email)" else "Number"
+_who = _who[[_id_col, "VRS minutes", "CfZ minutes", "Total minutes", "Active months"]]
+_who = _who.sort_values("Total minutes", ascending=False)
+_wc1, _wc2 = st.columns(2)
+_wc1.metric("Total VRS minutes", f"{_who['VRS minutes'].sum():,.0f}")
+_wc2.metric("Total CfZ minutes", f"{_who['CfZ minutes'].sum():,.0f}")
+st.dataframe(
+    _who, use_container_width=True, hide_index=True,
+    column_config={
+        "VRS minutes": st.column_config.NumberColumn("VRS minutes", format="%.0f"),
+        "CfZ minutes": st.column_config.NumberColumn("CfZ minutes", format="%.0f"),
+        "Total minutes": st.column_config.NumberColumn("Total minutes", format="%.0f"),
+        "Active months": st.column_config.NumberColumn("Active months", format="%d"),
+    },
+)
+st.download_button("📥 Download minutes CSV", _who.to_csv(index=False),
+                   f"retention_minutes_{metric.replace(' ', '_')}_{datetime.now():%Y%m%d}.csv",
+                   "text/csv", key="dl_minutes")
 
 st.download_button("📥 Download CSV", coh.to_csv(index=False),
                    f"retention_{metric.replace(' ', '_')}_{datetime.now():%Y%m%d}.csv", "text/csv")
