@@ -301,10 +301,13 @@ if _missing_reg:
     st.markdown(
         f"<div style='font-size:0.8rem;color:#b45309;margin:0.25rem 0 0.5rem;'>"
         f"⚠️ <strong>{len(_missing_reg)}</strong> number(s) were created in this window "
-        f"but have no <em>Registered At</em> date:</div>",
+        f"but have no <em>Registered At</em> date. A missing registration date typically "
+        f"means the number was <strong>added manually by the Customer Support team</strong> — "
+        f"e.g. a number-change request or a new Spanish number — so it never went through the "
+        f"normal self-registration flow:</div>",
         unsafe_allow_html=True,
     )
-    _mdf = pd.DataFrame(_missing_reg)[["Name", "Email", "Number", "Number Created", "Registered At"]]
+    _mdf = pd.DataFrame(_missing_reg)[["Name", "Email", "Number", "Language", "Number Created", "Registered At"]]
     st.dataframe(_mdf, use_container_width=True, hide_index=True)
 
 # ── Bar chart ─────────────────────────────────────────────────────────────
