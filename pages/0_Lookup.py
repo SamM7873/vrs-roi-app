@@ -764,9 +764,9 @@ h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.2; }
 [data-testid="stAlert"] { font-size: 0.9rem !important; line-height: 1.5 !important; }
 /* Dataframe text */
 [data-testid="stDataFrame"] { font-size: 0.85rem !important; }
-.stApp { background-color: #F4F6F9 !important; }
+.stApp { background-color: #FFFFFF !important; }
 /* Main content area */
-section.main > div { background-color: #F4F6F9 !important; }
+section.main > div { background-color: #FFFFFF !important; }
 /* Widen the main block container */
 .block-container,
 [data-testid="stMainBlockContainer"],

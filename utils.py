@@ -985,7 +985,7 @@ COMMON_CSS = """
         --primary: #0D3B26;
         --primary-dark: #0A2E1E;
         --accent: #C9A876;
-        --background: #F4F6F9;
+        --background: #FFFFFF;
         --card: #FFFFFF;
         --text: #1A2234;
         --muted: #667085;
