@@ -980,18 +980,22 @@ def vrs_rate_for_month(month_str):
 
 COMMON_CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&display=swap');
     :root {
         --primary: #0D3B26;
         --primary-dark: #0A2E1E;
         --accent: #C9A876;
-        --background: #F5F7FB;
+        --background: #F4F6F9;
         --card: #FFFFFF;
         --text: #1A2234;
         --muted: #667085;
         --border: #E6E9F0;
     }
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: var(--text); }
+    html, body, [class*="css"] {
+        font-family: 'Nunito Sans', 'Inter', -apple-system, 'Segoe UI', sans-serif;
+        color: var(--text);
+    }
+    h1, h2, h3, h4, h5, h6 { font-family: 'Nunito Sans', 'Inter', sans-serif; }
     .stApp { background-color: var(--background); }
     .block-container { padding-top: 2.2rem; }
     /* ── Tabler-style light sidebar ─────────────────────────────────────── */
