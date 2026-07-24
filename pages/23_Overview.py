@@ -134,10 +134,10 @@ trend_df = pd.DataFrame(_c["trend"])
 _order = list(trend_df["Month"])
 
 
-def _spark(df, color, kind="area"):
+def _spark(df, color, kind="area", ycol="New"):
     base = alt.Chart(df).encode(
         x=alt.X("Month:N", sort=_order, axis=None),
-        y=alt.Y("New:Q", axis=None))
+        y=alt.Y(f"{ycol}:Q", axis=None))
     if kind == "bar":
         ch = base.mark_bar(color=color, size=6, cornerRadiusTopLeft=2, cornerRadiusTopRight=2)
     elif kind == "line":
@@ -161,7 +161,7 @@ def _delta(v):
 
 # ── KPI cards row ─────────────────────────────────────────────────────────────
 st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-k1, k2, k3, k4 = st.columns(4)
+k1, k2, k3, k4, k5 = st.columns(5)
 
 with k1:
     st.markdown(f"""
@@ -203,6 +203,16 @@ with k4:
   <div class="tblr-sub">{susp:,} suspended</div>
 </div>""", unsafe_allow_html=True)
     st.altair_chart(_spark(trend_df, CYAN, "line"), use_container_width=True)
+
+with k5:
+    st.markdown(f"""
+<div class="tblr-card" style="padding-bottom:0.2rem;">
+  <div style="display:flex;justify-content:space-between;"><span class="tblr-label">Convo Now live</span>
+    <span style="font-size:0.72rem;">📞</span></div>
+  <div class="tblr-value" style="color:{GREEN};">{convo_live:,}</div>
+  <div class="tblr-sub">new/mo trend →</div>
+</div>""", unsafe_allow_html=True)
+    st.altair_chart(_spark(trend_df, GREEN, "line", ycol="ConvoNow"), use_container_width=True)
 
 # ── small stat cards row ──────────────────────────────────────────────────────
 st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
