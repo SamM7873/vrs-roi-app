@@ -313,28 +313,32 @@ def require_auth():
     if not st.session_state.authenticated:
         st.markdown("""
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-            html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-            .stApp { background-color: #F5F3F0; }
-            .login-wrap { max-width:400px;margin:5vh auto 0;padding:0 1rem; }
+            @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800;900&display=swap');
+            html, body, [class*="css"] { font-family: 'Nunito Sans', sans-serif; }
+            .stApp { background: linear-gradient(160deg,#F4F6F9 0%,#EAF1EC 100%); }
+            section[data-testid="stSidebar"] { display:none; }
+            .login-wrap { max-width:410px;margin:8vh auto 0;padding:0 1rem; }
             .login-logo-area { text-align:center;margin-bottom:1.5rem; }
             .logo-mark {
                 display:inline-flex;align-items:center;justify-content:center;
-                width:52px;height:52px;background:#C9A876;border-radius:12px;
-                font-size:1.3rem;font-weight:900;color:#fff;letter-spacing:-1px;margin-bottom:0.75rem;
+                width:56px;height:56px;background:linear-gradient(135deg,#0D3B26,#12492F);border-radius:16px;
+                font-size:1.4rem;font-weight:900;color:#fff;letter-spacing:-1px;margin-bottom:0.85rem;
+                box-shadow:0 6px 18px rgba(13,59,38,0.25);
             }
-            .login-logo-area h2 { font-size:1.3rem;font-weight:800;color:#1F2937;margin:0 0 0.25rem; }
-            .login-logo-area p { color:#6B7280;font-size:0.85rem;margin:0; }
-            .login-card { background:#fff;border-radius:14px;padding:2rem 1.75rem;border:1px solid #E5E7EB;box-shadow:0 4px 16px rgba(0,0,0,0.06); }
-            .stTextInput > div > div > input { border-radius:8px !important;border:1.5px solid #E5E7EB !important;padding:0.6rem 1rem !important;font-size:0.93rem !important;background:#F6F8FA !important; }
-            .stTextInput > div > div > input:focus { border-color:#C9A876 !important;box-shadow:0 0 0 3px rgba(201,168,118,0.12) !important;background:#fff !important; }
-            div.stButton > button { background-color:#C9A876;color:#fff;border-radius:8px;border:none;padding:0.6rem 2.2rem;font-weight:700;font-size:0.95rem;width:100%;box-shadow:0 1px 4px rgba(201,168,118,0.3); }
-            div.stButton > button:hover { background-color:#B59467;color:#fff; }
+            .login-logo-area h2 { font-size:1.4rem;font-weight:800;color:#1A2234;margin:0 0 0.25rem; }
+            .login-logo-area p { color:#667085;font-size:0.86rem;margin:0; }
+            .login-card { background:#fff;border-radius:18px;padding:2rem 1.85rem;border:1px solid #E6E9F0;
+                box-shadow:0 1px 2px rgba(24,36,51,0.04),0 12px 34px rgba(24,36,51,0.10); }
+            .stTextInput > div > div > input { border-radius:10px !important;border:1.5px solid #E6E9F0 !important;padding:0.65rem 1rem !important;font-size:0.93rem !important;background:#FFFFFF !important; }
+            .stTextInput > div > div > input:focus { border-color:#0D3B26 !important;box-shadow:0 0 0 3px rgba(13,59,38,0.12) !important;background:#fff !important; }
+            div.stButton > button { background-color:#0D3B26;color:#fff;border-radius:10px;border:none;padding:0.65rem 2.2rem;font-weight:800;font-size:0.95rem;width:100%;box-shadow:0 2px 8px rgba(13,59,38,0.28);transition:background .15s,transform .1s; }
+            div.stButton > button:hover { background-color:#0A2E1E;color:#fff; }
+            div.stButton > button:active { transform:translateY(1px); }
         </style>
         <div class="login-wrap">
           <div class="login-logo-area">
-            <div class="logo-mark">c</div>
-            <h2>VRS / Convo Now Lookup</h2>
+            <div class="logo-mark">C</div>
+            <h2>VRS / Convo Now Analytics</h2>
             <p>Please sign in to continue</p>
           </div>
         <div class="login-card">
