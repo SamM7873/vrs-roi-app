@@ -217,11 +217,21 @@ st.caption("Use the sidebar to open any report — this dashboard is your at-a-g
 st.markdown("<div style='height:1.6rem;'></div>", unsafe_allow_html=True)
 st.markdown("<div class='tblr-label' style='font-size:0.72rem;margin-bottom:0.2rem;'>Browse all reports</div>",
             unsafe_allow_html=True)
-st.markdown("<style>div[data-testid='stPageLink'] a{border:1px solid #E6E9F0;border-radius:12px;"
-            "padding:0.55rem 0.85rem !important;background:#fff;font-weight:600 !important;"
-            "box-shadow:0 1px 2px rgba(24,36,51,0.04);transition:.12s;}"
-            "div[data-testid='stPageLink'] a:hover{box-shadow:0 4px 14px rgba(24,36,51,0.09);"
-            "transform:translateY(-1px);border-color:#0D3B2633;}</style>", unsafe_allow_html=True)
+st.markdown("""<style>
+div[data-testid='stPageLink']{margin-bottom:0.7rem;}
+div[data-testid='stPageLink'] a{
+    border:1px solid #E6E9F0;border-radius:14px;
+    padding:1rem 1.15rem !important;background:#FFFFFF;
+    min-height:64px;display:flex;align-items:center;gap:0.6rem;
+    font-weight:700 !important;font-size:0.95rem !important;color:#1A2234 !important;
+    box-shadow:0 1px 2px rgba(24,36,51,0.04),0 4px 12px rgba(24,36,51,0.05);
+    transition:box-shadow .14s, transform .14s, border-color .14s;}
+div[data-testid='stPageLink'] a:hover{
+    box-shadow:0 4px 16px rgba(24,36,51,0.10);
+    transform:translateY(-2px);border-color:rgba(13,59,38,0.28);}
+div[data-testid='stPageLink'] a span[data-testid='stIconMaterial'],
+div[data-testid='stPageLink'] a > span:first-child{font-size:1.35rem !important;}
+</style>""", unsafe_allow_html=True)
 
 _SECTIONS = {
     "Numbers": [
