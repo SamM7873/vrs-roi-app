@@ -64,6 +64,8 @@ def _load():
         "reg_prev": _count([VRS] + _btw("registered_at", pm0, m0)),
         "deact": _count([VRS, {"propertyName": "account_status", "operator": "IN", "values": _DEACT}]
                         + _btw("number_deleted_at", m0, m1)),
+        "deact_prev": _count([VRS, {"propertyName": "account_status", "operator": "IN", "values": _DEACT}]
+                             + _btw("number_deleted_at", pm0, m0)),
         "portout": _count([VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portouts"}]
                           + _btw("number_deleted_at", m0, m1)),
         "portin": _count([VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portins"}]
@@ -105,6 +107,7 @@ deact = _c["deact"] or 0
 portout = _c["portout"] or 0
 portin = _c.get("portin") or 0
 _net = vrs_m - deact
+_net_prev = vrs_p - (_c.get("deact_prev") or 0)
 _net_pct = (_net / vrs_m * 100) if vrs_m else 0
 _deact_pct = (deact / vrs_m * 100) if vrs_m else 0
 _net_pct_html = (f"<span style='color:{GREEN if _net >= 0 else RED};font-weight:800;'>"
@@ -165,7 +168,8 @@ with k4:
       <div style="width:{min(reg/(reg_p or 1)*50,100):.0f}%;height:100%;background:{PURPLE};"></div></div>""",
                 unsafe_allow_html=True)
 with k5:
-    _kpi("Net new", _net, "New VRS − deactivated", GREEN if _net >= 0 else RED, _net_pct_html)
+    _kpi("Net new", _net, f"vs {_net_prev:,} last month {_delta(_net, _net_prev)}",
+         GREEN if _net >= 0 else RED, _net_pct_html)
     st.markdown(f"""<div style="height:6px;background:#EEF1F6;border-radius:4px;margin-top:0.55rem;overflow:hidden;">
       <div style="width:{min(max(_net_pct,0),100):.0f}%;height:100%;background:{GREEN if _net >= 0 else RED};"></div></div>""",
                 unsafe_allow_html=True)
