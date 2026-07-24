@@ -209,6 +209,7 @@ def log_audit(username, action, context=None):
             "ts": datetime.now(timezone.utc).isoformat(),
             "username": username or "unknown",
             "action": action,
+            "report": ctx.get("report", ""),
             "ip": ctx.get("ip", ""),
             "location": ctx.get("location", ""),
             "device": ctx.get("device", ""),
@@ -1084,7 +1085,22 @@ MOBILE_CSS = """
 COMMON_CSS = COMMON_CSS + MOBILE_CSS
 
 
+def log_report_view(report_name):
+    """Record that the logged-in user opened a report — once per report per
+    session, so reruns don't spam the audit log. Never raises."""
+    try:
+        seen = st.session_state.setdefault("_reports_logged", set())
+        if report_name in seen:
+            return
+        seen.add(report_name)
+        user = st.session_state.get("username") or "unknown"
+        log_audit(user, "report_view", {"report": report_name})
+    except Exception:
+        pass
+
+
 def report_header(title, subtitle, section="Analytics"):
+    log_report_view(title)
     st.markdown(f"""
 <div style="margin-top:1.5rem;">
 <div style="background:linear-gradient(135deg,#C9A876 0%,#B59467 100%);
