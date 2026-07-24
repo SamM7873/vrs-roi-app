@@ -104,6 +104,11 @@ reg_p = _c["reg_prev"] or 0
 deact = _c["deact"] or 0
 portout = _c["portout"] or 0
 portin = _c.get("portin") or 0
+_net = vrs_m - deact
+_net_pct = (_net / vrs_m * 100) if vrs_m else 0
+_deact_pct = (deact / vrs_m * 100) if vrs_m else 0
+_net_pct_html = (f"<span style='color:{GREEN if _net >= 0 else RED};font-weight:800;'>"
+                 f"{_net_pct:.0f}% net {'↗' if _net >= 0 else '↘'}</span>")
 
 
 def _spark(color, kind, ycol):
@@ -144,7 +149,7 @@ def _kpi(label, value, sub, color, extra=""):
 
 # ── KPI cards with sparklines (Overview style) ────────────────────────────────
 st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-k1, k2, k3, k4 = st.columns(4)
+k1, k2, k3, k4, k5 = st.columns(5)
 with k1:
     _kpi("New VRS numbers", vrs_m, f"vs {vrs_p:,} last month", BLUE, _delta(vrs_m, vrs_p))
     st.altair_chart(_spark(BLUE, "bar", "VRS"), use_container_width=True)
@@ -159,19 +164,20 @@ with k4:
     st.markdown(f"""<div style="height:6px;background:#EEF1F6;border-radius:4px;margin-top:0.55rem;overflow:hidden;">
       <div style="width:{min(reg/(reg_p or 1)*50,100):.0f}%;height:100%;background:{PURPLE};"></div></div>""",
                 unsafe_allow_html=True)
+with k5:
+    _kpi("Net new", _net, "New VRS − deactivated", GREEN if _net >= 0 else RED, _net_pct_html)
+    st.markdown(f"""<div style="height:6px;background:#EEF1F6;border-radius:4px;margin-top:0.55rem;overflow:hidden;">
+      <div style="width:{min(max(_net_pct,0),100):.0f}%;height:100%;background:{GREEN if _net >= 0 else RED};"></div></div>""",
+                unsafe_allow_html=True)
 
 # ── small stat cards ──────────────────────────────────────────────────────────
 st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
-_net = vrs_m - deact
-_net_pct = (_net / vrs_m * 100) if vrs_m else 0
-_deact_pct = (deact / vrs_m * 100) if vrs_m else 0
 stat = [
     ("📥", f"{portin:,} Port-In", "ported in from another provider", BLUE),
     ("📤", f"{portout:,} Port-Out", "ported to another provider", AMBER),
     ("🚫", f"{deact:,} Deactivated", f"{_deact_pct:.0f}% of new VRS · deleted this month", RED),
-    ("📈", f"{_net:,} Net new", f"New VRS − deactivated · {_net_pct:.0f}% net", GREEN if _net >= 0 else RED),
 ]
-sc = st.columns(4)
+sc = st.columns(3)
 for col, (icon, title, sub, color) in zip(sc, stat):
     with col:
         st.markdown(f"""
