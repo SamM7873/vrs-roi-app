@@ -36,11 +36,29 @@ def _count(filters):
 VRS = {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}
 
 
+_LIVE_VALS = ["Live", "live", "LIVE", "Active", "active"]
+
+
 def _status(vals):
-    return _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": vals}])
+    # HubSpot's canonical status field is account_status ("Account Status").
+    return _count([VRS, {"propertyName": "account_status", "operator": "IN", "values": vals}])
 
 
 _DEACT = ["Deactivated", "deactivated", "Deleted", "deleted", "Inactive", "inactive", "Cancelled", "cancelled"]
+
+
+def _convo_minus_guest():
+    """Convo Now numbers with Account Status = Live, credit type is none of Guest.
+    Counts all-live minus guest-live so blank credit types are kept (matches
+    HubSpot's 'is none of' semantics)."""
+    _cn = {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}
+    _live = {"propertyName": "account_status", "operator": "IN", "values": ["Live", "live", "LIVE"]}
+    _all = _count([_cn, _live])
+    _guest = _count([_cn, _live, {"propertyName": "credit_type", "operator": "IN",
+                                  "values": ["guest", "Guest", "GUEST"]}])
+    if _all is None:
+        return None
+    return _all - (_guest or 0)
 
 
 def _ms(dt):
@@ -63,13 +81,12 @@ def _load():
         "live": _status(["Live", "live", "LIVE", "Active", "active"]),
         "suspended": _status(["Suspended", "suspended", "SUSPENDED"]),
         "registered": _count([VRS, {"propertyName": "registered_at", "operator": "HAS_PROPERTY"}]),
-        "deactivated": _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": _DEACT}]),
+        "deactivated": _count([VRS, {"propertyName": "account_status", "operator": "IN", "values": _DEACT}]),
         "port_out": _count([VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portouts"}]),
-        "convo_live": _count([{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
-                              {"propertyName": "account_status", "operator": "IN",
-                               "values": ["Live", "live", "LIVE"]},
-                              {"propertyName": "credit_type", "operator": "NOT_IN",
-                               "values": ["guest", "Guest", "GUEST"]}]),
+        # Convo Now Live, "Credit Type is none of Guest" — HubSpot's "is none of"
+        # KEEPS blank credit types, so compute all-live minus guest-live (NOT_IN
+        # would wrongly drop the blanks).
+        "convo_live": _convo_minus_guest(),
         "new_month": trend[-1]["New"] if trend else 0,
         "prev_month": trend[-2]["New"] if len(trend) > 1 else 0,
         "trend": trend,
