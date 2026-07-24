@@ -103,13 +103,50 @@ ticket_rpt_page  = st.Page("pages/20_Ticket_Report.py",               title="Tic
 jira_rpt_page    = st.Page("pages/21_Jira_Report.py",                  title="Jira Ticket Report",           icon="🧩")
 retention_page   = st.Page("pages/22_Retention_Report.py",             title="Retention Report",             icon="🔁")
 
-pg = st.navigation({
+_nav_groups = {
     "Home": [overview_page, lookup_page],
     "Numbers": [numbers_page, numfunnel_page, funnel_page, portin_page, winback_page, geo_page, yoy_page],
     "Customers": [ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, retention_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page],
     "Tools": [bulk_page, explorer_page, pendo_page, dq_page],
     "Admin": [audit_page],
-})
+}
+# Hide the default sidebar menu; render our own Tabler-style horizontal top nav.
+pg = st.navigation(_nav_groups, position="hidden")
+
+st.markdown("""
+<style>
+  /* Tabler-style top navigation bar */
+  .topnav-wrap { background:#FFFFFF; border:1px solid #E6E9F0; border-radius:14px;
+                 padding:0.6rem 0.9rem 0.3rem; margin-bottom:1.1rem;
+                 box-shadow:0 1px 2px rgba(24,36,51,0.04),0 4px 12px rgba(24,36,51,0.05); }
+  .topnav-brand { display:flex;align-items:center;gap:0.55rem;font-weight:800;
+                  font-size:1.05rem;color:#1A2234;padding:0.15rem 0.4rem 0.5rem; }
+  .topnav-brand .dot { width:26px;height:26px;border-radius:8px;background:#0D3B26;
+                       display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.85rem; }
+  div[data-testid="stPageLink"] a {
+      border-radius:8px !important; padding:0.3rem 0.7rem !important;
+      font-size:0.86rem !important; font-weight:600 !important; color:#495057 !important;
+      transition:background 0.12s; }
+  div[data-testid="stPageLink"] a:hover { background:#F1F3F8 !important; }
+  div[data-testid="stPageLink"] a[aria-current="page"],
+  div[data-testid="stPageLink"] a.active {
+      background:rgba(13,59,38,0.10) !important; color:#0D3B26 !important; }
+  section[data-testid="stSidebar"] [data-testid="stSidebarNav"] { display:none; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("<div class='topnav-brand'><span class='dot'>▸</span> VRS Analytics</div>", unsafe_allow_html=True)
+_all_pages = [overview_page, lookup_page, numbers_page, numfunnel_page, funnel_page, portin_page,
+              winback_page, geo_page, yoy_page, ursa_page, journey_page, age_demo_page, churn_page,
+              vrs_zero_page, retention_page, cs_tickets_page, ticket_rpt_page, jira_rpt_page,
+              survey_page, bulk_page, explorer_page, pendo_page, dq_page, audit_page]
+_PER_ROW = 8
+for _i in range(0, len(_all_pages), _PER_ROW):
+    _row = st.columns(_PER_ROW)
+    for _col, _p in zip(_row, _all_pages[_i:_i + _PER_ROW]):
+        _col.page_link(_p)
+st.divider()
+
 render_sync_widget()
 pg.run()
