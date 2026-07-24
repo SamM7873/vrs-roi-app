@@ -356,8 +356,8 @@ Highcharts.chart('funnel_container', {{
         style: {{ fontSize: '13px', color: '#1F2937', textOutline: 'none' }}
       }},
       center: ['40%', '50%'],
-      neckWidth: '30%',
-      neckHeight: '25%',
+      neckWidth: '0%',
+      neckHeight: '0%',
       width: '80%'
     }}
   }},
