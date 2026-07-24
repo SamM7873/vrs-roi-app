@@ -80,6 +80,7 @@ def render_sync_widget():
             st.caption(f"Last sync: {last_sync}")
 
 overview_page = st.Page("pages/23_Overview.py",           title="Overview",             icon="📊", default=True)
+this_month_page = st.Page("pages/24_This_Month.py",       title="This Month",           icon="🗓️")
 lookup_page   = st.Page("pages/0_Lookup.py",              title="VRS Lookup",           icon="🔍")
 numbers_page  = st.Page("pages/1_Numbers_Report.py",      title="Numbers Report",        icon="📊")
 ursa_page     = st.Page("pages/2_URSA_Login_Report.py",   title="URSA Login Report",     icon="👤")
@@ -106,7 +107,7 @@ retention_page   = st.Page("pages/22_Retention_Report.py",             title="Re
 
 # Grouped sidebar navigation (sections keep the 24 pages organized).
 pg = st.navigation({
-    "Home": [overview_page, lookup_page],
+    "Home": [overview_page, this_month_page, lookup_page],
     "Numbers": [numbers_page, numfunnel_page, funnel_page, portin_page, winback_page, geo_page, yoy_page],
     "Customers": [ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, retention_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page],
