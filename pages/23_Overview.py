@@ -65,7 +65,7 @@ def _load():
         "registered": _count([VRS, {"propertyName": "registered_at", "operator": "HAS_PROPERTY"}]),
         "deactivated": _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": _DEACT}]),
         "port_out": _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": _DEACT},
-                            {"propertyName": "bandwidth_order_type", "operator": "CONTAINS_TOKEN", "value": "*port*"}]),
+                            {"propertyName": "bandwidth_order_type", "operator": "CONTAINS_TOKEN", "value": "port"}]),
         "new_month": trend[-1]["New"] if trend else 0,
         "prev_month": trend[-2]["New"] if len(trend) > 1 else 0,
         "trend": trend,
