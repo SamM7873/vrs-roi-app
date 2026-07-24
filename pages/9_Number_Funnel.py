@@ -106,7 +106,7 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 
 # A stable key for this exact filter combination. The same filters reload the
 # saved result from disk instead of re-fetching 45k records every time.
-_key = f"number_funnel_v2_{preset}_{date_field}_{usage_filter}_{filter_start}_{filter_end}"
+_key = f"number_funnel_v3_{preset}_{date_field}_{usage_filter}_{filter_start}_{filter_end}"
 
 run = st.button("Run Number Funnel", use_container_width=False)
 
@@ -174,8 +174,8 @@ if run:
     # the old bug: registered_at is sparse while number_created_at is on nearly
     # every record, so the funnel dipped then rebounded to ~100%.)
     funnel_fields = [
-        ("Number created at",     "number_created_at"),
         ("Number registered at",  "registered_at"),
+        ("Number created at",     "number_created_at"),
         ("Convo first login",     "ursa_first_login"),
         ("Convo first outbound",  "ursa_first_outbound_call"),
         ("Convo second outbound", "ursa_second_outbound_call"),
@@ -184,9 +184,15 @@ if run:
     def _has(p, field):
         return _parse(p.get(field)) is not None
 
+    # Registration comes first in the real-world flow (a person registers, then a
+    # number is provisioned). Count each of the first two milestones against the
+    # baseline independently so the earlier stage isn't artificially capped by the
+    # later one; the Convo stages remain a strict cohort funnel from "created".
     stages = [("Numbers (baseline)", total, "100%")]
-    reached = list(records)  # records still "in the funnel"
-    for label, field in funnel_fields:
+    stages.append(("Number registered at", sum(1 for p in records if _has(p, "registered_at")), None))
+    reached = [p for p in records if _has(p, "number_created_at")]
+    stages.append(("Number created at", len(reached), None))
+    for label, field in funnel_fields[2:]:
         reached = [p for p in reached if _has(p, field)]
         stages.append((label, len(reached), None))
 
