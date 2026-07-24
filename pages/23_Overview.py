@@ -267,6 +267,26 @@ _SECTIONS = {
         ("Audit_Log", "Audit Log", "🛡️", "Login & report-usage audit"),
     ],
 }
+# Live values pulled from the dashboard snapshot already loaded above (no extra
+# queries) so relevant cards show real-time numbers.
+_LIVE = {
+    "Numbers_Report": f"{total:,} numbers",
+    "Number_Funnel": f"{new_m:,} new",
+    "Registration_Funnel": f"{reg:,} reg",
+    "Retention_Report": f"{live:,} live",
+    "VRS_Zero_ConvoNow_Active": f"{susp:,} susp",
+}
+
+
+def _pill(_url):
+    v = _LIVE.get(_url)
+    if not v:
+        return ""
+    return (f'<span style="margin-left:auto;flex-shrink:0;background:#E7F6EC;color:#0D3B26;'
+            f'font-size:0.7rem;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap;">'
+            f'● {v}</span>')
+
+
 for (_sec, _color), _items in _SECTIONS.items():
     st.markdown(f"<div style='font-weight:800;color:#1A2234;font-size:0.98rem;"
                 f"margin:1.1rem 0 0.5rem;'>{_sec}</div>", unsafe_allow_html=True)
@@ -279,11 +299,12 @@ for (_sec, _color), _items in _SECTIONS.items():
         f' onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'0 1px 2px rgba(24,36,51,0.04),0 4px 12px rgba(24,36,51,0.05)\';">'
         f'<div style="width:40px;height:40px;border-radius:11px;flex-shrink:0;background:{_color}18;'
         f'display:flex;align-items:center;justify-content:center;font-size:1.2rem;">{_icon}</div>'
-        f'<div><div style="font-weight:800;color:#1A2234;font-size:0.92rem;line-height:1.15;">{_title}</div>'
+        f'<div style="min-width:0;"><div style="font-weight:800;color:#1A2234;font-size:0.92rem;line-height:1.15;">{_title}</div>'
         f'<div style="font-size:0.75rem;color:#9AA5B1;margin-top:2px;">{_desc}</div></div>'
+        f'{_pill(_url)}'
         f'</div></a>'
         for _url, _title, _icon, _desc in _items
     )
     st.markdown(
-        f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));'
+        f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));'
         f'gap:0.7rem;margin-bottom:0.4rem;">{_cards}</div>', unsafe_allow_html=True)
