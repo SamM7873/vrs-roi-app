@@ -33,6 +33,14 @@ def _fmt(v):
     dt = _parse(v)
     return dt.strftime("%b %d, %Y") if dt else "—"
 
+def _lang(v):
+    n = norm(v)
+    if n in ("en", "english"):
+        return "English"
+    if n in ("es", "spanish", "español", "espanol"):
+        return "Spanish"
+    return (v or "").strip().title() or "—"
+
 # ── date presets ──────────────────────────────────────────────────────────────
 
 PRESETS = [
@@ -73,7 +81,7 @@ def _date_range_for_preset(preset):
 
 # ── filter UI ─────────────────────────────────────────────────────────────────
 
-col_preset, col_from, col_to, col_field, col_usage = st.columns([2, 1, 1, 1.5, 1])
+col_preset, col_from, col_to, col_field, col_usage, col_lang = st.columns([2, 1, 1, 1.5, 1, 1])
 with col_preset:
     preset = st.selectbox("Date range", PRESETS, index=0)
 with col_field:
@@ -85,6 +93,8 @@ with col_field:
     date_field = "number_created_at" if date_field_label == "Number Created At" else "registered_at"
 with col_usage:
     usage_filter = st.selectbox("Usage Type", ["All", "Personal", "Business", "Other"], index=0)
+with col_lang:
+    lang_filter = st.selectbox("Language", ["All", "English", "Spanish", "Other"], index=0)
 
 if preset == "Custom Range":
     with col_from:
@@ -106,7 +116,7 @@ st.markdown("<div style='margin-bottom:0.75rem;'></div>", unsafe_allow_html=True
 
 # A stable key for this exact filter combination. The same filters reload the
 # saved result from disk instead of re-fetching 45k records every time.
-_key = f"number_funnel_v3_{preset}_{date_field}_{usage_filter}_{filter_start}_{filter_end}"
+_key = f"number_funnel_v4_{preset}_{date_field}_{usage_filter}_{lang_filter}_{filter_start}_{filter_end}"
 
 run = st.button("Run Number Funnel", use_container_width=False)
 
@@ -117,13 +127,13 @@ if run:
     raw = list_all(
         "2-40974683",
         ["number", "email", "first_name", "last_name",
-         "number_status", "service_type", "usage_type",
+         "number_status", "service_type", "usage_type", "language_preference",
          "registered_at", "number_created_at",
          "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"],
         progress_label="Fetching number objects",
     )
 
-    # Keep only live VRS numbers, optionally filtered by usage type
+    # Keep only live VRS numbers, optionally filtered by usage type and language
     records = []
     for r in raw:
         p = r.get("properties", {})
@@ -133,6 +143,13 @@ if run:
             continue
         if usage_filter != "All" and norm(p.get("usage_type") or "") != norm(usage_filter):
             continue
+        if lang_filter != "All":
+            _lg = _lang(p.get("language_preference"))
+            if lang_filter in ("English", "Spanish"):
+                if _lg != lang_filter:
+                    continue
+            elif _lg in ("English", "Spanish"):   # "Other" = anything not EN/ES
+                continue
         records.append(p)
 
     if not records:
@@ -206,6 +223,7 @@ if run:
         "Name":            f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
         "Email":           p.get("email") or "—",
         "Number":          p.get("number") or "—",
+        "Language":        _lang(p.get("language_preference")),
         "Registered At":   _fmt(p.get("registered_at")),
         "Number Created":  _fmt(p.get("number_created_at")),
         "First Login":     _fmt(p.get("ursa_first_login")),
@@ -267,6 +285,15 @@ for i, (label, n, pct_val) in enumerate(stages):
   </div>"""
 table_html += "</div>"
 st.markdown(table_html, unsafe_allow_html=True)
+
+# ── Language preference breakdown of the baseline ──────────────────────────
+_lang_counts = pd.Series([r.get("Language", "—") for r in detail_rows]).value_counts()
+if not _lang_counts.empty:
+    _lang_df = _lang_counts.rename_axis("Language").reset_index(name="Numbers")
+    _lang_df["% of baseline"] = (_lang_df["Numbers"] / _lang_df["Numbers"].sum() * 100).round(1)
+    with st.expander(f"🌐 Language preference breakdown ({len(_lang_counts)} languages)"):
+        st.dataframe(_lang_df, use_container_width=True, hide_index=True,
+                     column_config={"% of baseline": st.column_config.NumberColumn("% of baseline", format="%.1f%%")})
 
 # ── Numbers created in-window but missing a registration date ──────────────
 _missing_reg = [r for r in detail_rows if r.get("Registered At") in (None, "—")]
