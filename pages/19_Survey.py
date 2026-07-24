@@ -211,11 +211,16 @@ df["Ticket ID"] = [ticket_by_sid.get(s, {}).get("ticket_id", "—") for s in _si
 df["Ticket Owner"] = [ticket_by_sid.get(s, {}).get("owner", "—") for s in _sids]
 df["Ticket Name"] = [ticket_by_sid.get(s, {}).get("ticket", "—") for s in _sids]
 
-# parse timestamp
+# parse timestamp — prefer submission timestamp, fall back to create date so the
+# date filter always has a real date (blank submission timestamps were slipping
+# past the range filter otherwise).
 if ts_prop:
     df["_ts"] = pd.to_datetime(df[ts_prop], errors="coerce", utc=True)
 else:
     df["_ts"] = pd.NaT
+if "hs_createdate" in df.columns:
+    _cd = pd.to_datetime(df["hs_createdate"], errors="coerce", utc=True)
+    df["_ts"] = df["_ts"].fillna(_cd)
 # numeric score / rating
 if "hs_value" in df.columns:
     df["_score"] = pd.to_numeric(df["hs_value"], errors="coerce")
