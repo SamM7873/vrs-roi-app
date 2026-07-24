@@ -33,6 +33,12 @@ def _count(filters):
     return None
 
 
+def _count_status(status_values):
+    """Count VRS numbers whose status is any of the given values (OR across
+    values via IN, so casing/label variants all count)."""
+    return _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": status_values}])
+
+
 VRS = {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}
 
 
@@ -41,8 +47,8 @@ def _load_kpis():
     _mo_ms = str(int(_mo_start.timestamp() * 1000))
     return {
         "total":      _count([VRS]),
-        "live":       _count([VRS, {"propertyName": "number_status", "operator": "EQ", "value": "Live"}]),
-        "suspended":  _count([VRS, {"propertyName": "number_status", "operator": "EQ", "value": "Suspended"}]),
+        "live":       _count_status(["Live", "live", "LIVE", "Active", "active"]),
+        "suspended":  _count_status(["Suspended", "suspended", "SUSPENDED"]),
         "registered": _count([VRS, {"propertyName": "registered_at", "operator": "HAS_PROPERTY"}]),
         "new_month":  _count([VRS, {"propertyName": "number_created_at", "operator": "GTE", "value": _mo_ms}]),
         "ts": time.time(),
