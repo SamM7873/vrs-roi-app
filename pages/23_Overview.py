@@ -65,6 +65,9 @@ def _load():
         "registered": _count([VRS, {"propertyName": "registered_at", "operator": "HAS_PROPERTY"}]),
         "deactivated": _count([VRS, {"propertyName": "number_status", "operator": "IN", "values": _DEACT}]),
         "port_out": _count([VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portouts"}]),
+        "convo_live": _count([{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
+                              {"propertyName": "number_status", "operator": "IN",
+                               "values": ["Live", "live", "LIVE", "Active", "active"]}]),
         "new_month": trend[-1]["New"] if trend else 0,
         "prev_month": trend[-2]["New"] if len(trend) > 1 else 0,
         "trend": trend,
@@ -100,6 +103,7 @@ new_m = _c["new_month"] or 0
 prev_m = _c["prev_month"] or 0
 deact = _c.get("deactivated") or 0
 port_out = _c.get("port_out") or 0
+convo_live = _c.get("convo_live") or 0
 reg_pct = (reg / total * 100) if total else 0
 live_pct = (live / total * 100) if total else 0
 mom = ((new_m - prev_m) / prev_m * 100) if prev_m else 0
@@ -180,13 +184,14 @@ with k4:
 # ── small stat cards row ──────────────────────────────────────────────────────
 st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
 stat = [
-    ("🟢", f"{live:,} Live", "currently active", GREEN),
+    ("🟢", f"{live:,} Live VRS", "currently active", GREEN),
+    ("📞", f"{convo_live:,} Convo Now Live", "live Convo Now numbers", "#0EA5E9"),
     ("⏸️", f"{susp:,} Suspended", "not active", AMBER),
     ("🚫", f"{deact:,} Deactivated", "closed / inactive", RED),
     ("📤", f"{port_out:,} Port-Out", "ported to another provider", "#8B5CF6"),
-    ("✨", f"{new_m:,} New", "this month", "#0EA5E9"),
+    ("✨", f"{new_m:,} New", "this month", CYAN),
 ]
-sc = st.columns(5)
+sc = st.columns(6)
 for col, (icon, title, sub, color) in zip(sc, stat):
     with col:
         st.markdown(f"""
