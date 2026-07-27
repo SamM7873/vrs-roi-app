@@ -40,6 +40,55 @@ def _ms(dt):
     return str(int(dt.timestamp() * 1000))
 
 
+def _parse(v):
+    if not v:
+        return None
+    try:
+        if isinstance(v, (int, float)) or (isinstance(v, str) and v.isdigit()):
+            return datetime.fromtimestamp(int(v) / 1000, tz=timezone.utc)
+        dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _search_records(filters, props, cap=2000):
+    """Fetch matching records (not just count) with the given properties."""
+    out, after = [], None
+    for _ in range(cap // 100 + 1):
+        payload = {"filterGroups": [{"filters": filters}], "properties": props, "limit": 100}
+        if after:
+            payload["after"] = after
+        try:
+            r = requests.post(f"{BASE_URL}/crm/v3/objects/{NUM_OBJECT}/search",
+                              headers=_headers, json=payload, timeout=20)
+        except Exception:
+            break
+        if r.status_code != 200:
+            break
+        d = r.json()
+        out.extend(d.get("results", []))
+        after = d.get("paging", {}).get("next", {}).get("after")
+        if not after:
+            break
+    return out
+
+
+def _avg_portout_age(m0, m1):
+    """Average lifespan (days) of numbers ported out this month = deleted − created."""
+    recs = _search_records(
+        [VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portouts"}]
+        + _btw("number_deleted_at", m0, m1),
+        ["number_created_at", "number_deleted_at"])
+    days = []
+    for r in recs:
+        p = r.get("properties", {})
+        c, d = _parse(p.get("number_created_at")), _parse(p.get("number_deleted_at"))
+        if c and d and d > c:
+            days.append((d - c).total_seconds() / 86400)
+    return (sum(days) / len(days)) if days else None
+
+
 def _btw(prop, lo, hi):
     return [{"propertyName": prop, "operator": "GTE", "value": _ms(lo)},
             {"propertyName": prop, "operator": "LT", "value": _ms(hi)}]
@@ -73,6 +122,7 @@ def _load():
                           + _btw("number_deleted_at", m0, m1)),
         "portin": _count([VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portins"}]
                          + _btw("number_created_at", m0, m1)),
+        "portout_age": _avg_portout_age(m0, m1),
         "month_label": m0.strftime("%B %Y"),
         "ts": time.time(),
     }
@@ -179,9 +229,19 @@ with k5:
 
 # ── small stat cards ──────────────────────────────────────────────────────────
 st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
+def _age_str(days):
+    if days is None:
+        return "avg age —"
+    if days >= 365:
+        return f"avg age {days/365.25:.1f} yr"
+    if days >= 60:
+        return f"avg age {days/30.44:.1f} mo"
+    return f"avg age {days:.0f} days"
+
+_po_age = _c.get("portout_age")
 stat = [
     ("📥", f"{portin:,} Port-In", "ported in from another provider", BLUE),
-    ("📤", f"{portout:,} Port-Out", "ported to another provider", AMBER),
+    ("📤", f"{portout:,} Port-Out", f"ported to another provider · {_age_str(_po_age)}", AMBER),
     ("🚫", f"{deact:,} Deactivated", f"{_deact_pct:.0f}% of new VRS · deleted this month", RED),
 ]
 sc = st.columns(3)
