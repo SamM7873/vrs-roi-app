@@ -74,19 +74,30 @@ def _search_records(filters, props, cap=2000):
     return out
 
 
-def _avg_portout_age(m0, m1):
-    """Average lifespan (days) of numbers ported out this month = deleted − created."""
+def _portout_detail(m0, m1):
+    """Returns (avg_age_days, rows) for numbers ported out this month.
+    Age = number_deleted_at − number_created_at."""
     recs = _search_records(
         [VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portouts"}]
         + _btw("number_deleted_at", m0, m1),
-        ["number_created_at", "number_deleted_at"])
-    days = []
+        ["number", "email", "first_name", "last_name", "number_created_at", "number_deleted_at"])
+    days, rows = [], []
     for r in recs:
         p = r.get("properties", {})
         c, d = _parse(p.get("number_created_at")), _parse(p.get("number_deleted_at"))
-        if c and d and d > c:
-            days.append((d - c).total_seconds() / 86400)
-    return (sum(days) / len(days)) if days else None
+        age = (d - c).total_seconds() / 86400 if (c and d and d > c) else None
+        if age is not None:
+            days.append(age)
+        rows.append({
+            "Number": p.get("number") or "—",
+            "Name": f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
+            "Email": p.get("email") or "—",
+            "Created": c.strftime("%b %d, %Y") if c else "—",
+            "Ported Out": d.strftime("%b %d, %Y") if d else "—",
+            "Age (days)": round(age) if age is not None else None,
+        })
+    rows.sort(key=lambda x: (x["Age (days)"] is None, -(x["Age (days)"] or 0)))
+    return ((sum(days) / len(days)) if days else None), rows
 
 
 def _btw(prop, lo, hi):
@@ -102,6 +113,7 @@ def _load():
     m0 = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     m1 = m0 + relativedelta(months=1)
     pm0 = m0 - relativedelta(months=1)
+    _po_avg, _po_rows = _portout_detail(m0, m1)
     # 12-month trends (for sparklines)
     trend = []
     for i in range(11, -1, -1):
@@ -122,7 +134,8 @@ def _load():
                           + _btw("number_deleted_at", m0, m1)),
         "portin": _count([VRS, {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portins"}]
                          + _btw("number_created_at", m0, m1)),
-        "portout_age": _avg_portout_age(m0, m1),
+        "portout_age": _po_avg,
+        "portout_rows": _po_rows,
         "month_label": m0.strftime("%B %Y"),
         "ts": time.time(),
     }
@@ -253,5 +266,17 @@ for col, (icon, title, sub, color) in zip(sc, stat):
   <div><div style="font-weight:800;color:#1A2234;font-size:1.02rem;">{title}</div>
        <div style="font-size:0.75rem;color:#9AA5B1;">{sub}</div></div>
 </div>""", unsafe_allow_html=True)
+
+# ── port-out detail table ─────────────────────────────────────────────────────
+_po_rows = _c.get("portout_rows") or []
+if _po_rows:
+    st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
+    st.markdown(f"##### Port-Out numbers this month · {len(_po_rows):,}")
+    st.caption("Age = Ported-Out date − Created date (how long the number was active). Sorted oldest first.")
+    _pdf = pd.DataFrame(_po_rows)
+    st.dataframe(_pdf, use_container_width=True, hide_index=True,
+                 column_config={"Age (days)": st.column_config.NumberColumn("Age (days)", format="%d")})
+    st.download_button("📥 Download Port-Out CSV", _pdf.to_csv(index=False),
+                       f"port_out_{_c['month_label'].replace(' ', '_')}.csv", "text/csv", key="dl_po")
 
 st.caption("Scoped to the current calendar month. Use **Overview** for all-time totals.")
