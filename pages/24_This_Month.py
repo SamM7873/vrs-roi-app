@@ -381,6 +381,13 @@ if _de_rows:
     st.markdown(f"##### Deactivated numbers this month · {len(_de_rows):,}")
     st.caption("Numbers deactivated this month, with lifespan age (Deactivated − Created). Sorted oldest first.")
     _dedf = pd.DataFrame(_de_rows)
+    _rc = _dedf["Delete Reason"].value_counts()
+    if not _rc.empty:
+        _rb = _rc.rename_axis("Delete Reason").reset_index(name="Count")
+        _rb["% of deactivations"] = (_rb["Count"] / _rb["Count"].sum() * 100).round(1)
+        with st.expander(f"📊 Deactivations by reason ({len(_rc)} reasons)", expanded=True):
+            st.dataframe(_rb, use_container_width=True, hide_index=True,
+                         column_config={"% of deactivations": st.column_config.NumberColumn("% of deactivations", format="%.1f%%")})
     st.dataframe(_dedf, use_container_width=True, hide_index=True,
                  column_config={"Age (days)": st.column_config.NumberColumn("Age (days)", format="%d")})
     st.download_button("📥 Download Deactivated CSV", _dedf.to_csv(index=False),
