@@ -108,6 +108,33 @@ def _portout_detail(m0, m1):
     return ((sum(days) / len(days)) if days else None), rows
 
 
+def _unreg_detail(m0, m1):
+    """Numbers created this month with NO registration timestamp — typically
+    manually-added by CS (number changes, new Spanish numbers)."""
+    recs = _search_records(
+        [VRS, {"propertyName": "registered_at", "operator": "NOT_HAS_PROPERTY"}]
+        + _btw("number_created_at", m0, m1),
+        ["number", "email", "first_name", "last_name", "usage_type",
+         "language_preference", "number_created_at"])
+    rows = []
+    for r in recs:
+        p = r.get("properties", {})
+        c = _parse(p.get("number_created_at"))
+        _lang = (p.get("language_preference") or "").strip()
+        _lang = "English" if _lang.lower() in ("en", "english") else (
+            "Spanish" if _lang.lower() in ("es", "spanish", "español", "espanol") else (_lang.title() or "—"))
+        rows.append({
+            "Number": p.get("number") or "—",
+            "Name": f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
+            "Email": p.get("email") or "—",
+            "Usage": (p.get("usage_type") or "—").title(),
+            "Language": _lang,
+            "Created": c.strftime("%b %d, %Y") if c else "—",
+        })
+    rows.sort(key=lambda x: x["Created"])
+    return rows
+
+
 def _btw(prop, lo, hi):
     return [{"propertyName": prop, "operator": "GTE", "value": _ms(lo)},
             {"propertyName": prop, "operator": "LT", "value": _ms(hi)}]
@@ -122,6 +149,7 @@ def _load():
     m1 = m0 + relativedelta(months=1)
     pm0 = m0 - relativedelta(months=1)
     _po_avg, _po_rows = _portout_detail(m0, m1)
+    _unreg_rows = _unreg_detail(m0, m1)
     # 12-month trends (for sparklines)
     trend = []
     for i in range(11, -1, -1):
@@ -147,6 +175,7 @@ def _load():
                          + _btw("number_created_at", m0, m1)),
         "portout_age": _po_avg,
         "portout_rows": _po_rows,
+        "unreg_rows": _unreg_rows,
         "month_label": m0.strftime("%B %Y"),
         "ts": time.time(),
     }
@@ -294,5 +323,17 @@ if _po_rows:
                  column_config={"Age (days)": st.column_config.NumberColumn("Age (days)", format="%d")})
     st.download_button("📥 Download Port-Out CSV", _pdf.to_csv(index=False),
                        f"port_out_{_c['month_label'].replace(' ', '_')}.csv", "text/csv", key="dl_po")
+
+# ── unregistered (manual) detail table ────────────────────────────────────────
+_ur_rows = _c.get("unreg_rows") or []
+if _ur_rows:
+    st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
+    st.markdown(f"##### Unregistered numbers this month · {len(_ur_rows):,}")
+    st.caption("Created this month with no registration timestamp — typically added manually by "
+               "Customer Support (number changes, new Spanish numbers).")
+    _urdf = pd.DataFrame(_ur_rows)
+    st.dataframe(_urdf, use_container_width=True, hide_index=True)
+    st.download_button("📥 Download Unregistered CSV", _urdf.to_csv(index=False),
+                       f"unregistered_{_c['month_label'].replace(' ', '_')}.csv", "text/csv", key="dl_ur")
 
 st.caption("Scoped to the current calendar month. Use **Overview** for all-time totals.")
