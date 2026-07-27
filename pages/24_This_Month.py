@@ -88,12 +88,20 @@ def _portout_detail(m0, m1):
         age = (d - c).total_seconds() / 86400 if (c and d and d > c) else None
         if age is not None:
             days.append(age)
+        if c and d and d > c:
+            _rd = relativedelta(d, c)
+            _parts = [f"{_rd.years}y" if _rd.years else "", f"{_rd.months}m" if _rd.months else "",
+                      f"{_rd.days}d" if _rd.days else ""]
+            age_ymd = " ".join(x for x in _parts if x) or "0d"
+        else:
+            age_ymd = "—"
         rows.append({
             "Number": p.get("number") or "—",
             "Name": f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
             "Email": p.get("email") or "—",
             "Created": c.strftime("%b %d, %Y") if c else "—",
             "Ported Out": d.strftime("%b %d, %Y") if d else "—",
+            "Age": age_ymd,
             "Age (days)": round(age) if age is not None else None,
         })
     rows.sort(key=lambda x: (x["Age (days)"] is None, -(x["Age (days)"] or 0)))
@@ -245,11 +253,12 @@ st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)
 def _age_str(days):
     if days is None:
         return "avg age —"
-    if days >= 365:
-        return f"avg age {days/365.25:.1f} yr"
-    if days >= 60:
-        return f"avg age {days/30.44:.1f} mo"
-    return f"avg age {days:.0f} days"
+    y = int(days // 365.25)
+    rem = days - y * 365.25
+    mo = int(rem // 30.44)
+    d = int(rem - mo * 30.44)
+    parts = [f"{y}y" if y else "", f"{mo}m" if mo else "", f"{d}d" if (d or not (y or mo)) else ""]
+    return "avg age " + " ".join(x for x in parts if x)
 
 _po_age = _c.get("portout_age")
 stat = [
