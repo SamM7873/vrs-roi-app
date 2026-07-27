@@ -114,7 +114,7 @@ def _deact_detail(m0, m1):
         [VRS, {"propertyName": "account_status", "operator": "IN", "values": _DEACT}]
         + _btw("number_deleted_at", m0, m1),
         ["number", "email", "first_name", "last_name", "account_status",
-         "number_created_at", "number_deleted_at"])
+         "deleted_reason", "number_created_at", "number_deleted_at"])
     rows = []
     for r in recs:
         p = r.get("properties", {})
@@ -127,11 +127,13 @@ def _deact_detail(m0, m1):
             age_days = round((d - c).total_seconds() / 86400)
         else:
             age_ymd, age_days = "—", None
+        _reason = (p.get("deleted_reason") or "").replace("_", " ").strip().title() or "—"
         rows.append({
             "Number": p.get("number") or "—",
             "Name": f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
             "Email": p.get("email") or "—",
             "Status": (p.get("account_status") or "—").title(),
+            "Delete Reason": _reason,
             "Created": c.strftime("%b %d, %Y") if c else "—",
             "Deactivated": d.strftime("%b %d, %Y") if d else "—",
             "Age": age_ymd,
