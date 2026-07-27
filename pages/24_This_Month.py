@@ -134,6 +134,9 @@ def _load():
         "trend": trend,
         "reg": _count([VRS] + _btw("registered_at", m0, m1)),
         "reg_prev": _count([VRS] + _btw("registered_at", pm0, m0)),
+        # created this month but with NO registration timestamp (unregistered)
+        "unreg": _count([VRS, {"propertyName": "registered_at", "operator": "NOT_HAS_PROPERTY"}]
+                        + _btw("number_created_at", m0, m1)),
         "deact": _count([VRS, {"propertyName": "account_status", "operator": "IN", "values": _DEACT}]
                         + _btw("number_deleted_at", m0, m1)),
         "deact_prev": _count([VRS, {"propertyName": "account_status", "operator": "IN", "values": _DEACT}]
@@ -180,6 +183,8 @@ reg_p = _c["reg_prev"] or 0
 deact = _c["deact"] or 0
 portout = _c["portout"] or 0
 portin = _c.get("portin") or 0
+unreg = _c.get("unreg") or 0
+_unreg_pct = (unreg / vrs_m * 100) if vrs_m else 0
 _net = vrs_m - deact
 _net_prev = vrs_p - (_c.get("deact_prev") or 0)
 _net_pct = (_net / vrs_m * 100) if vrs_m else 0
@@ -265,8 +270,9 @@ stat = [
     ("📥", f"{portin:,} Port-In", "ported in from another provider", BLUE),
     ("📤", f"{portout:,} Port-Out", f"ported to another provider · {_age_str(_po_age)}", AMBER),
     ("🚫", f"{deact:,} Deactivated", f"{_deact_pct:.0f}% of new VRS · deleted this month", RED),
+    ("⏳", f"{unreg:,} Unregistered", f"{_unreg_pct:.0f}% of new VRS · no registration timestamp", "#8B5CF6"),
 ]
-sc = st.columns(3)
+sc = st.columns(4)
 for col, (icon, title, sub, color) in zip(sc, stat):
     with col:
         st.markdown(f"""
