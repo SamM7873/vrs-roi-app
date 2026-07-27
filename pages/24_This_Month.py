@@ -273,14 +273,15 @@ def _spark(color, kind, ycol):
 
 
 def _delta(cur, prev):
-    if not prev:
-        return "<span style='color:#8792A2;font-weight:700;'>—</span>"
-    d = (cur - prev) / prev * 100
-    if d > 0:
-        return f"<span style='color:{GREEN};font-weight:700;'>+{d:.0f}% ↗</span>"
-    if d < 0:
-        return f"<span style='color:{RED};font-weight:700;'>{d:.0f}% ↘</span>"
-    return "<span style='color:#8792A2;font-weight:700;'>0% —</span>"
+    cur, prev = cur or 0, prev or 0
+    diff = cur - prev
+    if diff == 0:
+        return "<span style='color:#8792A2;font-weight:700;'>0 —</span>"
+    color = GREEN if diff > 0 else RED
+    arrow = "↗" if diff > 0 else "↘"
+    # % only makes sense vs a positive baseline; otherwise show absolute change
+    txt = f"{diff / prev * 100:+.0f}%" if prev > 0 else f"{diff:+,}"
+    return f"<span style='color:{color};font-weight:700;'>{txt} {arrow}</span>"
 
 
 def _kpi(label, value, sub, color, extra=""):
