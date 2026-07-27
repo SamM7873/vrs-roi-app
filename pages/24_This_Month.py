@@ -266,11 +266,12 @@ def _age_str(days):
     return "avg age " + " ".join(x for x in parts if x)
 
 _po_age = _c.get("portout_age")
+_registered_of_new = vrs_m - unreg
 stat = [
     ("📥", f"{portin:,} Port-In", "ported in from another provider", BLUE),
     ("📤", f"{portout:,} Port-Out", f"ported to another provider · {_age_str(_po_age)}", AMBER),
-    ("🚫", f"{deact:,} Deactivated", f"{_deact_pct:.0f}% of new VRS · deleted this month", RED),
-    ("⏳", f"{unreg:,} Unregistered", f"{_unreg_pct:.0f}% of new VRS · no registration timestamp", "#8B5CF6"),
+    ("🚫", f"{deact:,} Deactivated", f"= {_deact_pct:.0f}% of new adds · deleted this month", RED),
+    ("⏳", f"{unreg:,} Unregistered", f"of {vrs_m:,} new · {_registered_of_new:,} registered, {unreg:,} not", "#8B5CF6"),
 ]
 sc = st.columns(4)
 for col, (icon, title, sub, color) in zip(sc, stat):
