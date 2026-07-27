@@ -3,7 +3,7 @@ import pandas as pd
 import altair as alt
 import requests
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dateutil.relativedelta import relativedelta
 from utils import require_auth, get_secret, COMMON_CSS, log_report_view
 
@@ -46,7 +46,10 @@ def _btw(prop, lo, hi):
 
 
 def _load():
-    now = datetime.now(timezone.utc)
+    # Define months in Central time (to match HubSpot's filters), then the
+    # tz-aware datetimes convert to correct UTC epoch ms in _ms().
+    _ct = timezone(timedelta(hours=-5 if 3 <= datetime.now(timezone.utc).month <= 11 else -6))
+    now = datetime.now(_ct)
     m0 = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     m1 = m0 + relativedelta(months=1)
     pm0 = m0 - relativedelta(months=1)
