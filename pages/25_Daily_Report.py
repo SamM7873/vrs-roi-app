@@ -108,6 +108,39 @@ def _portout_detail(m0, m1):
     return ((sum(days) / len(days)) if days else None), rows
 
 
+def _deact_detail(m0, m1):
+    """All VRS numbers deactivated in the window, with lifespan age."""
+    recs = _search_records(
+        [VRS, {"propertyName": "account_status", "operator": "IN", "values": _DEACT}]
+        + _btw("number_deleted_at", m0, m1),
+        ["number", "email", "first_name", "last_name", "account_status",
+         "number_created_at", "number_deleted_at"])
+    rows = []
+    for r in recs:
+        p = r.get("properties", {})
+        c, d = _parse(p.get("number_created_at")), _parse(p.get("number_deleted_at"))
+        if c and d and d > c:
+            _rd = relativedelta(d, c)
+            age_ymd = " ".join(x for x in [f"{_rd.years}y" if _rd.years else "",
+                                           f"{_rd.months}m" if _rd.months else "",
+                                           f"{_rd.days}d" if _rd.days else ""] if x) or "0d"
+            age_days = round((d - c).total_seconds() / 86400)
+        else:
+            age_ymd, age_days = "—", None
+        rows.append({
+            "Number": p.get("number") or "—",
+            "Name": f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
+            "Email": p.get("email") or "—",
+            "Status": (p.get("account_status") or "—").title(),
+            "Created": c.strftime("%b %d, %Y") if c else "—",
+            "Deactivated": d.strftime("%b %d, %Y") if d else "—",
+            "Age": age_ymd,
+            "Age (days)": age_days,
+        })
+    rows.sort(key=lambda x: (x["Age (days)"] is None, -(x["Age (days)"] or 0)))
+    return rows
+
+
 def _unreg_detail(m0, m1):
     """Numbers created this month with NO registration timestamp — typically
     manually-added by CS (number changes, new Spanish numbers)."""
@@ -150,6 +183,7 @@ def _load():
     pm0 = m0 - timedelta(days=1)                                   # yesterday start
     _po_avg, _po_rows = _portout_detail(m0, m1)
     _unreg_rows = _unreg_detail(m0, m1)
+    _deact_rows = _deact_detail(m0, m1)
     # last 12 days trend (for sparklines)
     trend = []
     for i in range(11, -1, -1):
@@ -176,6 +210,7 @@ def _load():
         "portout_age": _po_avg,
         "portout_rows": _po_rows,
         "unreg_rows": _unreg_rows,
+        "deact_rows": _deact_rows,
         "month_label": m0.strftime("%A, %b %d, %Y"),
         "ts": time.time(),
     }
@@ -335,5 +370,17 @@ if _ur_rows:
     st.dataframe(_urdf, use_container_width=True, hide_index=True)
     st.download_button("📥 Download Unregistered CSV", _urdf.to_csv(index=False),
                        f"unregistered_{_c['month_label'].replace(' ', '_')}.csv", "text/csv", key="dl_ur")
+
+# ── deactivated detail table ──────────────────────────────────────────────────
+_de_rows = _c.get("deact_rows") or []
+if _de_rows:
+    st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
+    st.markdown(f"##### Deactivated numbers today · {len(_de_rows):,}")
+    st.caption("Numbers deactivated today, with lifespan age (Deactivated − Created). Sorted oldest first.")
+    _dedf = pd.DataFrame(_de_rows)
+    st.dataframe(_dedf, use_container_width=True, hide_index=True,
+                 column_config={"Age (days)": st.column_config.NumberColumn("Age (days)", format="%d")})
+    st.download_button("📥 Download Deactivated CSV", _dedf.to_csv(index=False),
+                       f"deactivated_{_c['month_label'].replace(' ', '_')}.csv", "text/csv", key="dl_de")
 
 st.caption("Scoped to **today**. Use **This Month** for the month or **Overview** for all-time totals.")
