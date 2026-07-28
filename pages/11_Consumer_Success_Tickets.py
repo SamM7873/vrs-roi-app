@@ -258,6 +258,7 @@ if run_clicked or _use_cache:
             "createdate", "hs_lastmodifieddate", "closed_date", "content",
             "hs_ticket_category", "hs_ticket_subcategory",
             "hubspot_owner_id", "email", "phone", "hs_resolution_time",
+            "type_of_registration", "onboarding_type", "solution_type", "vrs_app",
         ]
 
         # Fetch all Consumer Success tickets
@@ -403,6 +404,10 @@ if run_clicked or _use_cache:
                 "Is Closed":     is_closed,
                 "Create Month":  _month_key(tp.get("createdate")),
                 "Close Month":   _month_key(tp.get("closed_date")),
+                "Type of Registration": (tp.get("type_of_registration") or "—"),
+                "Onboarding Type":      (tp.get("onboarding_type") or "—"),
+                "Solution Type":        (tp.get("solution_type") or "—"),
+                "Convo App":            (tp.get("vrs_app") or "—"),
             })
 
         # ── Apply date + status filters ────────────────────────────────────────────
@@ -1168,6 +1173,24 @@ if run_clicked or _use_cache:
         c = "#9CA3AF" if closed else "#3B82F6"
         return f'<span style="background:{c}22;color:{c};border:1px solid {c}55;font-size:0.68rem;font-weight:700;padding:2px 9px;border-radius:99px;">{(s or "—").upper()}</span>'
 
+    # ── ticket-property filters (Type of Registration / Onboarding / Solution / App) ──
+    def _opts(field):
+        return ["All"] + sorted({r.get(field) for r in rows if r.get(field) and r.get(field) != "—"})
+    _f1, _f2, _f3, _f4 = st.columns(4)
+    reg_filter = _f1.selectbox("Type of Registration", _opts("Type of Registration"),
+                               help="e.g. Port Out, Port In, New — from the ticket's Type of Registration.")
+    onb_filter = _f2.selectbox("Onboarding Type", _opts("Onboarding Type"))
+    sol_filter = _f3.selectbox("Solution Type", _opts("Solution Type"))
+    app_filter = _f4.selectbox("Convo App", _opts("Convo App"))
+
+    for _field, _sel in [("Type of Registration", reg_filter), ("Onboarding Type", onb_filter),
+                         ("Solution Type", sol_filter), ("Convo App", app_filter)]:
+        if _sel and _sel != "All":
+            rows = [r for r in rows if r.get(_field) == _sel]
+
+    open_n = sum(1 for r in rows if not r["Is Closed"])
+    closed_n = sum(1 for r in rows if r["Is Closed"])
+    total = len(rows)
     tab_open, tab_closed, tab_all = st.tabs([f"Open ({open_n})", f"Closed ({closed_n})", f"All ({total})"])
 
     def _render_cards(ticket_list):
@@ -1193,6 +1216,7 @@ if run_clicked or _use_cache:
   <div style="display:flex;gap:1.25rem;margin-top:0.75rem;padding-top:0.65rem;border-top:1px solid #F3F4F6;flex-wrap:wrap;">
     <span style="font-size:0.76rem;color:#6B7280;">👤 <b>{r['Owner']}</b></span>
     <span style="font-size:0.76rem;color:#6B7280;">📂 <b>{r['Category']}</b></span>
+    {f'<span style="font-size:0.76rem;color:#6B7280;">🔁 <b>{r["Type of Registration"]}</b></span>' if r.get("Type of Registration") not in (None, "—") else ''}
     <span style="font-size:0.76rem;color:#6B7280;">✉️ <b>{r['Email']}</b></span>
     <span style="font-size:0.76rem;color:#6B7280;">📅 Created: <b>{_fmt(r['Created'])}</b></span>
     <span style="font-size:0.76rem;color:#6B7280;">🔒 Closed: <b>{_fmt(r['Closed']) if r['Closed'] else '—'}</b></span>
@@ -1210,6 +1234,7 @@ if run_clicked or _use_cache:
         _render_cards(rows)
         st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
         export_cols = ["ID", "Subject", "Status", "Priority", "Category", "Subcategory",
+                       "Type of Registration", "Onboarding Type", "Solution Type", "Convo App",
                        "Owner", "Email", "Created", "Closed", "Resolution Days", "Description"]
         export_df = pd.DataFrame([{c: _fmt(r[c]) if c in ("Created", "Closed") else r[c] for c in export_cols} for r in rows])
         st.download_button(
