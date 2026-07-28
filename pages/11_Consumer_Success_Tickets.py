@@ -77,6 +77,7 @@ TICKET_NAME_OPTIONS = [
     "⚠️ DECLINING",
     "Churn | Non-Migrated",
     "VRS Registration + Churn",
+    "Port-Out Winback",
 ]
 
 TICKET_NAME_MULTI = {
@@ -432,7 +433,10 @@ if run_clicked or _use_cache:
             rows = [r for r in rows if r["Is Closed"]]
 
         if ticket_name_filter != "All":
-            if ticket_name_filter in TICKET_NAME_MULTI:
+            if ticket_name_filter == "Port-Out Winback":
+                # Port-Out Winback = tickets whose Type of Registration is Port Out
+                rows = [r for r in rows if "port out" in str(r.get("Type of Registration") or "").lower()]
+            elif ticket_name_filter in TICKET_NAME_MULTI:
                 keywords = TICKET_NAME_MULTI[ticket_name_filter]
                 rows = [r for r in rows if any(kw in (r["Subject"] or "").lower() for kw in keywords)]
             else:
