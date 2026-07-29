@@ -287,6 +287,7 @@ if sel_owner:
 if sent_group != "All" and "hs_sentiment" in view.columns:
     _grp_vals = SENTIMENT_GROUPS[sent_group]
     view = view[view["hs_sentiment"].map(_sent_norm).isin(_grp_vals)]
+_view_nodate = view.copy()   # for the month-over-month sentiment comparison
 if d_from and d_to:
     m = (view["_ts"].dt.date >= d_from) & (view["_ts"].dt.date <= d_to)
     view = view[m | view["_ts"].isna()]
@@ -363,6 +364,46 @@ with c_right:
                          tooltip=["Score", "Count"])
                  .properties(height=280))
         st.altair_chart(chart, use_container_width=True)
+
+# ── this month vs last month sentiment comparison ────────────────────────────
+if "hs_sentiment" in _view_nodate.columns and _view_nodate["_ts"].notna().any():
+    _now = pd.Timestamp.now(tz="UTC")
+    _tm_start = _now.normalize().replace(day=1)
+    _lm_start = (_tm_start - pd.Timedelta(days=1)).replace(day=1)
+    _mv = _view_nodate.dropna(subset=["_ts"]).copy()
+    _mv["Sentiment"] = _mv["hs_sentiment"].map(_sent_norm).str.title()
+    _mv = _mv[_mv["Sentiment"].isin(SENT_ORDER)]
+
+    def _period(ts):
+        if ts >= _tm_start:
+            return "This month"
+        if ts >= _lm_start:
+            return "Last month"
+        return None
+    _mv["Period"] = _mv["_ts"].map(_period)
+    _mv = _mv[_mv["Period"].notna()]
+    if not _mv.empty:
+        st.markdown("##### Sentiment — this month vs last month")
+        cmp = _mv.groupby(["Sentiment", "Period"]).size().reset_index(name="Count")
+        _dom2 = [s for s in SENT_ORDER if s in set(cmp["Sentiment"])]
+        chart = (alt.Chart(cmp).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+                 .encode(x=alt.X("Sentiment:N", sort=_dom2, title=None),
+                         xOffset=alt.XOffset("Period:N", sort=["Last month", "This month"]),
+                         y=alt.Y("Count:Q", title="Responses"),
+                         color=alt.Color("Period:N",
+                                         scale=alt.Scale(domain=["Last month", "This month"],
+                                                         range=["#C7D2E0", "#206BC4"]),
+                                         legend=alt.Legend(orient="top", title=None)),
+                         tooltip=["Sentiment", "Period", "Count"])
+                 .properties(height=300))
+        st.altair_chart(chart, use_container_width=True)
+        # totals + delta line
+        _tt = int((_mv["Period"] == "This month").sum())
+        _lt = int((_mv["Period"] == "Last month").sum())
+        _d = ((_tt - _lt) / _lt * 100) if _lt else None
+        _dtxt = (f"{'+' if _tt >= _lt else ''}{_d:.0f}% vs last month" if _d is not None
+                 else "no last-month baseline")
+        st.caption(f"This month: **{_tt:,}** responses · Last month: **{_lt:,}** · {_dtxt}")
 
 # ── detail table ────────────────────────────────────────────────────────────
 st.markdown("##### Submissions")
