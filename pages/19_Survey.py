@@ -309,20 +309,15 @@ with c_left:
         st.altair_chart(chart, use_container_width=True)
 
 with c_right:
-    grp_col = "hs_response_group" if ("hs_response_group" in view.columns and view["hs_response_group"].notna().any()) \
-        else ("hs_sentiment" if "hs_sentiment" in view.columns and view["hs_sentiment"].notna().any() else None)
-    if grp_col:
-        st.markdown(f"##### {label_of.get(grp_col, grp_col)} breakdown")
-        gdf = view[grp_col].fillna("—").value_counts().reset_index()
-        gdf.columns = ["Group", "Count"]
+    if "hs_sentiment" in view.columns and view["hs_sentiment"].notna().any():
+        st.markdown("##### Sentiment")
+        gdf = view["hs_sentiment"].fillna("—").value_counts().reset_index()
+        gdf.columns = ["Sentiment", "Count"]
         chart = (alt.Chart(gdf).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-                 .encode(x=alt.X("Group:N", sort="-y", title=None),
+                 .encode(x=alt.X("Sentiment:N", sort="-y", title=None),
                          y=alt.Y("Count:Q", title="Responses"),
-                         color=alt.Color("Group:N",
-                                         scale=alt.Scale(domain=list(GROUP_COLORS.keys()),
-                                                         range=list(GROUP_COLORS.values())),
-                                         legend=None),
-                         tooltip=["Group", "Count"])
+                         color=alt.Color("Sentiment:N", legend=None),
+                         tooltip=["Sentiment", "Count"])
                  .properties(height=280))
         st.altair_chart(chart, use_container_width=True)
     elif view["_score"].notna().any():
