@@ -143,6 +143,27 @@ def _deact_detail(m0, m1):
     return rows
 
 
+def _convo_detail(m0, m1):
+    """Convo Now numbers created in the window, with live status & credit type."""
+    recs = _search_records([CN] + _btw("number_created_at", m0, m1),
+                           ["number", "email", "first_name", "last_name", "account_status",
+                            "credit_type", "number_created_at"])
+    rows = []
+    for r in recs:
+        p = r.get("properties", {})
+        c = _parse(p.get("number_created_at"))
+        rows.append({
+            "Number": p.get("number") or "—",
+            "Name": f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip() or "—",
+            "Email": p.get("email") or "—",
+            "Status": (p.get("account_status") or "—").title(),
+            "Credit Type": (p.get("credit_type") or "—").replace("_", " ").title(),
+            "Created": c.strftime("%b %d, %Y") if c else "—",
+        })
+    rows.sort(key=lambda x: x["Status"])
+    return rows
+
+
 def _unreg_detail(m0, m1):
     """Numbers created this month with NO registration timestamp — typically
     manually-added by CS (number changes, new Spanish numbers)."""
@@ -187,6 +208,7 @@ def _load():
     _po_avg, _po_rows = _portout_detail(m0, m1)
     _unreg_rows = _unreg_detail(m0, m1)
     _deact_rows = _deact_detail(m0, m1)
+    _convo_rows = _convo_detail(m0, m1)
     # last 12 weeks trend (for sparklines)
     trend = []
     for i in range(11, -1, -1):
@@ -214,6 +236,7 @@ def _load():
         "portout_rows": _po_rows,
         "unreg_rows": _unreg_rows,
         "deact_rows": _deact_rows,
+        "convo_rows": _convo_rows,
         "month_label": f"{m0.strftime('%b %d')} – {(m1 - timedelta(days=1)).strftime('%b %d, %Y')}",
         "ts": time.time(),
     }
@@ -393,5 +416,17 @@ if _de_rows:
                  column_config={"Age (days)": st.column_config.NumberColumn("Age (days)", format="%d")})
     st.download_button("📥 Download Deactivated CSV", _dedf.to_csv(index=False),
                        f"deactivated_{_c['month_label'].replace(' ', '_')}.csv", "text/csv", key="dl_de")
+
+# ── new Convo Now detail table ──
+_cv_rows = _c.get("convo_rows") or []
+if _cv_rows:
+    _live_cv = sum(1 for r in _cv_rows if r["Status"].lower() in ("live", "active"))
+    st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
+    st.markdown(f"##### New Convo Now numbers this week · {len(_cv_rows):,} ({_live_cv:,} live)")
+    st.caption("Convo Now numbers created this week. 'Status' shows which are Live.")
+    _cvdf = pd.DataFrame(_cv_rows)
+    st.dataframe(_cvdf, use_container_width=True, hide_index=True)
+    st.download_button("📥 Download Convo Now CSV", _cvdf.to_csv(index=False),
+                       f"convo_now_{_c['month_label'].replace(' ', '_')}.csv", "text/csv", key="dl_cv")
 
 st.caption("Scoped to **this week**. Use **This Month** for the month or **Overview** for all-time totals.")
