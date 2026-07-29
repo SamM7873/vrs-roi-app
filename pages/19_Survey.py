@@ -336,7 +336,8 @@ st.markdown("##### Submissions")
 search = st.text_input("Search responses", placeholder="Filter by comment, survey, value…",
                        label_visibility="collapsed")
 
-show_cols = [c for c in props if c in view.columns]
+# drop the Feedback sentiment (hs_response_group) column — focus on Sentiment only
+show_cols = [c for c in props if c in view.columns and c != "hs_response_group"]
 tbl = view[show_cols].copy()
 if ts_prop and ts_prop in tbl.columns:
     tbl[ts_prop] = view["_ts"].dt.strftime("%b %d, %Y %I:%M %p")
