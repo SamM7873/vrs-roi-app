@@ -144,13 +144,17 @@ def _deact_detail(m0, m1):
 
 
 def _convo_detail(m0, m1):
-    """Convo Now numbers created in the window, with live status & credit type."""
+    """Convo Now numbers created in the window (Credit Type is none of Guest),
+    with live status, credit type and credit plan."""
     recs = _search_records([CN] + _btw("number_created_at", m0, m1),
                            ["number", "email", "first_name", "last_name", "account_status",
-                            "credit_type", "number_created_at"])
+                            "credit_type", "credit_plan_name", "number_created_at"])
     rows = []
     for r in recs:
         p = r.get("properties", {})
+        # Credit Type is none of Guest (keeps blanks, drops explicit guests)
+        if (p.get("credit_type") or "").strip().lower() == "guest":
+            continue
         c = _parse(p.get("number_created_at"))
         rows.append({
             "Number": p.get("number") or "—",
@@ -158,6 +162,7 @@ def _convo_detail(m0, m1):
             "Email": p.get("email") or "—",
             "Status": (p.get("account_status") or "—").title(),
             "Credit Type": (p.get("credit_type") or "—").replace("_", " ").title(),
+            "Credit Plan": (p.get("credit_plan_name") or "—"),
             "Created": c.strftime("%b %d, %Y") if c else "—",
         })
     rows.sort(key=lambda x: x["Status"])
