@@ -3,7 +3,7 @@ import pandas as pd
 import altair as alt
 import requests
 import time
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from utils import (
     require_auth, list_all, get_secret, COMMON_CSS,
     report_header, report_header_close, save_report, load_report,
@@ -263,16 +263,34 @@ sel_owner = f2.multiselect("Ticket owner", _opts("Ticket Owner"))
 sent_group = f5.selectbox("Sentiment group", ["All", "CES", "CSAT", "Custom", "Knowledge"],
                           help="CES: Difficult/Neutral/Easy · CSAT: Happy/Unhappy · "
                                "Custom: Not Applicable · Knowledge: Helpful/Unhelpful")
+
+
+def _preset_range(p):
+    t = date.today()
+    if p == "Today":       return t, t
+    if p == "This Week":   return t - timedelta(days=t.weekday()), t
+    if p == "This Month":  return t.replace(day=1), t
+    if p == "Last Month":
+        end = t.replace(day=1) - timedelta(days=1)
+        return end.replace(day=1), end
+    if p == "Last Quarter":
+        q = ((t.month - 1) // 3) * 3 + 1
+        end = t.replace(month=q, day=1) - timedelta(days=1)
+        return end.replace(month=((end.month - 1) // 3) * 3 + 1, day=1), end
+    return None, None  # All
 team_360_only = st.checkbox("360 team only", value=False,
                             help="Only responses whose ticket owner is on the 360 team.")
 
-if df["_ts"].notna().any():
+date_preset = f3.selectbox("Date range",
+                           ["All", "Today", "This Week", "This Month", "Last Month", "Last Quarter", "Custom"],
+                           index=0)
+if date_preset == "Custom" and df["_ts"].notna().any():
     min_d = df["_ts"].min().date()
     max_d = df["_ts"].max().date()
-    d_from = f3.date_input("From", value=min_d, min_value=min_d, max_value=max_d)
-    d_to = f4.date_input("To", value=max_d, min_value=min_d, max_value=max_d)
+    d_from = f4.date_input("From", value=min_d, min_value=min_d, max_value=max_d)
+    d_to = f4.date_input("To", value=max_d, min_value=min_d, max_value=max_d, key="_to")
 else:
-    d_from = d_to = None
+    d_from, d_to = _preset_range(date_preset)
 sel_name = []
 
 view = df.copy()
