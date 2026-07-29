@@ -310,16 +310,25 @@ with c_left:
 
 with c_right:
     if "hs_sentiment" in view.columns and view["hs_sentiment"].notna().any():
-        st.markdown("##### Sentiment")
+        st.markdown("##### Customer Effort (CES) sentiment")
         gdf = view["hs_sentiment"].fillna("—").value_counts().reset_index()
         gdf.columns = ["Sentiment", "Count"]
+        gdf["Sentiment"] = gdf["Sentiment"].str.title()   # normalize casing
+        _ces_order = ["Difficult", "Neutral", "Easy"]
+        _ces_colors = {"Difficult": "#EF4444", "Neutral": "#F59E0B", "Easy": "#2FB344"}
+        _dom = [s for s in _ces_order if s in set(gdf["Sentiment"])] + \
+               [s for s in gdf["Sentiment"] if s not in _ces_order]
         chart = (alt.Chart(gdf).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-                 .encode(x=alt.X("Sentiment:N", sort="-y", title=None),
+                 .encode(x=alt.X("Sentiment:N", sort=_dom, title=None),
                          y=alt.Y("Count:Q", title="Responses"),
-                         color=alt.Color("Sentiment:N", legend=None),
+                         color=alt.Color("Sentiment:N",
+                                         scale=alt.Scale(domain=list(_ces_colors.keys()),
+                                                         range=list(_ces_colors.values())),
+                                         legend=None),
                          tooltip=["Sentiment", "Count"])
                  .properties(height=280))
         st.altair_chart(chart, use_container_width=True)
+        st.caption("CES scale: **Difficult** (1–3) · **Neutral** (4–5) · **Easy** (6–7)")
     elif view["_score"].notna().any():
         st.markdown("##### Score distribution")
         sdf = view["_score"].dropna().round().astype(int).value_counts().reset_index()
