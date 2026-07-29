@@ -315,6 +315,8 @@ with c_right:
         gdf.columns = ["Sentiment", "Count"]
         gdf["Sentiment"] = gdf["Sentiment"].str.title()   # normalize casing
         _ces_order = ["Difficult", "Neutral", "Easy"]
+        # keep only the CES sentiments (drop N/A, Happy, Unhappy, Helpful, Unhelpful, blanks)
+        gdf = gdf[gdf["Sentiment"].isin(_ces_order)]
         _ces_colors = {"Difficult": "#EF4444", "Neutral": "#F59E0B", "Easy": "#2FB344"}
         _dom = [s for s in _ces_order if s in set(gdf["Sentiment"])] + \
                [s for s in gdf["Sentiment"] if s not in _ces_order]
