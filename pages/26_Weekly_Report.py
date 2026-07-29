@@ -363,13 +363,15 @@ def _age_str(days):
 
 _po_age = _c.get("portout_age")
 _registered_of_new = vrs_m - unreg
+_net_port = portin - portout
 stat = [
     ("📥", f"{portin:,} Port-In", "ported in from another provider", BLUE),
     ("📤", f"{portout:,} Port-Out", f"ported to another provider · {_age_str(_po_age)}", AMBER),
+    ("🔀", f"{_net_port:+,} Net Port", "Port-In − Port-Out", GREEN if _net_port >= 0 else RED),
     ("🚫", f"{deact:,} Deactivated", f"= {_deact_pct:.0f}% of new adds · deleted this week", RED),
     ("⏳", f"{unreg:,} Unregistered", f"of {vrs_m:,} new · {_registered_of_new:,} registered, {unreg:,} not", "#8B5CF6"),
 ]
-sc = st.columns(4)
+sc = st.columns(5)
 for col, (icon, title, sub, color) in zip(sc, stat):
     with col:
         st.markdown(f"""
