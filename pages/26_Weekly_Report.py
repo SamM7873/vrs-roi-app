@@ -381,15 +381,17 @@ for col, (icon, title, sub, color) in zip(sc, stat):
 
 # ── port-out detail table ─────────────────────────────────────────────────────
 _po_rows = _c.get("portout_rows") or []
+st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
+st.markdown(f"##### Port-Out numbers this week · {len(_po_rows):,}")
 if _po_rows:
-    st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
-    st.markdown(f"##### Port-Out numbers this week · {len(_po_rows):,}")
     st.caption("Age = Ported-Out date − Created date (how long the number was active). Sorted oldest first.")
     _pdf = pd.DataFrame(_po_rows)
     st.dataframe(_pdf, use_container_width=True, hide_index=True,
                  column_config={"Age (days)": st.column_config.NumberColumn("Age (days)", format="%d")})
     st.download_button("📥 Download Port-Out CSV", _pdf.to_csv(index=False),
                        f"port_out_{_c['month_label'].replace(' ', '_')}.csv", "text/csv", key="dl_po")
+else:
+    st.caption("No port-outs this week.")
 
 # ── unregistered (manual) detail table ────────────────────────────────────────
 _ur_rows = _c.get("unreg_rows") or []
@@ -405,9 +407,11 @@ if _ur_rows:
 
 # ── deactivated detail table ──────────────────────────────────────────────────
 _de_rows = _c.get("deact_rows") or []
+st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
+st.markdown(f"##### Deactivated numbers this week · {len(_de_rows):,}")
+if not _de_rows:
+    st.caption("No deactivations this week.")
 if _de_rows:
-    st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
-    st.markdown(f"##### Deactivated numbers this week · {len(_de_rows):,}")
     st.caption("Numbers deactivated this week, with lifespan age (Deactivated − Created). Sorted oldest first.")
     _dedf = pd.DataFrame(_de_rows)
     _rc = _dedf["Delete Reason"].value_counts()
@@ -424,14 +428,16 @@ if _de_rows:
 
 # ── new Convo Now detail table ──
 _cv_rows = _c.get("convo_rows") or []
+_live_cv = sum(1 for r in _cv_rows if r["Status"].lower() in ("live", "active"))
+st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
+st.markdown(f"##### New Convo Now numbers this week · {len(_cv_rows):,} ({_live_cv:,} live)")
 if _cv_rows:
-    _live_cv = sum(1 for r in _cv_rows if r["Status"].lower() in ("live", "active"))
-    st.markdown("<div style='height:1.2rem;'></div>", unsafe_allow_html=True)
-    st.markdown(f"##### New Convo Now numbers this week · {len(_cv_rows):,} ({_live_cv:,} live)")
-    st.caption("Convo Now numbers created this week. 'Status' shows which are Live.")
+    st.caption("Convo Now numbers created this week (excludes Guest credit type). 'Status' shows which are Live.")
     _cvdf = pd.DataFrame(_cv_rows)
     st.dataframe(_cvdf, use_container_width=True, hide_index=True)
     st.download_button("📥 Download Convo Now CSV", _cvdf.to_csv(index=False),
                        f"convo_now_{_c['month_label'].replace(' ', '_')}.csv", "text/csv", key="dl_cv")
+else:
+    st.caption("No new Convo Now numbers this week.")
 
 st.caption("Scoped to **this week**. Use **This Month** for the month or **Overview** for all-time totals.")
