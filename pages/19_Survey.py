@@ -24,6 +24,24 @@ OBJECT = "feedback_submissions"
 PRIMARY = "#C9A876"
 GROUP_COLORS = {"PROMOTER": "#15803D", "PASSIVE": "#C9A876", "DETRACTOR": "#EF4444"}
 
+# Sentiment values grouped by survey category (values normalized lower-case + spaces)
+SENTIMENT_GROUPS = {
+    "CES": ["difficult", "neutral", "easy"],
+    "CSAT": ["happy", "unhappy"],
+    "Custom": ["not applicable"],
+    "Knowledge": ["helpful", "unhelpful"],
+}
+SENT_COLORS = {
+    "Difficult": "#EF4444", "Neutral": "#F59E0B", "Easy": "#2FB344",
+    "Unhappy": "#EF4444", "Happy": "#2FB344",
+    "Unhelpful": "#EF4444", "Helpful": "#2FB344",
+    "Not Applicable": "#9CA3AF",
+}
+SENT_ORDER = ["Difficult", "Neutral", "Easy", "Unhappy", "Happy", "Unhelpful", "Helpful", "Not Applicable"]
+
+def _sent_norm(v):
+    return str(v or "").strip().lower().replace("_", " ")
+
 # 360 support team — override with a TEAM_360 secret (comma-separated owner names)
 _DEFAULT_360 = ["Alyssa Vela", "Jonah Hazelett", "Ilan Ben-Moshe", "Taylor Jamie",
                 "Ashley Thurman", "Danté Whitty", "Hannah Puent",
@@ -235,13 +253,16 @@ if _saved_at:
     st.caption(f"📌 Saved data · last refreshed **{_ago}** · click **Refresh data** to reload from HubSpot.")
 
 # ── filters ─────────────────────────────────────────────────────────────────
-f1, f2, f3, f4 = st.columns([2, 2, 1.5, 1.5])
+f1, f2, f3, f4, f5 = st.columns([2, 2, 1.5, 1.5, 1.5])
 
 def _opts(col):
     return sorted([v for v in df[col].dropna().unique().tolist() if str(v).strip()]) if col in df.columns else []
 
 sel_type = f1.multiselect("Survey type", _opts("hs_survey_type")) if "hs_survey_type" in df.columns else []
 sel_owner = f2.multiselect("Ticket owner", _opts("Ticket Owner"))
+sent_group = f5.selectbox("Sentiment group", ["All", "CES", "CSAT", "Custom", "Knowledge"],
+                          help="CES: Difficult/Neutral/Easy · CSAT: Happy/Unhappy · "
+                               "Custom: Not Applicable · Knowledge: Helpful/Unhelpful")
 team_360_only = st.checkbox("360 team only", value=False,
                             help="Only responses whose ticket owner is on the 360 team.")
 
@@ -263,6 +284,9 @@ if sel_type:
     view = view[view["hs_survey_type"].isin(sel_type)]
 if sel_owner:
     view = view[view["Ticket Owner"].isin(sel_owner)]
+if sent_group != "All" and "hs_sentiment" in view.columns:
+    _grp_vals = SENTIMENT_GROUPS[sent_group]
+    view = view[view["hs_sentiment"].map(_sent_norm).isin(_grp_vals)]
 if d_from and d_to:
     m = (view["_ts"].dt.date >= d_from) & (view["_ts"].dt.date <= d_to)
     view = view[m | view["_ts"].isna()]
@@ -310,27 +334,25 @@ with c_left:
 
 with c_right:
     if "hs_sentiment" in view.columns and view["hs_sentiment"].notna().any():
-        st.markdown("##### Customer Effort (CES) sentiment")
-        gdf = view["hs_sentiment"].fillna("—").value_counts().reset_index()
+        st.markdown(f"##### Sentiment{' — ' + sent_group if sent_group != 'All' else ''}")
+        gdf = view["hs_sentiment"].map(_sent_norm).replace("", pd.NA).dropna().value_counts().reset_index()
         gdf.columns = ["Sentiment", "Count"]
-        gdf["Sentiment"] = gdf["Sentiment"].str.title()   # normalize casing
-        _ces_order = ["Difficult", "Neutral", "Easy"]
-        # keep only the CES sentiments (drop N/A, Happy, Unhappy, Helpful, Unhelpful, blanks)
-        gdf = gdf[gdf["Sentiment"].isin(_ces_order)]
-        _ces_colors = {"Difficult": "#EF4444", "Neutral": "#F59E0B", "Easy": "#2FB344"}
-        _dom = [s for s in _ces_order if s in set(gdf["Sentiment"])] + \
-               [s for s in gdf["Sentiment"] if s not in _ces_order]
+        gdf["Sentiment"] = gdf["Sentiment"].str.title()   # normalize casing for display
+        # keep only known sentiment values (drops blanks / stray values)
+        gdf = gdf[gdf["Sentiment"].isin(SENT_ORDER)]
+        _dom = [s for s in SENT_ORDER if s in set(gdf["Sentiment"])]
         chart = (alt.Chart(gdf).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
                  .encode(x=alt.X("Sentiment:N", sort=_dom, title=None),
                          y=alt.Y("Count:Q", title="Responses"),
                          color=alt.Color("Sentiment:N",
-                                         scale=alt.Scale(domain=list(_ces_colors.keys()),
-                                                         range=list(_ces_colors.values())),
+                                         scale=alt.Scale(domain=list(SENT_COLORS.keys()),
+                                                         range=list(SENT_COLORS.values())),
                                          legend=None),
                          tooltip=["Sentiment", "Count"])
                  .properties(height=280))
         st.altair_chart(chart, use_container_width=True)
-        st.caption("CES scale: **Difficult** (1–3) · **Neutral** (4–5) · **Easy** (6–7)")
+        if sent_group == "CES" or (sent_group == "All" and gdf["Sentiment"].isin(["Difficult", "Neutral", "Easy"]).any()):
+            st.caption("CES scale: **Difficult** (1–3) · **Neutral** (4–5) · **Easy** (6–7)")
     elif view["_score"].notna().any():
         st.markdown("##### Score distribution")
         sdf = view["_score"].dropna().round().astype(int).value_counts().reset_index()
