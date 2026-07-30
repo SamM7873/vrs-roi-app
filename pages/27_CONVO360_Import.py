@@ -1,8 +1,21 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 import requests
 from datetime import datetime
 from collections import defaultdict
+
+TYPE_LABEL = {"CALL": "Call", "CHAT": "Chat", "QUERY": "Query (text)", "SIP_VIDEO_CALL": "Video call"}
+
+
+def _wait_secs(v):
+    try:
+        parts = [int(x) for x in str(v).split(":")]
+        while len(parts) < 3:
+            parts.insert(0, 0)
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    except Exception:
+        return None
 from utils import (require_auth, get_secret, COMMON_CSS, report_header,
                    report_header_close, log_report_view)
 
@@ -67,7 +80,7 @@ def _fetch_tickets(pipe_ids):
             body = {"filterGroups": [{"filters": [
                         {"propertyName": "hs_pipeline", "operator": "EQ", "value": pid}]}],
                     "properties": ["subject", "createdate", "closed_date", "hubspot_owner_id",
-                                   "email", "hs_pipeline"],
+                                   "email", "hs_pipeline", "time_to_close", "hs_lastactivitydate"],
                     "limit": 100, "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}]}
             if after:
                 body["after"] = after
@@ -231,5 +244,92 @@ if run:
 
     st.download_button("📥 Export merged CSV", res_df.to_csv(index=False),
                        f"convo360_matched_{datetime.now():%Y%m%d}.csv", "text/csv")
+
+    # ── AHT / KPI audit ─────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### ⏱️ AHT / KPI audit")
+
+    dur_col = next((c for c in df.columns if "duration" in c.lower()), None)
+    wait_col = next((c for c in df.columns if "wait" in c.lower()), None)
+    type_col = next((c for c in df.columns if c.lower() == "type"), None)
+
+    k = df.copy()
+    k["_dur"] = pd.to_numeric(k[dur_col], errors="coerce") if dur_col else None
+    k["_wait"] = k[wait_col].map(_wait_secs) if wait_col else None
+    if type_col:
+        k["_type"] = k[type_col].map(lambda v: TYPE_LABEL.get(str(v).strip().upper(), str(v).strip() or "—"))
+    else:
+        k["_type"] = "—"
+
+    n_int = len(k)
+    aht = k["_dur"].mean() if dur_col else None
+    total_hrs = k["_dur"].sum() / 60 if dur_col else None
+    avg_wait = k["_wait"].mean() if wait_col else None
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total interactions", f"{n_int:,}")
+    m2.metric("AHT (avg handle)", f"{aht:.1f} min" if aht is not None else "—")
+    m3.metric("Total handle time", f"{total_hrs:,.0f} hrs" if total_hrs is not None else "—")
+    m4.metric("Avg wait time", f"{avg_wait/60:.1f} min" if avg_wait is not None else "—")
+
+    # Duration by interaction type — how long is a chat vs video vs call
+    if dur_col:
+        st.markdown("##### Handle time by interaction type")
+        bt = (k.groupby("_type")
+                .agg(Interactions=("_type", "size"),
+                     **{"Avg handle (min)": ("_dur", "mean"),
+                        "Total minutes": ("_dur", "sum")})
+                .reset_index().rename(columns={"_type": "Type"}))
+        bt["Avg handle (min)"] = bt["Avg handle (min)"].round(1)
+        bt["Total minutes"] = bt["Total minutes"].round(0)
+        bt = bt.sort_values("Total minutes", ascending=False)
+        c1, c2 = st.columns([2, 3])
+        with c1:
+            st.dataframe(bt, use_container_width=True, hide_index=True)
+        with c2:
+            chart = (alt.Chart(bt).mark_bar(color="#0D3B26", cornerRadiusEnd=4)
+                     .encode(
+                         x=alt.X("Avg handle (min):Q", title="Avg handle (min)"),
+                         y=alt.Y("Type:N", sort="-x", title=None),
+                         tooltip=["Type", "Interactions", "Avg handle (min)", "Total minutes"])
+                     .properties(height=200))
+            st.altair_chart(chart, use_container_width=True)
+
+    # Per-rep — how long each rep works
+    agent_c = next((c for c in df.columns if c.lower() == "agent"), None)
+    if agent_c and dur_col:
+        st.markdown("##### Per-rep handle time")
+        rep = (k.assign(_agent=k[agent_c].fillna("—"))
+                 .groupby("_agent")
+                 .agg(Interactions=("_agent", "size"),
+                      **{"Total minutes": ("_dur", "sum"),
+                         "Avg handle (min)": ("_dur", "mean"),
+                         "Avg wait (min)": ("_wait", "mean")})
+                 .reset_index().rename(columns={"_agent": "Agent"}))
+        rep["Total hours"] = (rep["Total minutes"] / 60).round(1)
+        rep["Total minutes"] = rep["Total minutes"].round(0)
+        rep["Avg handle (min)"] = rep["Avg handle (min)"].round(1)
+        rep["Avg wait (min)"] = (rep["Avg wait (min)"] / 60).round(1)
+        rep = rep.sort_values("Total minutes", ascending=False)[
+            ["Agent", "Interactions", "Total hours", "Total minutes", "Avg handle (min)", "Avg wait (min)"]]
+        st.dataframe(rep, use_container_width=True, hide_index=True)
+
+    # Ticket activity duration — matched tickets time-to-close
+    ttc = []
+    for t in tickets:
+        p = t.get("properties", {})
+        v = p.get("time_to_close")
+        if v:
+            try:
+                ttc.append(float(v) / 3600000.0)  # ms → hours
+            except Exception:
+                pass
+    if ttc:
+        st.markdown("##### Ticket activity (T1/T2 time-to-close)")
+        s = pd.Series(ttc)
+        t1c, t2c, t3c = st.columns(3)
+        t1c.metric("Tickets with close time", f"{len(ttc):,}")
+        t2c.metric("Avg time to close", f"{s.mean():.1f} hrs")
+        t3c.metric("Median time to close", f"{s.median():.1f} hrs")
 
 report_header_close()
