@@ -175,9 +175,12 @@ if agent_c0:
     miss_rate = missed / n_int * 100 if n_int else 0
     st.markdown("##### Connected vs missed")
     cc1, cc2, cc3 = st.columns(3)
-    cc1.metric("✅ Connected", f"{connected:,}", f"{conn_rate:.1f}%")
-    cc2.metric("📵 Missed", f"{missed:,}", f"{miss_rate:.1f}%", delta_color="inverse")
+    cc1.metric("✅ Connected", f"{connected:,}")
+    cc1.caption(f"{conn_rate:.1f}% of interactions")
+    cc2.metric("📵 Missed", f"{missed:,}")
+    cc2.caption(f"{miss_rate:.1f}% of interactions")
     cc3.metric("Connect rate", f"{conn_rate:.1f}%")
+    cc3.caption(f"{connected:,} of {n_int:,} reached a rep")
 
 # Duration by interaction type — how long is a chat vs video vs call
 if dur_col:
