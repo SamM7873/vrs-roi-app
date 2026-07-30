@@ -163,54 +163,45 @@ m1.metric("Total interactions", f"{n_int:,}")
 m2.metric("AHT (avg handle)", f"{aht:.1f} min" if aht is not None else "—")
 m3.metric("Total handle time", f"{total_hrs:,.1f} hrs" if total_hrs is not None else "—",
           help=f"{k['_dur'].sum():,.0f} total minutes" if dur_col else None)
-m4.metric("Avg wait time", f"{avg_wait:.0f} sec" if avg_wait is not None else "—")
+m4.metric("Avg wait (answered)", f"{avg_wait:.0f} sec" if avg_wait is not None else "—",
+          help="Speed of answer — averaged over answered interactions only. "
+               "Missed calls carry no wait duration in the source, so they're excluded.")
 
-# Connected vs missed — did the interaction reach a rep?
-agent_c0 = next((c for c in df.columns if c.lower() == "agent"), None)
-if agent_c0:
-    _lbl = k[agent_c0].map(_agent_label)
-    missed = int((_lbl == "Missed").sum())
-    connected = n_int - missed
-    conn_rate = connected / n_int * 100 if n_int else 0
-    miss_rate = missed / n_int * 100 if n_int else 0
-    st.markdown("##### Connected vs missed")
+# ── Missed calls (Wait Time = 'Missed' flag in the CONVO360 export) ──────────
+# The source flags a missed CALL by writing 'Missed' in the Wait Time column.
+# Only calls can be missed; chats/queries are async and never 'missed'.
+if wait_col:
+    _raw_wait = k[wait_col].astype(str).str.strip().str.lower()
+    k["_missed"] = _raw_wait.eq("missed")
+    is_call = k["_type"].str.contains("call", case=False, na=False)
+    call_attempts = int(is_call.sum())
+    missed = int(k["_missed"].sum())
+    answered = call_attempts - missed
+    ans_rate = answered / call_attempts * 100 if call_attempts else 0
+    miss_rate = missed / call_attempts * 100 if call_attempts else 0
+
+    st.markdown("##### Call answer performance")
     cc1, cc2, cc3 = st.columns(3)
-    cc1.metric("✅ Connected", f"{connected:,}")
-    cc1.caption(f"{conn_rate:.1f}% of interactions")
-    cc2.metric("📵 Missed", f"{missed:,}")
-    cc2.caption(f"{miss_rate:.1f}% of interactions")
-    cc3.metric("Connect rate", f"{conn_rate:.1f}%")
-    cc3.caption(f"{connected:,} of {n_int:,} reached a rep")
+    cc1.metric("✅ Answered calls", f"{answered:,}")
+    cc1.caption(f"{ans_rate:.1f}% of {call_attempts:,} call attempts")
+    cc2.metric("📵 Missed calls", f"{missed:,}")
+    cc2.caption(f"{miss_rate:.1f}% of call attempts")
+    cc3.metric("Answer rate", f"{ans_rate:.1f}%")
+    cc3.caption(f"{answered:,} of {call_attempts:,} calls answered")
 
-    # Missed interactions detail — including how long they waited before dropping
-    md = k[_lbl == "Missed"].copy()
+    # Missed calls detail
+    md = k[k["_missed"]].copy()
     if not md.empty:
-        st.markdown("###### Missed interactions (no rep connected)")
-        if wait_col:
-            mw = md["_wait"].dropna()
-            mw1, mw2, mw3 = st.columns(3)
-            if len(mw):
-                mw1.metric("Avg wait — missed only", f"{mw.mean():.0f} sec",
-                           help=f"{mw.mean()/60:.1f} min · across {len(mw):,} missed with wait data")
-                mw2.metric("Longest missed wait", f"{int(mw.max())//60}:{int(mw.max()) % 60:02d}")
-                mw3.metric("Total wait lost", f"{mw.sum()/60:.1f} min")
-            else:
-                mw1.metric("Avg wait — missed only", "—")
-                mw1.caption("No wait-time values on the missed rows in this range.")
+        st.markdown("###### Missed calls")
+        st.caption("The CONVO360 export flags these as **Missed** with no wait duration recorded, "
+                   "so there's no 'how long they waited' value for missed calls.")
         _mcols, _mren = ["_type"], {"_type": "Type"}
         _cust_m = next((c for c in df.columns if c.lower() in ("customer name", "name")), None)
         _date_m = next((c for c in df.columns if "date" in c.lower()), None)
         for _c in (_cust_m, _date_m):
             if _c and _c not in _mcols:
                 _mcols.append(_c)
-        if wait_col:
-            md["Wait (sec)"] = md["_wait"].round(0)
-            md["Wait (m:ss)"] = md["_wait"].map(
-                lambda s: f"{int(s)//60}:{int(s) % 60:02d}" if pd.notna(s) else "—")
-            _mcols += ["Wait (sec)", "Wait (m:ss)"]
-        if wait_col:
-            md = md.sort_values("_wait", ascending=False)
-        elif _date_m:
+        if _date_m:
             md = md.sort_values(_date_m)
         st.dataframe(md[_mcols].rename(columns=_mren),
                      use_container_width=True, hide_index=True, height=300)
