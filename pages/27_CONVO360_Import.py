@@ -95,7 +95,16 @@ if saved is None:
     st.stop()
 
 df = saved["df"]
-st.caption(f"Showing saved import from {saved_at_label(saved)} · {len(df):,} interactions")
+_c1, _c2 = st.columns([4, 1])
+_c1.caption(f"Showing saved import from {saved_at_label(saved)} · {len(df):,} interactions")
+if _c2.button("🔄 Re-run / clear", help="Clear the saved import so you can upload a fresh CSV"):
+    import os as _os
+    from utils import REPORT_CACHE_DIR
+    try:
+        _os.remove(_os.path.join(REPORT_CACHE_DIR, "convo360.pkl"))
+    except Exception:
+        pass
+    st.rerun()
 
 # ── date-range preset ──
 date_col = next((c for c in df.columns if "date" in c.lower()), None)
