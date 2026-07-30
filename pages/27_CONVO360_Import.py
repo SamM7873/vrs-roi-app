@@ -165,6 +165,20 @@ m3.metric("Total handle time", f"{total_hrs:,.1f} hrs" if total_hrs is not None 
           help=f"{k['_dur'].sum():,.0f} total minutes" if dur_col else None)
 m4.metric("Avg wait time", f"{avg_wait:.0f} sec" if avg_wait is not None else "—")
 
+# Connected vs missed — did the interaction reach a rep?
+agent_c0 = next((c for c in df.columns if c.lower() == "agent"), None)
+if agent_c0:
+    _lbl = k[agent_c0].map(_agent_label)
+    missed = int((_lbl == "Missed").sum())
+    connected = n_int - missed
+    conn_rate = connected / n_int * 100 if n_int else 0
+    miss_rate = missed / n_int * 100 if n_int else 0
+    st.markdown("##### Connected vs missed")
+    cc1, cc2, cc3 = st.columns(3)
+    cc1.metric("✅ Connected", f"{connected:,}", f"{conn_rate:.1f}%")
+    cc2.metric("📵 Missed", f"{missed:,}", f"{miss_rate:.1f}%", delta_color="inverse")
+    cc3.metric("Connect rate", f"{conn_rate:.1f}%")
+
 # Duration by interaction type — how long is a chat vs video vs call
 if dur_col:
     st.markdown("##### Handle time by interaction type")
