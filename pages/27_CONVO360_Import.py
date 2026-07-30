@@ -35,6 +35,14 @@ def _wait_secs(v):
         return None
 
 
+def _agent_label(v):
+    """Blank/placeholder agent = the interaction never connected to a rep."""
+    s = str(v).strip()
+    if not s or s.lower() in ("nan", "none", "null", "-", "—", "unassigned", "n/a", "na", "unknown"):
+        return "Unassigned (not connected)"
+    return s
+
+
 def _preset_range(preset, today=None):
     """Return (start_date, end_date) inclusive for a named preset, or (None, None) for all time."""
     today = today or date.today()
@@ -207,6 +215,9 @@ if wait_col:
     st.markdown("##### Longest-wait interactions")
     lw = k.dropna(subset=["_wait"]).copy()
     lw["Wait (min)"] = (lw["_wait"] / 60).round(1)
+    _agent_c0 = next((c for c in df.columns if c.lower() == "agent"), None)
+    if _agent_c0:
+        lw[_agent_c0] = lw[_agent_c0].map(_agent_label)
     _cols = ["Wait (min)", "_type"]
     _rename = {"_type": "Type"}
     _agent0 = next((c for c in df.columns if c.lower() == "agent"), None)
@@ -222,7 +233,7 @@ if wait_col:
 agent_c = next((c for c in df.columns if c.lower() == "agent"), None)
 if agent_c and dur_col:
     st.markdown("##### Per-rep handle time")
-    rep = (k.assign(_agent=k[agent_c].fillna("—"))
+    rep = (k.assign(_agent=k[agent_c].map(_agent_label))
              .groupby("_agent")
              .agg(Interactions=("_agent", "size"),
                   **{"Total minutes": ("_dur", "sum"),
