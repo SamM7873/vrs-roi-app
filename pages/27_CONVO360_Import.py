@@ -182,10 +182,16 @@ if agent_c0:
     cc3.metric("Connect rate", f"{conn_rate:.1f}%")
     cc3.caption(f"{connected:,} of {n_int:,} reached a rep")
 
-    # Missed interactions detail
+    # Missed interactions detail — including how long they waited before dropping
     md = k[_lbl == "Missed"].copy()
     if not md.empty:
         st.markdown("###### Missed interactions (no rep connected)")
+        if wait_col and md["_wait"].notna().any():
+            mw = md["_wait"].dropna()
+            mw1, mw2, mw3 = st.columns(3)
+            mw1.metric("Avg wait before missed", f"{mw.mean():.0f} sec")
+            mw2.metric("Longest missed wait", f"{int(mw.max())//60}:{int(mw.max()) % 60:02d}")
+            mw3.metric("Total wait lost", f"{mw.sum()/60:.1f} min")
         _mcols, _mren = ["_type"], {"_type": "Type"}
         _cust_m = next((c for c in df.columns if c.lower() in ("customer name", "name")), None)
         _date_m = next((c for c in df.columns if "date" in c.lower()), None)
@@ -194,8 +200,12 @@ if agent_c0:
                 _mcols.append(_c)
         if wait_col:
             md["Wait (sec)"] = md["_wait"].round(0)
-            _mcols.append("Wait (sec)")
-        if _date_m:
+            md["Wait (m:ss)"] = md["_wait"].map(
+                lambda s: f"{int(s)//60}:{int(s) % 60:02d}" if pd.notna(s) else "—")
+            _mcols += ["Wait (sec)", "Wait (m:ss)"]
+        if wait_col:
+            md = md.sort_values("_wait", ascending=False)
+        elif _date_m:
             md = md.sort_values(_date_m)
         st.dataframe(md[_mcols].rename(columns=_mren),
                      use_container_width=True, hide_index=True, height=300)
