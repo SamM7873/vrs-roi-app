@@ -182,6 +182,24 @@ if agent_c0:
     cc3.metric("Connect rate", f"{conn_rate:.1f}%")
     cc3.caption(f"{connected:,} of {n_int:,} reached a rep")
 
+    # Missed interactions detail
+    md = k[_lbl == "Missed"].copy()
+    if not md.empty:
+        st.markdown("###### Missed interactions (no rep connected)")
+        _mcols, _mren = ["_type"], {"_type": "Type"}
+        _cust_m = next((c for c in df.columns if c.lower() in ("customer name", "name")), None)
+        _date_m = next((c for c in df.columns if "date" in c.lower()), None)
+        for _c in (_cust_m, _date_m):
+            if _c and _c not in _mcols:
+                _mcols.append(_c)
+        if wait_col:
+            md["Wait (sec)"] = md["_wait"].round(0)
+            _mcols.append("Wait (sec)")
+        if _date_m:
+            md = md.sort_values(_date_m)
+        st.dataframe(md[_mcols].rename(columns=_mren),
+                     use_container_width=True, hide_index=True, height=300)
+
 # Duration by interaction type — how long is a chat vs video vs call
 if dur_col:
     st.markdown("##### Handle time by interaction type")
