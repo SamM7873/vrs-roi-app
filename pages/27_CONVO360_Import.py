@@ -179,6 +179,44 @@ if dur_col:
                  .properties(height=200))
         st.altair_chart(chart, use_container_width=True)
 
+# Wait time by interaction type — how long customers wait before each type
+if wait_col:
+    st.markdown("##### Wait time by interaction type")
+    wt = (k.dropna(subset=["_wait"]).groupby("_type")
+            .agg(Interactions=("_wait", "size"),
+                 **{"Avg wait (min)": ("_wait", "mean"),
+                    "Max wait (min)": ("_wait", "max")})
+            .reset_index().rename(columns={"_type": "Type"}))
+    wt["Avg wait (min)"] = (wt["Avg wait (min)"] / 60).round(1)
+    wt["Max wait (min)"] = (wt["Max wait (min)"] / 60).round(1)
+    wt = wt.sort_values("Avg wait (min)", ascending=False)
+    w1, w2 = st.columns([2, 3])
+    with w1:
+        st.dataframe(wt, use_container_width=True, hide_index=True)
+    with w2:
+        wchart = (alt.Chart(wt).mark_bar(color="#C8792B", cornerRadiusEnd=4)
+                  .encode(
+                      x=alt.X("Avg wait (min):Q", title="Avg wait (min)"),
+                      y=alt.Y("Type:N", sort="-x", title=None),
+                      tooltip=["Type", "Interactions", "Avg wait (min)", "Max wait (min)"])
+                  .properties(height=200))
+        st.altair_chart(wchart, use_container_width=True)
+
+    # Longest-wait interactions
+    st.markdown("##### Longest-wait interactions")
+    lw = k.dropna(subset=["_wait"]).copy()
+    lw["Wait (min)"] = (lw["_wait"] / 60).round(1)
+    _cols = ["Wait (min)", "_type"]
+    _rename = {"_type": "Type"}
+    _agent0 = next((c for c in df.columns if c.lower() == "agent"), None)
+    _cust0 = next((c for c in df.columns if c.lower() in ("customer name", "name")), None)
+    _date0 = next((c for c in df.columns if "date" in c.lower()), None)
+    for _c in (_agent0, _cust0, _date0):
+        if _c and _c not in _cols:
+            _cols.append(_c)
+    lw = lw.sort_values("_wait", ascending=False).head(15)[_cols].rename(columns=_rename)
+    st.dataframe(lw, use_container_width=True, hide_index=True)
+
 # Per-rep — how long each rep works
 agent_c = next((c for c in df.columns if c.lower() == "agent"), None)
 if agent_c and dur_col:
