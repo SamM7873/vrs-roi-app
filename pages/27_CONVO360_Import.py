@@ -81,9 +81,10 @@ uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
 run = st.button("Import & save", type="primary", disabled=not uploaded)
 
 if run:
-    df = pd.read_csv(uploaded)
-    df.columns = [c.strip() for c in df.columns]
-    save_report("convo360", {"df": df})
+    with st.spinner("Importing CSV…"):
+        df = pd.read_csv(uploaded)
+        df.columns = [c.strip() for c in df.columns]
+        save_report("convo360", {"df": df})
     st.success("Imported and saved — the audit below now reloads automatically without re-running.")
 
 # ── render saved import (survives reloads; no need to click again) ──────────────
