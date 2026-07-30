@@ -39,7 +39,7 @@ def _agent_label(v):
     """Blank/placeholder agent = the interaction never connected to a rep."""
     s = str(v).strip()
     if not s or s.lower() in ("nan", "none", "null", "-", "—", "unassigned", "n/a", "na", "unknown"):
-        return "Unassigned (not connected)"
+        return "Missed"
     return s
 
 
