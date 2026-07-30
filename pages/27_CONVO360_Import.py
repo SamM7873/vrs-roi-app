@@ -232,10 +232,11 @@ if wait_col:
     st.markdown("##### Longest-wait interactions")
     lw = k.dropna(subset=["_wait"]).copy()
     lw["Wait (sec)"] = lw["_wait"].round(0)
+    lw["Wait (m:ss)"] = lw["_wait"].map(lambda s: f"{int(s)//60}:{int(s) % 60:02d}")
     _agent_c0 = next((c for c in df.columns if c.lower() == "agent"), None)
     if _agent_c0:
         lw[_agent_c0] = lw[_agent_c0].map(_agent_label)
-    _cols = ["Wait (sec)", "_type"]
+    _cols = ["Wait (sec)", "Wait (m:ss)", "_type"]
     _rename = {"_type": "Type"}
     _agent0 = next((c for c in df.columns if c.lower() == "agent"), None)
     _cust0 = next((c for c in df.columns if c.lower() in ("customer name", "name")), None)
