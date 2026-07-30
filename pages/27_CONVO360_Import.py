@@ -186,12 +186,17 @@ if agent_c0:
     md = k[_lbl == "Missed"].copy()
     if not md.empty:
         st.markdown("###### Missed interactions (no rep connected)")
-        if wait_col and md["_wait"].notna().any():
+        if wait_col:
             mw = md["_wait"].dropna()
             mw1, mw2, mw3 = st.columns(3)
-            mw1.metric("Avg wait before missed", f"{mw.mean():.0f} sec")
-            mw2.metric("Longest missed wait", f"{int(mw.max())//60}:{int(mw.max()) % 60:02d}")
-            mw3.metric("Total wait lost", f"{mw.sum()/60:.1f} min")
+            if len(mw):
+                mw1.metric("Avg wait — missed only", f"{mw.mean():.0f} sec",
+                           help=f"{mw.mean()/60:.1f} min · across {len(mw):,} missed with wait data")
+                mw2.metric("Longest missed wait", f"{int(mw.max())//60}:{int(mw.max()) % 60:02d}")
+                mw3.metric("Total wait lost", f"{mw.sum()/60:.1f} min")
+            else:
+                mw1.metric("Avg wait — missed only", "—")
+                mw1.caption("No wait-time values on the missed rows in this range.")
         _mcols, _mren = ["_type"], {"_type": "Type"}
         _cust_m = next((c for c in df.columns if c.lower() in ("customer name", "name")), None)
         _date_m = next((c for c in df.columns if "date" in c.lower()), None)
