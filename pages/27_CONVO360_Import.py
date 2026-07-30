@@ -153,7 +153,8 @@ avg_wait = k["_wait"].mean() if wait_col else None
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Total interactions", f"{n_int:,}")
 m2.metric("AHT (avg handle)", f"{aht:.1f} min" if aht is not None else "—")
-m3.metric("Total handle time", f"{total_hrs:,.0f} hrs" if total_hrs is not None else "—")
+m3.metric("Total handle time", f"{total_hrs:,.1f} hrs" if total_hrs is not None else "—",
+          help=f"{k['_dur'].sum():,.0f} total minutes" if dur_col else None)
 m4.metric("Avg wait time", f"{avg_wait/60:.1f} min" if avg_wait is not None else "—")
 
 # Duration by interaction type — how long is a chat vs video vs call
