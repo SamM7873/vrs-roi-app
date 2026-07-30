@@ -163,7 +163,7 @@ m1.metric("Total interactions", f"{n_int:,}")
 m2.metric("AHT (avg handle)", f"{aht:.1f} min" if aht is not None else "—")
 m3.metric("Total handle time", f"{total_hrs:,.1f} hrs" if total_hrs is not None else "—",
           help=f"{k['_dur'].sum():,.0f} total minutes" if dur_col else None)
-m4.metric("Avg wait time", f"{avg_wait/60:.1f} min" if avg_wait is not None else "—")
+m4.metric("Avg wait time", f"{avg_wait:.0f} sec" if avg_wait is not None else "—")
 
 # Duration by interaction type — how long is a chat vs video vs call
 if dur_col:
@@ -193,32 +193,32 @@ if wait_col:
     st.markdown("##### Wait time by interaction type")
     wt = (k.dropna(subset=["_wait"]).groupby("_type")
             .agg(Interactions=("_wait", "size"),
-                 **{"Avg wait (min)": ("_wait", "mean"),
-                    "Max wait (min)": ("_wait", "max")})
+                 **{"Avg wait (sec)": ("_wait", "mean"),
+                    "Max wait (sec)": ("_wait", "max")})
             .reset_index().rename(columns={"_type": "Type"}))
-    wt["Avg wait (min)"] = (wt["Avg wait (min)"] / 60).round(1)
-    wt["Max wait (min)"] = (wt["Max wait (min)"] / 60).round(1)
-    wt = wt.sort_values("Avg wait (min)", ascending=False)
+    wt["Avg wait (sec)"] = wt["Avg wait (sec)"].round(0)
+    wt["Max wait (sec)"] = wt["Max wait (sec)"].round(0)
+    wt = wt.sort_values("Avg wait (sec)", ascending=False)
     w1, w2 = st.columns([2, 3])
     with w1:
         st.dataframe(wt, use_container_width=True, hide_index=True)
     with w2:
         wchart = (alt.Chart(wt).mark_bar(color="#C8792B", cornerRadiusEnd=4)
                   .encode(
-                      x=alt.X("Avg wait (min):Q", title="Avg wait (min)"),
+                      x=alt.X("Avg wait (sec):Q", title="Avg wait (sec)"),
                       y=alt.Y("Type:N", sort="-x", title=None),
-                      tooltip=["Type", "Interactions", "Avg wait (min)", "Max wait (min)"])
+                      tooltip=["Type", "Interactions", "Avg wait (sec)", "Max wait (sec)"])
                   .properties(height=200))
         st.altair_chart(wchart, use_container_width=True)
 
     # Longest-wait interactions
     st.markdown("##### Longest-wait interactions")
     lw = k.dropna(subset=["_wait"]).copy()
-    lw["Wait (min)"] = (lw["_wait"] / 60).round(1)
+    lw["Wait (sec)"] = lw["_wait"].round(0)
     _agent_c0 = next((c for c in df.columns if c.lower() == "agent"), None)
     if _agent_c0:
         lw[_agent_c0] = lw[_agent_c0].map(_agent_label)
-    _cols = ["Wait (min)", "_type"]
+    _cols = ["Wait (sec)", "_type"]
     _rename = {"_type": "Type"}
     _agent0 = next((c for c in df.columns if c.lower() == "agent"), None)
     _cust0 = next((c for c in df.columns if c.lower() in ("customer name", "name")), None)
@@ -238,14 +238,14 @@ if agent_c and dur_col:
              .agg(Interactions=("_agent", "size"),
                   **{"Total minutes": ("_dur", "sum"),
                      "Avg handle (min)": ("_dur", "mean"),
-                     "Avg wait (min)": ("_wait", "mean")})
+                     "Avg wait (sec)": ("_wait", "mean")})
              .reset_index().rename(columns={"_agent": "Agent"}))
     rep["Total hours"] = (rep["Total minutes"] / 60).round(1)
     rep["Total minutes"] = rep["Total minutes"].round(0)
     rep["Avg handle (min)"] = rep["Avg handle (min)"].round(1)
-    rep["Avg wait (min)"] = (rep["Avg wait (min)"] / 60).round(1)
+    rep["Avg wait (sec)"] = rep["Avg wait (sec)"].round(0)
     rep = rep.sort_values("Total minutes", ascending=False)[
-        ["Agent", "Interactions", "Total hours", "Total minutes", "Avg handle (min)", "Avg wait (min)"]]
+        ["Agent", "Interactions", "Total hours", "Total minutes", "Avg handle (min)", "Avg wait (sec)"]]
     st.dataframe(rep, use_container_width=True, hide_index=True)
 
 st.download_button("📥 Export interactions CSV", df.to_csv(index=False),
