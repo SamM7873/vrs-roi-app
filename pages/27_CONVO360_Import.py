@@ -3,7 +3,26 @@ import pandas as pd
 import altair as alt
 from datetime import datetime, date, timedelta
 
-TYPE_LABEL = {"CALL": "Call", "CHAT": "Chat", "QUERY": "Query (text)", "SIP_VIDEO_CALL": "Video call"}
+TYPE_LABEL = {
+    "CALL": "Call",
+    "CHAT": "Chat",
+    "QUERY": "Query (text)",
+    "SIP_VIDEO_CALL": "Video call (SIP)",
+    "SIP_AUDIO_CALL": "Audio call (SIP)",
+    "SIP_VOICE_CALL": "Voice call (SIP)",
+    "SIP_CALL": "SIP call",
+    "SIP": "SIP call",
+}
+
+
+def _type_label(v):
+    key = str(v).strip().upper()
+    if key in TYPE_LABEL:
+        return TYPE_LABEL[key]
+    if key.startswith("SIP"):  # any other SIP_* variant stays readable + tagged
+        rest = key.replace("SIP_", "").replace("_", " ").title()
+        return f"{rest} (SIP)" if rest else "SIP call"
+    return str(v).strip() or "—"
 
 
 def _wait_secs(v):
@@ -112,7 +131,7 @@ k = df.copy()
 k["_dur"] = pd.to_numeric(k[dur_col], errors="coerce") if dur_col else None
 k["_wait"] = k[wait_col].map(_wait_secs) if wait_col else None
 if type_col:
-    k["_type"] = k[type_col].map(lambda v: TYPE_LABEL.get(str(v).strip().upper(), str(v).strip() or "—"))
+    k["_type"] = k[type_col].map(_type_label)
 else:
     k["_type"] = "—"
 
