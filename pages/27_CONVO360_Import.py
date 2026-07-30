@@ -206,6 +206,82 @@ if wait_col:
         st.dataframe(md[_mcols].rename(columns=_mren),
                      use_container_width=True, hide_index=True, height=300)
 
+    # Avg wait for missed calls — not recorded by the source
+    st.metric("Avg wait — missed calls only", "N/A")
+    st.caption("CONVO360 records **no wait/ring duration** for missed calls "
+               "(Wait Time = 'Missed', Duration = 0), so an average can't be computed. "
+               "Use the answered speed-of-answer below instead.")
+
+    _agent_m = next((c for c in df.columns if c.lower() == "agent"), None)
+    _date_m2 = next((c for c in df.columns if "date" in c.lower()), None)
+    _hour_m = next((c for c in df.columns if c.lower() == "hour"), None)
+    calls_df = k[is_call].copy()
+
+    # Answered vs missed by call type
+    st.markdown("###### Answered vs missed by call type")
+    _bt = (calls_df.assign(_status=calls_df["_missed"].map({True: "Missed", False: "Answered"}))
+           .groupby(["_type", "_status"]).size().reset_index(name="n"))
+    piv = _bt.pivot(index="_type", columns="_status", values="n").fillna(0).reset_index()
+    for _c in ("Answered", "Missed"):
+        if _c not in piv.columns:
+            piv[_c] = 0
+    piv["Attempts"] = piv["Answered"] + piv["Missed"]
+    piv["Answer rate %"] = (piv["Answered"] / piv["Attempts"] * 100).round(1)
+    piv = piv.rename(columns={"_type": "Type"}).sort_values("Attempts", ascending=False)
+    st.dataframe(piv[["Type", "Attempts", "Answered", "Missed", "Answer rate %"]],
+                 use_container_width=True, hide_index=True)
+
+    # Speed of answer by rep (answered calls only)
+    if _agent_m:
+        st.markdown("###### Speed of answer by rep (answered calls)")
+        ans = calls_df[~calls_df["_missed"]].copy()
+        ans["_ag"] = ans[_agent_m].map(_agent_label)
+        rr = (ans.dropna(subset=["_wait"]).groupby("_ag")
+              .agg(**{"Answered calls": ("_wait", "size"),
+                      "Avg wait (sec)": ("_wait", "mean"),
+                      "Max wait (sec)": ("_wait", "max")})
+              .reset_index().rename(columns={"_ag": "Agent"}))
+        rr["Avg wait (sec)"] = rr["Avg wait (sec)"].round(0)
+        rr["Max wait (sec)"] = rr["Max wait (sec)"].round(0)
+        rr = rr.sort_values("Avg wait (sec)", ascending=False)
+        st.dataframe(rr, use_container_width=True, hide_index=True)
+
+    # Missed calls & answer rate by day
+    if _date_m2:
+        st.markdown("###### Missed calls & answer rate by day")
+        cc = calls_df.copy()
+        cc["_day"] = pd.to_datetime(cc[_date_m2], errors="coerce").dt.date
+        g = (cc.dropna(subset=["_day"]).groupby("_day")
+             .agg(Attempts=("_missed", "size"), Missed=("_missed", "sum")).reset_index())
+        g["Answered"] = g["Attempts"] - g["Missed"]
+        g["Answer rate %"] = (g["Answered"] / g["Attempts"] * 100).round(1)
+        ch = (alt.Chart(g).mark_bar(color="#C0392B")
+              .encode(x=alt.X("_day:T", title="Day"),
+                      y=alt.Y("Missed:Q", title="Missed calls"),
+                      tooltip=["_day:T", "Attempts:Q", "Missed:Q", "Answer rate %:Q"])
+              .properties(height=220))
+        st.altair_chart(ch, use_container_width=True)
+
+    # Missed by agent + by hour
+    mc = calls_df[calls_df["_missed"]].copy()
+    _c_a, _c_h = st.columns(2)
+    if _agent_m and not mc.empty:
+        with _c_a:
+            st.markdown("###### Missed calls by agent")
+            ga = (mc.assign(_ag=mc[_agent_m].map(_agent_label))
+                  .groupby("_ag").size().reset_index(name="Missed")
+                  .rename(columns={"_ag": "Agent"}).sort_values("Missed", ascending=False))
+            st.dataframe(ga, use_container_width=True, hide_index=True)
+    if _hour_m and not mc.empty:
+        with _c_h:
+            st.markdown("###### Missed calls by hour")
+            gh = mc.groupby(_hour_m).size().reset_index(name="Missed").rename(columns={_hour_m: "Hour"})
+            ch2 = (alt.Chart(gh).mark_bar(color="#C0392B")
+                   .encode(x=alt.X("Hour:O", title="Hour of day"), y="Missed:Q",
+                           tooltip=["Hour", "Missed"])
+                   .properties(height=220))
+            st.altair_chart(ch2, use_container_width=True)
+
 # Duration by interaction type — how long is a chat vs video vs call
 if dur_col:
     st.markdown("##### Handle time by interaction type")
