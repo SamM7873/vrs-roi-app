@@ -229,6 +229,7 @@ if run_clicked or _use_cache:
             stage_labels = {}
             pipeline_names = {}
             cs_pipeline_id = None
+            vrs_reg_pipeline_id = None
             closed_stage_ids = set()
             try:
                 pr = requests.get(f"{BASE_URL}/crm/v3/pipelines/tickets", headers=_headers, timeout=15)
@@ -239,6 +240,8 @@ if run_clicked or _use_cache:
                         pipeline_names[pid] = plabel
                         if "consumer success" in plabel.lower():
                             cs_pipeline_id = pid
+                        if "vrs registration" in plabel.lower():
+                            vrs_reg_pipeline_id = pid
                         for stage in pipeline.get("stages", []):
                             sid = stage["id"]
                             slabel = stage.get("label", sid)
@@ -870,11 +873,53 @@ if run_clicked or _use_cache:
     po_rows = [r for r in rows
                if "port out" in str(r.get("Type of Registration") or "").lower() and r["Is Closed"]]
     if po_rows:
+        # Build number → VRS Registration ticket map (so we can show the matching reg ticket)
+        num_to_regticket = {}
+        if vrs_reg_pipeline_id:
+            with dash_spinner("Matching VRS Registration tickets…"):
+                reg_tickets = fetch_all(
+                    "tickets", ["subject", "hs_pipeline_stage", "closed_date"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "hs_pipeline", "operator": "EQ", "value": vrs_reg_pipeline_id}]}])
+                reg_ids = [str(t["id"]) for t in reg_tickets]
+                reg_meta = {str(t["id"]): t.get("properties", {}) for t in reg_tickets}
+                # reg ticket → number object IDs
+                reg_tid_to_nids = defaultdict(list)
+                for i in range(0, len(reg_ids), 100):
+                    chunk = reg_ids[i:i + 100]
+                    ar = _post_retry(
+                        f"{BASE_URL}/crm/v4/associations/tickets/2-40974683/batch/read",
+                        {"inputs": [{"id": t} for t in chunk]})
+                    if ar.status_code in (200, 207):
+                        for res in ar.json().get("results", []):
+                            _t = str(res.get("from", {}).get("id", ""))
+                            for a in res.get("to", []):
+                                _n = str(a.get("toObjectId") or a.get("id") or "")
+                                if _n:
+                                    reg_tid_to_nids[_t].append(_n)
+                # read those number objects for their phone strings
+                reg_nids = sorted({n for ns in reg_tid_to_nids.values() for n in ns})
+                nid_to_num_reg = {}
+                for i in range(0, len(reg_nids), 100):
+                    chunk = reg_nids[i:i + 100]
+                    br = _post_retry(f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
+                                     {"inputs": [{"id": n} for n in chunk], "properties": ["number"]})
+                    if br.status_code in (200, 207):
+                        for o in br.json().get("results", []):
+                            nid_to_num_reg[str(o["id"])] = str(o.get("properties", {}).get("number") or "").strip()
+                for _t, ns in reg_tid_to_nids.items():
+                    for n in ns:
+                        num = nid_to_num_reg.get(n)
+                        if num:
+                            num_to_regticket.setdefault(num, {
+                                "id": _t, "subject": reg_meta.get(_t, {}).get("subject") or "—"})
+
         wb_rows = []
         for r in po_rows:
             live = _live_numbers_for(r["ID"], r["Email"])
             won = len(live) > 0
             cd = _parse_dt(r["Closed"])
+            reg = next((num_to_regticket[n] for n in live if n in num_to_regticket), None)
             wb_rows.append({
                 "Ticket ID": r["ID"],
                 "Subject": r["Subject"],
@@ -882,6 +927,8 @@ if run_clicked or _use_cache:
                 "Live VRS number": ", ".join(live) if live else "—",
                 "Won back?": "✅ Yes" if won else "❌ No",
                 "→ Pipeline": "VRS Registration" if won else "—",
+                "VRS Registration ticket": reg["subject"] if reg else "—",
+                "VRS Reg ticket ID": reg["id"] if reg else "—",
             })
         wb_df = pd.DataFrame(wb_rows)
         won_n = int((wb_df["Won back?"] == "✅ Yes").sum())
