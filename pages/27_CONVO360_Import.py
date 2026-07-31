@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: v5 (agent performance leaderboard)")
+st.caption("Build: v6 (overall KPIs: handled/missed/AHT/call time)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -200,6 +200,23 @@ m3.metric("Total handle time", f"{total_hrs:,.1f} hrs" if total_hrs is not None 
 m4.metric("Avg wait (answered)", f"{avg_wait:.0f} sec" if avg_wait is not None else "—",
           help="Speed of answer — averaged over answered interactions only. "
                "Missed calls carry no wait duration in the source, so they're excluded.")
+
+# ── Overall KPIs: Handled · Missed · AHT · Avg call time with consumers ──────────
+_iscall_all = k["_type"].str.contains("call", case=False, na=False) if type_col else pd.Series(False, index=k.index)
+_missed_all = k["_missed"] if "_missed" in k.columns else pd.Series(False, index=k.index)
+handled = int((~_missed_all).sum())
+missed_all = int(_missed_all.sum())
+call_time = k.loc[_iscall_all & ~_missed_all, "_dur"].mean() if dur_col else None
+
+st.markdown("##### Overall")
+o1, o2, o3, o4 = st.columns(4)
+o1.metric("🎧 Handled", f"{handled:,}", help="Interactions that connected to a rep (all types).")
+o2.metric("📵 Missed", f"{missed_all:,}",
+          help="Calls flagged Missed in the export (no rep connected).")
+o3.metric("⏱️ Overall AHT", f"{aht:.1f} min" if aht is not None else "—",
+          help="Average handle time across all interactions.")
+o4.metric("📞 Avg call time (consumers)", f"{call_time:.1f} min" if call_time and call_time == call_time else "—",
+          help="Average talk time on answered Call / Video calls — actual time spent with consumers.")
 
 # ── Missed calls (Wait Time = 'Missed' flag in the CONVO360 export) ──────────
 # The source flags a missed CALL by writing 'Missed' in the Wait Time column.
