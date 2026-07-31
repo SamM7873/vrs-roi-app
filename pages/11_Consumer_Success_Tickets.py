@@ -854,6 +854,58 @@ if run_clicked or _use_cache:
 
     assoc_df = pd.DataFrame(assoc_rows)
 
+    # ── Port-Out → VRS Registration (winback flag, read-only) ──────────────────
+    # A CLOSED Port-Out ticket whose number is a currently-Live VRS number means
+    # the number came back (port-in winback) or is a new registration → it belongs
+    # in the VRS Registration pipeline. This only flags; it does not move anything.
+    def _live_numbers_for(tid, email):
+        nids = set(tid_to_nids.get(str(tid), []))
+        for cid in tid_to_cids.get(str(tid), []):
+            nids.update(cid_to_nids.get(cid, []))
+        em = (email or "").strip().lower()
+        if em in email_to_nids:
+            nids.update(email_to_nids[em])
+        return sorted({num_id_to_number[n] for n in nids if n in num_id_to_number})
+
+    po_rows = [r for r in rows
+               if "port out" in str(r.get("Type of Registration") or "").lower() and r["Is Closed"]]
+    if po_rows:
+        wb_rows = []
+        for r in po_rows:
+            live = _live_numbers_for(r["ID"], r["Email"])
+            won = len(live) > 0
+            cd = _parse_dt(r["Closed"])
+            wb_rows.append({
+                "Ticket ID": r["ID"],
+                "Subject": r["Subject"],
+                "Closed": cd.strftime("%b %d, %Y") if cd else "—",
+                "Live VRS number": ", ".join(live) if live else "—",
+                "Won back?": "✅ Yes" if won else "❌ No",
+                "→ Pipeline": "VRS Registration" if won else "—",
+            })
+        wb_df = pd.DataFrame(wb_rows)
+        won_n = int((wb_df["Won back?"] == "✅ Yes").sum())
+        tot_n = len(wb_df)
+        st.markdown("#### 🔄 Port-Out → VRS Registration (winback)")
+        st.caption("Closed Port-Out tickets whose number is now a **Live VRS number** — the number "
+                   "came back (port-in winback) or re-registered, so it belongs in **VRS Registration**. "
+                   "Read-only flag; nothing is moved in HubSpot.")
+        wc1, wc2, wc3 = st.columns(3)
+        wc1.metric("Closed Port-Out tickets", f"{tot_n:,}")
+        wc2.metric("✅ Won back → VRS Registration", f"{won_n:,}",
+                   f"{won_n/tot_n*100:.0f}%" if tot_n else "—")
+        wc3.metric("❌ Not back", f"{tot_n - won_n:,}")
+        _wv = st.radio("Show", ["All", "Won back only", "Not back only"],
+                       horizontal=True, key="wb_view")
+        _wshow = wb_df
+        if _wv == "Won back only":
+            _wshow = wb_df[wb_df["Won back?"] == "✅ Yes"]
+        elif _wv == "Not back only":
+            _wshow = wb_df[wb_df["Won back?"] == "❌ No"]
+        st.dataframe(_wshow, use_container_width=True, hide_index=True, height=360)
+        st.download_button("Download winback flags CSV", wb_df.to_csv(index=False),
+                           "portout_winback_flags.csv", "text/csv", key="wb_csv")
+
     st.markdown("#### Association Table — Ticket → Contact → Number → Monthly Values")
     if not assoc_df.empty:
         chain_counts = assoc_df["Chain"].value_counts()
