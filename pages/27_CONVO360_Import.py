@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: missed-wait-parser v4 (missed avg-wait card)")
+st.caption("Build: v5 (agent performance leaderboard)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -414,6 +414,27 @@ if agent_c and dur_col:
     rep = rep.sort_values("Total minutes", ascending=False)[
         ["Agent", "Interactions", "Total hours", "Total minutes", "Avg handle (min)", "Avg wait (sec)"]]
     st.dataframe(rep, use_container_width=True, hide_index=True)
+
+    # ── Top / lowest performing agents (by interactions handled) ──
+    perf = rep[~rep["Agent"].eq("Missed")].copy()
+    if len(perf) >= 2:
+        st.markdown("##### Agent performance")
+        st.caption("Ranked by interactions handled (volume). Avg handle & avg speed-of-answer shown for context.")
+        top = perf.sort_values("Interactions", ascending=False).head(3)
+        low = perf.sort_values("Interactions", ascending=True).head(3)
+        pc1, pc2 = st.columns(2)
+        with pc1:
+            st.markdown("**🏆 Top performers**")
+            for _, r in top.iterrows():
+                st.metric(r["Agent"], f"{int(r['Interactions']):,} handled",
+                          help=f"{r['Total hours']} hrs · avg handle {r['Avg handle (min)']} min "
+                               f"· speed of answer {int(r['Avg wait (sec)']) if pd.notna(r['Avg wait (sec)']) else '—'} sec")
+        with pc2:
+            st.markdown("**🐢 Lowest volume**")
+            for _, r in low.iterrows():
+                st.metric(r["Agent"], f"{int(r['Interactions']):,} handled",
+                          help=f"{r['Total hours']} hrs · avg handle {r['Avg handle (min)']} min "
+                               f"· speed of answer {int(r['Avg wait (sec)']) if pd.notna(r['Avg wait (sec)']) else '—'} sec")
 
 st.download_button("📥 Export interactions CSV", df.to_csv(index=False),
                    f"convo360_{datetime.now():%Y%m%d}.csv", "text/csv")
