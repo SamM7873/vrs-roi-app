@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: v9 (metric definitions glossary)")
+st.caption("Build: v10 (scorecard color fade)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -508,8 +508,14 @@ if agent_c and dur_col:
                   "Avg call time", "Avg speed of answer"]
         if "Avg rating" in det.columns:
             _order.append("Avg rating")
-        st.dataframe(det[[c for c in _order if c in det.columns]],
-                     use_container_width=True, hide_index=True)
+        _show = det[[c for c in _order if c in det.columns]]
+        # low → high fade (green gradient) on the numeric volume columns
+        _grad_cols = [c for c in ("Handled", "Calls", "Avg rating") if c in _show.columns]
+        try:
+            styled = _show.style.background_gradient(cmap="Greens", subset=_grad_cols)
+            st.dataframe(styled, use_container_width=True, hide_index=True)
+        except Exception:
+            st.dataframe(_show, use_container_width=True, hide_index=True)
 
 st.download_button("📥 Export interactions CSV", df.to_csv(index=False),
                    f"convo360_{datetime.now():%Y%m%d}.csv", "text/csv")
