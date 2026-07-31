@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: v7 (top performer details table)")
+st.caption("Build: v8 (scorecard times in min & sec)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -479,8 +479,15 @@ if agent_c and dur_col:
             det = det.merge(rt, on="Agent", how="left")
         det = det.sort_values("Handled", ascending=False).reset_index(drop=True)
         det.insert(0, "Rank", range(1, len(det) + 1))
-        _order = ["Rank", "Agent", "Handled", "Calls", "Total hours", "Avg handle (min)",
-                  "Avg call time (min)", "Avg speed of answer (sec)"]
+        # format durations as min & sec (Xm Ys)
+        det["Avg handle"] = det["Avg handle (min)"].map(lambda m: _fmt_wait(m * 60) if pd.notna(m) else "—")
+        det["Avg call time"] = det["Avg call time (min)"].map(lambda m: _fmt_wait(m * 60) if pd.notna(m) else "—")
+        det["Avg speed of answer"] = det["Avg speed of answer (sec)"].map(
+            lambda s: _fmt_wait(s) if pd.notna(s) else "—")
+        det["Total time"] = det["Total hours"].map(
+            lambda h: f"{int(h)}h {int(round((h - int(h)) * 60))}m" if pd.notna(h) else "—")
+        _order = ["Rank", "Agent", "Handled", "Calls", "Total time", "Avg handle",
+                  "Avg call time", "Avg speed of answer"]
         if "Avg rating" in det.columns:
             _order.append("Avg rating")
         st.dataframe(det[[c for c in _order if c in det.columns]],
