@@ -49,6 +49,17 @@ def _is_missed(v):
     return str(v).strip().lower().startswith("missed")
 
 
+def _fmt_wait(sec):
+    """Friendly wait label: '—' for none/zero, '9s', '2m 21s' otherwise (matches CONVO360)."""
+    if sec is None or (isinstance(sec, float) and pd.isna(sec)):
+        return "—"
+    sec = int(round(sec))
+    if sec <= 0:
+        return "—"
+    m, s = divmod(sec, 60)
+    return f"{m}m {s}s" if m else f"{s}s"
+
+
 def _agent_label(v):
     """Blank/placeholder agent = the interaction never connected to a rep."""
     s = str(v).strip()
@@ -230,10 +241,8 @@ if wait_col:
         for _c in (_cust_m, _date_m):
             if _c and _c not in _mcols:
                 _mcols.append(_c)
-        md["Wait (sec)"] = md["_wait_missed"].round(0)
-        md["Wait (m:ss)"] = md["_wait_missed"].map(
-            lambda s: f"{int(s)//60}:{int(s) % 60:02d}" if pd.notna(s) else "—")
-        _mcols += ["Wait (sec)", "Wait (m:ss)"]
+        md["Wait"] = md["_wait_missed"].map(_fmt_wait)
+        _mcols.append("Wait")
         if md["_wait_missed"].notna().any():
             md = md.sort_values("_wait_missed", ascending=False)
         elif _date_m:
@@ -362,12 +371,11 @@ if wait_col:
     # Longest-wait interactions
     st.markdown("##### Longest-wait interactions")
     lw = k.dropna(subset=["_wait"]).copy()
-    lw["Wait (sec)"] = lw["_wait"].round(0)
-    lw["Wait (m:ss)"] = lw["_wait"].map(lambda s: f"{int(s)//60}:{int(s) % 60:02d}")
+    lw["Wait"] = lw["_wait"].map(_fmt_wait)
     _agent_c0 = next((c for c in df.columns if c.lower() == "agent"), None)
     if _agent_c0:
         lw[_agent_c0] = lw[_agent_c0].map(_agent_label)
-    _cols = ["Wait (sec)", "Wait (m:ss)", "_type"]
+    _cols = ["Wait", "_type"]
     _rename = {"_type": "Type"}
     _agent0 = next((c for c in df.columns if c.lower() == "agent"), None)
     _cust0 = next((c for c in df.columns if c.lower() in ("customer name", "name")), None)
