@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: missed-wait-parser v3 (avg + median)")
+st.caption("Build: missed-wait-parser v4 (missed avg-wait card)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -212,17 +212,24 @@ if wait_col:
     ans_rate = answered / call_attempts * 100 if call_attempts else 0
     miss_rate = missed / call_attempts * 100 if call_attempts else 0
 
+    mwait = k.loc[k["_missed"], "_wait_missed"].dropna()
+
     st.markdown("##### Call answer performance")
-    cc1, cc2, cc3 = st.columns(3)
+    cc1, cc2, cc3, cc4 = st.columns(4)
     cc1.metric("✅ Answered calls", f"{answered:,}")
     cc1.caption(f"{ans_rate:.1f}% of {call_attempts:,} call attempts")
     cc2.metric("📵 Missed calls", f"{missed:,}")
     cc2.caption(f"{miss_rate:.1f}% of call attempts")
     cc3.metric("Answer rate", f"{ans_rate:.1f}%")
     cc3.caption(f"{answered:,} of {call_attempts:,} calls answered")
+    if len(mwait):
+        cc4.metric("⏱️ Missed avg wait", _fmt_wait(mwait.mean()))
+        cc4.caption(f"median {_fmt_wait(mwait.median())} · {len(mwait):,} missed")
+    else:
+        cc4.metric("⏱️ Missed avg wait", "—")
+        cc4.caption("no wait logged in this export")
 
     # Missed-call wait time (only present in exports that log 'Missed · Wait: HH:MM:SS')
-    mwait = k.loc[k["_missed"], "_wait_missed"].dropna()
     if len(mwait):
         st.markdown("###### How long missed callers waited")
         mw1, mw2, mw3, mw4 = st.columns(4)
