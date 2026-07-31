@@ -26,13 +26,27 @@ def _type_label(v):
 
 
 def _wait_secs(v):
+    """Seconds from a Wait Time value. Handles 'HH:MM:SS' and 'Missed · Wait: HH:MM:SS'.
+    Old-format bare 'Missed' (no duration) returns None."""
+    s = str(v).strip()
+    if not s or s.lower() in ("nan", "n/a", "none"):
+        return None
+    low = s.lower()
+    if "wait:" in low:                       # 'Missed · Wait: 00:02:21'
+        s = s[low.index("wait:") + 5:].strip()
+    elif low.startswith("missed"):           # old format: flagged missed, no duration
+        return None
     try:
-        parts = [int(x) for x in str(v).split(":")]
+        parts = [int(x) for x in s.split(":")]
         while len(parts) < 3:
             parts.insert(0, 0)
         return parts[0] * 3600 + parts[1] * 60 + parts[2]
     except Exception:
         return None
+
+
+def _is_missed(v):
+    return str(v).strip().lower().startswith("missed")
 
 
 def _agent_label(v):
@@ -147,7 +161,15 @@ type_col = next((c for c in df.columns if c.lower() == "type"), None)
 
 k = df.copy()
 k["_dur"] = pd.to_numeric(k[dur_col], errors="coerce") if dur_col else None
-k["_wait"] = k[wait_col].map(_wait_secs) if wait_col else None
+if wait_col:
+    k["_missed"] = k[wait_col].map(_is_missed)
+    _wsec = k[wait_col].map(_wait_secs)            # seconds for answered AND new-format missed
+    k["_wait"] = _wsec.where(~k["_missed"])        # answered speed-of-answer
+    k["_wait_missed"] = _wsec.where(k["_missed"])  # how long missed callers waited (if recorded)
+else:
+    k["_missed"] = False
+    k["_wait"] = None
+    k["_wait_missed"] = None
 if type_col:
     k["_type"] = k[type_col].map(_type_label)
 else:
@@ -171,8 +193,6 @@ m4.metric("Avg wait (answered)", f"{avg_wait:.0f} sec" if avg_wait is not None e
 # The source flags a missed CALL by writing 'Missed' in the Wait Time column.
 # Only calls can be missed; chats/queries are async and never 'missed'.
 if wait_col:
-    _raw_wait = k[wait_col].astype(str).str.strip().str.lower()
-    k["_missed"] = _raw_wait.eq("missed")
     is_call = k["_type"].str.contains("call", case=False, na=False)
     call_attempts = int(is_call.sum())
     missed = int(k["_missed"].sum())
@@ -189,28 +209,39 @@ if wait_col:
     cc3.metric("Answer rate", f"{ans_rate:.1f}%")
     cc3.caption(f"{answered:,} of {call_attempts:,} calls answered")
 
+    # Missed-call wait time (only present in exports that log 'Missed · Wait: HH:MM:SS')
+    mwait = k.loc[k["_missed"], "_wait_missed"].dropna()
+    if len(mwait):
+        st.markdown("###### How long missed callers waited")
+        mw1, mw2, mw3 = st.columns(3)
+        mw1.metric("Avg wait — missed only", f"{mwait.mean():.0f} sec",
+                   help=f"{mwait.mean()/60:.1f} min · across {len(mwait):,} missed calls with a logged wait")
+        _mx = int(mwait.max())
+        mw2.metric("Longest missed wait", f"{_mx//60}:{_mx % 60:02d}")
+        mw3.metric("Total wait abandoned", f"{mwait.sum()/60:.1f} min")
+
     # Missed calls detail
     md = k[k["_missed"]].copy()
     if not md.empty:
         st.markdown("###### Missed calls")
-        st.caption("The CONVO360 export flags these as **Missed** with no wait duration recorded, "
-                   "so there's no 'how long they waited' value for missed calls.")
         _mcols, _mren = ["_type"], {"_type": "Type"}
         _cust_m = next((c for c in df.columns if c.lower() in ("customer name", "name")), None)
         _date_m = next((c for c in df.columns if "date" in c.lower()), None)
         for _c in (_cust_m, _date_m):
             if _c and _c not in _mcols:
                 _mcols.append(_c)
-        if _date_m:
+        md["Wait (sec)"] = md["_wait_missed"].round(0)
+        md["Wait (m:ss)"] = md["_wait_missed"].map(
+            lambda s: f"{int(s)//60}:{int(s) % 60:02d}" if pd.notna(s) else "—")
+        _mcols += ["Wait (sec)", "Wait (m:ss)"]
+        if md["_wait_missed"].notna().any():
+            md = md.sort_values("_wait_missed", ascending=False)
+        elif _date_m:
             md = md.sort_values(_date_m)
         st.dataframe(md[_mcols].rename(columns=_mren),
                      use_container_width=True, hide_index=True, height=300)
-
-    # Avg wait for missed calls — not recorded by the source
-    st.metric("Avg wait — missed calls only", "N/A")
-    st.caption("CONVO360 records **no wait/ring duration** for missed calls "
-               "(Wait Time = 'Missed', Duration = 0), so an average can't be computed. "
-               "Use the answered speed-of-answer below instead.")
+        if not md["_wait_missed"].notna().any():
+            st.caption("This export flags missed calls without a wait duration, so the wait columns are blank.")
 
     _agent_m = next((c for c in df.columns if c.lower() == "agent"), None)
     _date_m2 = next((c for c in df.columns if "date" in c.lower()), None)
