@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: missed-wait-parser v2 (a0fd4fe+)")
+st.caption("Build: missed-wait-parser v3 (avg + median)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -225,12 +225,14 @@ if wait_col:
     mwait = k.loc[k["_missed"], "_wait_missed"].dropna()
     if len(mwait):
         st.markdown("###### How long missed callers waited")
-        mw1, mw2, mw3 = st.columns(3)
-        mw1.metric("Avg wait — missed only", f"{mwait.mean():.0f} sec",
-                   help=f"{mwait.mean()/60:.1f} min · across {len(mwait):,} missed calls with a logged wait")
-        _mx = int(mwait.max())
-        mw2.metric("Longest missed wait", f"{_mx//60}:{_mx % 60:02d}")
-        mw3.metric("Total wait abandoned", f"{mwait.sum()/60:.1f} min")
+        mw1, mw2, mw3, mw4 = st.columns(4)
+        mw1.metric("Avg wait — missed", _fmt_wait(mwait.mean()),
+                   help=f"across {len(mwait):,} missed calls with a logged wait. "
+                        "Skewed by long outliers — prefer the median.")
+        mw2.metric("Median wait — missed", _fmt_wait(mwait.median()),
+                   help="Half of missed callers waited less than this — the representative number.")
+        mw3.metric("Longest missed wait", _fmt_wait(mwait.max()))
+        mw4.metric("Total wait abandoned", f"{mwait.sum()/60:.1f} min")
 
     # Missed calls detail
     md = k[k["_missed"]].copy()
