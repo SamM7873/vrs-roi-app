@@ -861,18 +861,52 @@ if run_clicked or _use_cache:
     # A CLOSED Port-Out ticket whose number is a currently-Live VRS number means
     # the number came back (port-in winback) or is a new registration → it belongs
     # in the VRS Registration pipeline. This only flags; it does not move anything.
-    def _live_numbers_for(tid, email):
-        nids = set(tid_to_nids.get(str(tid), []))
-        for cid in tid_to_cids.get(str(tid), []):
-            nids.update(cid_to_nids.get(cid, []))
-        em = (email or "").strip().lower()
-        if em in email_to_nids:
-            nids.update(email_to_nids[em])
-        return sorted({num_id_to_number[n] for n in nids if n in num_id_to_number})
-
     po_rows = [r for r in rows
                if "port out" in str(r.get("Type of Registration") or "").lower() and r["Is Closed"]]
     if po_rows:
+        # ── Determine the ported-OUT number for each ticket (the number that left) ──
+        # Winback requires the SAME number to come back Live — a different/new
+        # number does NOT count. So we read each Port-Out ticket's directly
+        # associated number object (any status) to get the number that ported out,
+        # then check whether that exact number string is currently a Live VRS number.
+        _po_tids = [str(r["ID"]) for r in po_rows]
+        po_tid_to_outnums = defaultdict(set)   # ticket → set of ported-out number strings
+        _out_nids = sorted({n for tid in _po_tids for n in tid_to_nids.get(tid, [])})
+        _nid_to_num_any = {}
+        with dash_spinner("Reading ported-out numbers…"):
+            for i in range(0, len(_out_nids), 100):
+                chunk = _out_nids[i:i + 100]
+                br = _post_retry(f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
+                                 {"inputs": [{"id": n} for n in chunk],
+                                  "properties": ["number", "service_type"]})
+                if br.status_code in (200, 207):
+                    for o in br.json().get("results", []):
+                        p = o.get("properties", {})
+                        _nid_to_num_any[str(o["id"])] = str(p.get("number") or "").strip()
+        for tid in _po_tids:
+            for n in tid_to_nids.get(tid, []):
+                num = _nid_to_num_any.get(n)
+                if num:
+                    po_tid_to_outnums[tid].add(num)
+
+        # Which ported-out numbers are currently Live VRS again (= same number back)?
+        _all_out_nums = sorted({num for nums in po_tid_to_outnums.values() for num in nums})
+        live_again = set()
+        if _all_out_nums:
+            with dash_spinner("Checking which ported-out numbers are Live again…"):
+                for i in range(0, len(_all_out_nums), 100):
+                    chunk = _all_out_nums[i:i + 100]
+                    recs = fetch_all(
+                        "2-40974683", ["number", "number_status", "service_type"],
+                        filter_groups=[{"filters": [
+                            {"propertyName": "number",        "operator": "IN", "values": chunk},
+                            {"propertyName": "service_type",  "operator": "EQ", "value": "VRS"},
+                            {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
+                        ]}])
+                    for o in recs:
+                        num = str(o.get("properties", {}).get("number") or "").strip()
+                        if num:
+                            live_again.add(num)
         # Build number → VRS Registration ticket map (so we can show the matching reg ticket)
         num_to_regticket = {}
         if vrs_reg_pipeline_id:
@@ -916,39 +950,41 @@ if run_clicked or _use_cache:
 
         wb_rows = []
         for r in po_rows:
-            live = _live_numbers_for(r["ID"], r["Email"])
-            won = len(live) > 0
+            out_nums = sorted(po_tid_to_outnums.get(str(r["ID"]), set()))
+            back_nums = [n for n in out_nums if n in live_again]  # SAME number now Live
+            won = len(back_nums) > 0
             cd = _parse_dt(r["Closed"])
-            reg = next((num_to_regticket[n] for n in live if n in num_to_regticket), None)
+            reg = next((num_to_regticket[n] for n in back_nums if n in num_to_regticket), None)
             wb_rows.append({
                 "Ticket ID": r["ID"],
                 "Subject": r["Subject"],
                 "Closed": cd.strftime("%b %d, %Y") if cd else "—",
-                "Live VRS number": ", ".join(live) if live else "—",
-                "Won back?": "✅ Yes" if won else "❌ No",
+                "Ported-out number": ", ".join(out_nums) if out_nums else "—",
+                "Same number back?": "✅ Yes" if won else "❌ No",
+                "Back (Live) number": ", ".join(back_nums) if back_nums else "—",
                 "→ Pipeline": "VRS Registration" if won else "—",
                 "VRS Registration ticket": reg["subject"] if reg else "—",
                 "VRS Reg ticket ID": reg["id"] if reg else "—",
             })
         wb_df = pd.DataFrame(wb_rows)
-        won_n = int((wb_df["Won back?"] == "✅ Yes").sum())
+        won_n = int((wb_df["Same number back?"] == "✅ Yes").sum())
         tot_n = len(wb_df)
         st.markdown("#### 🔄 Port-Out → VRS Registration (winback)")
-        st.caption("Closed Port-Out tickets whose number is now a **Live VRS number** — the number "
-                   "came back (port-in winback) or re-registered, so it belongs in **VRS Registration**. "
+        st.caption("Closed Port-Out tickets where the **same number that ported out is now Live VRS again** "
+                   "— a true port-in winback. A different/new number does **not** count. "
                    "Read-only flag; nothing is moved in HubSpot.")
         wc1, wc2, wc3 = st.columns(3)
         wc1.metric("Closed Port-Out tickets", f"{tot_n:,}")
-        wc2.metric("✅ Won back → VRS Registration", f"{won_n:,}",
+        wc2.metric("✅ Won back (same number) → VRS Registration", f"{won_n:,}",
                    f"{won_n/tot_n*100:.0f}%" if tot_n else "—")
         wc3.metric("❌ Not back", f"{tot_n - won_n:,}")
         _wv = st.radio("Show", ["All", "Won back only", "Not back only"],
                        horizontal=True, key="wb_view")
         _wshow = wb_df
         if _wv == "Won back only":
-            _wshow = wb_df[wb_df["Won back?"] == "✅ Yes"]
+            _wshow = wb_df[wb_df["Same number back?"] == "✅ Yes"]
         elif _wv == "Not back only":
-            _wshow = wb_df[wb_df["Won back?"] == "❌ No"]
+            _wshow = wb_df[wb_df["Same number back?"] == "❌ No"]
         st.dataframe(_wshow, use_container_width=True, hide_index=True, height=360)
         st.download_button("Download winback flags CSV", wb_df.to_csv(index=False),
                            "portout_winback_flags.csv", "text/csv", key="wb_csv")
