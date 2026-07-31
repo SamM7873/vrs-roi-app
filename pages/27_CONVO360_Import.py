@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: v10 (scorecard color fade)")
+st.caption("Build: v11 (peak hours + busiest days)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -430,6 +430,61 @@ if wait_col:
             _cols.append(_c)
     lw = lw.sort_values("_wait", ascending=False).head(15)[_cols].rename(columns=_rename)
     st.dataframe(lw, use_container_width=True, hide_index=True)
+
+# ── Peak hours — when interactions come in ──────────────────────────────────
+_hcol = next((c for c in df.columns if c.lower() == "hour"), None)
+_dcol_h = next((c for c in df.columns if "date" in c.lower()), None)
+_hr = None
+if _hcol:
+    _hr = pd.to_numeric(k[_hcol], errors="coerce")
+elif _dcol_h:
+    _hr = pd.to_datetime(k[_dcol_h], errors="coerce").dt.hour
+if _hr is not None and _hr.notna().any():
+    st.markdown("##### Peak hours")
+    kh = k.assign(_hour=_hr).dropna(subset=["_hour"])
+    kh["_hour"] = kh["_hour"].astype(int)
+
+    def _hlabel(h):
+        ap = "AM" if h < 12 else "PM"
+        h12 = h % 12 or 12
+        return f"{h12} {ap}"
+
+    hg = kh.groupby("_hour").size().reset_index(name="Interactions")
+    hg["Hour"] = hg["_hour"].map(_hlabel)
+    _peak = hg.loc[hg["Interactions"].idxmax()]
+    pk1, pk2 = st.columns([1, 3])
+    with pk1:
+        st.metric("🔺 Busiest hour", _hlabel(int(_peak["_hour"])),
+                  help=f"{int(_peak['Interactions']):,} interactions")
+        # top 3 hours
+        top3 = hg.sort_values("Interactions", ascending=False).head(3)
+        st.caption("Top hours: " + " · ".join(
+            f"{r['Hour']} ({int(r['Interactions'])})" for _, r in top3.iterrows()))
+    with pk2:
+        hchart = (alt.Chart(hg).mark_bar(color="#0D3B26", cornerRadiusEnd=3)
+                  .encode(x=alt.X("_hour:O", title="Hour of day",
+                                  axis=alt.Axis(labelExpr="datum.value % 12 == 0 ? '12' : datum.value % 12")),
+                          y=alt.Y("Interactions:Q", title="Interactions"),
+                          tooltip=["Hour", "Interactions"])
+                  .properties(height=240))
+        st.altair_chart(hchart, use_container_width=True)
+
+    # peak by weekday if derivable
+    if _dcol_h:
+        _wd = pd.to_datetime(k[_dcol_h], errors="coerce").dt.day_name()
+        if _wd.notna().any():
+            wk = k.assign(_wd=_wd).dropna(subset=["_wd"])
+            order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            wg = (wk.groupby("_wd").size().reindex(order).dropna()
+                  .reset_index(name="Interactions").rename(columns={"_wd": "Weekday"}))
+            if len(wg) > 1:
+                st.markdown("###### Busiest days")
+                wchart2 = (alt.Chart(wg).mark_bar(color="#2DB84B", cornerRadiusEnd=3)
+                           .encode(x=alt.X("Weekday:N", sort=order, title=None),
+                                   y=alt.Y("Interactions:Q"),
+                                   tooltip=["Weekday", "Interactions"])
+                           .properties(height=200))
+                st.altair_chart(wchart2, use_container_width=True)
 
 # Per-rep — how long each rep works
 agent_c = next((c for c in df.columns if c.lower() == "agent"), None)
