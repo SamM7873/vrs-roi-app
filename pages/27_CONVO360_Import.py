@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: v8 (scorecard times in min & sec)")
+st.caption("Build: v9 (metric definitions glossary)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -166,6 +166,24 @@ if df.empty:
 
 # ── AHT / KPI audit ─────────────────────────────────────────────────────────
 st.markdown("### ⏱️ AHT / KPI audit")
+
+with st.expander("ℹ️ What these metrics mean (definitions)"):
+    st.markdown("""
+| Metric | Definition | How it's calculated |
+|---|---|---|
+| **Total interactions** | Every row in the export — calls, video calls, chats, and text queries. | count of rows |
+| **AHT (Average Handle Time)** | Average length of a single interaction — how long a rep spends per contact. | mean of *Duration (mins)* |
+| **Total handle time** | Combined time across all interactions (workload, not shift hours). | sum of *Duration* ÷ 60 |
+| **Avg wait (answered)** | *Speed of answer* — how long a customer waited before a rep picked up (answered only). | mean of *Wait Time*, answered rows |
+| **Handled** | Interactions that connected to a rep. | rows where an agent is present |
+| **Missed** | Calls flagged **Missed** in the export (no rep connected). Only calls can be missed. | rows where Wait Time starts with 'Missed' |
+| **Answer rate** | Share of call attempts that were answered. | Answered ÷ (Answered + Missed) |
+| **Avg call time (consumers)** | Average talk time on answered **Call / Video** calls — real time with consumers (excludes text chats/queries). | mean of *Duration* on call/video, answered |
+| **Avg wait — missed** | Average time missed callers waited before abandoning (only when the export logs `Missed · Wait: …`). | mean of missed wait |
+| **Median wait — missed** | The middle missed-wait value — half waited less. Preferred over the average when one long call skews it. | median of missed wait |
+
+**Mean vs. Median** — the *mean* (average) can be pulled up by a single very long call; the *median* is the midpoint and better represents a typical experience. When they differ a lot, trust the median.
+""")
 
 dur_col = next((c for c in df.columns if "duration" in c.lower()), None)
 wait_col = next((c for c in df.columns if "wait" in c.lower()), None)
