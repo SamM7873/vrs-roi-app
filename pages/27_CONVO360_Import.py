@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: v6 (overall KPIs: handled/missed/AHT/call time)")
+st.caption("Build: v7 (top performer details table)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -452,6 +452,39 @@ if agent_c and dur_col:
                 st.metric(r["Agent"], f"{int(r['Interactions']):,} handled",
                           help=f"{r['Total hours']} hrs · avg handle {r['Avg handle (min)']} min "
                                f"· speed of answer {int(r['Avg wait (sec)']) if pd.notna(r['Avg wait (sec)']) else '—'} sec")
+
+        # ── Detailed scorecard ──
+        st.markdown("###### Top performers — details")
+        kk = k.assign(_agent=k[agent_c].map(_agent_label))
+        kk = kk[~kk["_agent"].eq("Missed")]
+        _iscall = kk["_type"].str.contains("call", case=False, na=False)
+        _rating_col = next((c for c in df.columns if "rating" in c.lower()), None)
+        if _rating_col:
+            kk["_rating"] = pd.to_numeric(kk[_rating_col], errors="coerce")
+        det = (kk.groupby("_agent").agg(
+                    Handled=("_agent", "size"),
+                    **{"Total hours": ("_dur", lambda s: round(s.sum() / 60, 1)),
+                       "Avg handle (min)": ("_dur", lambda s: round(s.mean(), 1)),
+                       "Avg speed of answer (sec)": ("_wait", lambda s: round(s.mean(), 0) if s.notna().any() else None)})
+               .reset_index().rename(columns={"_agent": "Agent"}))
+        # calls handled + avg call time (call/video only)
+        callstats = (kk[_iscall].groupby("_agent")
+                     .agg(Calls=("_agent", "size"),
+                          **{"Avg call time (min)": ("_dur", lambda s: round(s.mean(), 1))})
+                     .reset_index().rename(columns={"_agent": "Agent"}))
+        det = det.merge(callstats, on="Agent", how="left")
+        if _rating_col and kk["_rating"].notna().any():
+            rt = (kk.dropna(subset=["_rating"]).groupby("_agent")["_rating"].mean()
+                  .round(2).reset_index().rename(columns={"_agent": "Agent", "_rating": "Avg rating"}))
+            det = det.merge(rt, on="Agent", how="left")
+        det = det.sort_values("Handled", ascending=False).reset_index(drop=True)
+        det.insert(0, "Rank", range(1, len(det) + 1))
+        _order = ["Rank", "Agent", "Handled", "Calls", "Total hours", "Avg handle (min)",
+                  "Avg call time (min)", "Avg speed of answer (sec)"]
+        if "Avg rating" in det.columns:
+            _order.append("Avg rating")
+        st.dataframe(det[[c for c in _order if c in det.columns]],
+                     use_container_width=True, hide_index=True)
 
 st.download_button("📥 Export interactions CSV", df.to_csv(index=False),
                    f"convo360_{datetime.now():%Y%m%d}.csv", "text/csv")
