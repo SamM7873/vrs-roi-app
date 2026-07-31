@@ -108,7 +108,7 @@ log_report_view("CONVO360 Import")
 report_header("CONVO360 Import & AHT",
               "Upload the CONVO360 interaction CSV, then review AHT / KPI audit by date range",
               section="Tools")
-st.caption("Build: v11 (peak hours + busiest days)")
+st.caption("Build: v12 (peak hours in Central Time)")
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 uploaded = st.file_uploader("Upload CONVO360 interaction CSV", type=["csv"])
@@ -431,16 +431,24 @@ if wait_col:
     lw = lw.sort_values("_wait", ascending=False).head(15)[_cols].rename(columns=_rename)
     st.dataframe(lw, use_container_width=True, hide_index=True)
 
-# ── Peak hours — when interactions come in ──────────────────────────────────
-_hcol = next((c for c in df.columns if c.lower() == "hour"), None)
+# ── Peak hours — when interactions come in (shown in Central time) ──────────
 _dcol_h = next((c for c in df.columns if "date" in c.lower()), None)
-_hr = None
-if _hcol:
-    _hr = pd.to_numeric(k[_hcol], errors="coerce")
-elif _dcol_h:
-    _hr = pd.to_datetime(k[_dcol_h], errors="coerce").dt.hour
+# Detect the export's source timezone from the Date column header and shift to Central.
+_src = (_dcol_h or "").lower()
+if "pdt" in _src or "pst" in _src or "pacific" in _src:
+    _tz_shift, _tz_from = 2, "PT"      # Pacific → Central = +2h
+elif "mdt" in _src or "mst" in _src or "mountain" in _src:
+    _tz_shift, _tz_from = 1, "MT"      # Mountain → Central = +1h
+elif "edt" in _src or "est" in _src or "eastern" in _src:
+    _tz_shift, _tz_from = -1, "ET"     # Eastern → Central = -1h
+else:
+    _tz_shift, _tz_from = 0, "CT"      # already Central (CDT/CST) or unknown
+_ct_dt = (pd.to_datetime(k[_dcol_h], errors="coerce") + pd.Timedelta(hours=_tz_shift)) if _dcol_h else None
+_hr = _ct_dt.dt.hour if _ct_dt is not None else None
 if _hr is not None and _hr.notna().any():
     st.markdown("##### Peak hours")
+    if _tz_shift:
+        st.caption(f"Times converted from {_tz_from} (source) to Central Time.")
     kh = k.assign(_hour=_hr).dropna(subset=["_hour"])
     kh["_hour"] = kh["_hour"].astype(int)
 
@@ -469,9 +477,9 @@ if _hr is not None and _hr.notna().any():
                   .properties(height=240))
         st.altair_chart(hchart, use_container_width=True)
 
-    # peak by weekday if derivable
-    if _dcol_h:
-        _wd = pd.to_datetime(k[_dcol_h], errors="coerce").dt.day_name()
+    # peak by weekday if derivable (Central time)
+    if _ct_dt is not None:
+        _wd = _ct_dt.dt.day_name()
         if _wd.notna().any():
             wk = k.assign(_wd=_wd).dropna(subset=["_wd"])
             order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
