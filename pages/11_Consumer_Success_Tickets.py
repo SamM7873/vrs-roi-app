@@ -214,7 +214,7 @@ _CS_CACHE_VARS = [
     "contact_email_map", "unique_cids", "tid_to_close_month", "cid_to_close_months",
     "nid_to_close_months",
     "range_label", "mv_floor", "stage_labels", "owner_names",
-    "ticket_contact_email", "filtered_ticket_ids",
+    "ticket_contact_email", "filtered_ticket_ids", "vrs_reg_pipeline_id",
 ]
 _cs_cache = st.session_state.get("_cs_cache")
 _use_cache = (not run_clicked) and isinstance(_cs_cache, dict) and _cs_cache.get("sig") == _sig
@@ -909,6 +909,7 @@ if run_clicked or _use_cache:
                             live_again.add(num)
         # Build number → VRS Registration ticket map (so we can show the matching reg ticket)
         num_to_regticket = {}
+        vrs_reg_pipeline_id = globals().get("vrs_reg_pipeline_id")
         if vrs_reg_pipeline_id:
             with dash_spinner("Matching VRS Registration tickets…"):
                 reg_tickets = fetch_all(
