@@ -948,43 +948,66 @@ if run_clicked or _use_cache:
                             num_to_regticket.setdefault(num, {
                                 "id": _t, "subject": reg_meta.get(_t, {}).get("subject") or "—"})
 
+        # Consumer's CURRENT live number(s) via ticket/contact/email — may be a NEW number
+        def _consumer_live_numbers(tid, email):
+            nids = set(tid_to_nids.get(str(tid), []))
+            for cid in tid_to_cids.get(str(tid), []):
+                nids.update(cid_to_nids.get(cid, []))
+            em = (email or "").strip().lower()
+            if em in email_to_nids:
+                nids.update(email_to_nids[em])
+            return sorted({num_id_to_number[n] for n in nids if n in num_id_to_number})
+
         wb_rows = []
         for r in po_rows:
             out_nums = sorted(po_tid_to_outnums.get(str(r["ID"]), set()))
-            back_nums = [n for n in out_nums if n in live_again]  # SAME number now Live
+            back_nums = [n for n in out_nums if n in live_again]        # SAME number now Live
+            cur_live = _consumer_live_numbers(r["ID"], r["Email"])      # any current live number
+            new_nums = [n for n in cur_live if n not in out_nums]       # different / new number(s)
             won = len(back_nums) > 0
             cd = _parse_dt(r["Closed"])
-            reg = next((num_to_regticket[n] for n in back_nums if n in num_to_regticket), None)
+            reg = next((num_to_regticket[n] for n in (back_nums + new_nums) if n in num_to_regticket), None)
+            if won:
+                outcome = "✅ Same number back"
+            elif new_nums:
+                outcome = "🔁 Returned on new number"
+            else:
+                outcome = "❌ Not back"
             wb_rows.append({
                 "Ticket ID": r["ID"],
                 "Subject": r["Subject"],
                 "Closed": cd.strftime("%b %d, %Y") if cd else "—",
                 "Ported-out number": ", ".join(out_nums) if out_nums else "—",
-                "Same number back?": "✅ Yes" if won else "❌ No",
-                "Back (Live) number": ", ".join(back_nums) if back_nums else "—",
-                "→ Pipeline": "VRS Registration" if won else "—",
+                "Outcome": outcome,
+                "Back (same) number": ", ".join(back_nums) if back_nums else "—",
+                "New/other live number": ", ".join(new_nums) if new_nums else "—",
+                "→ Pipeline": "VRS Registration" if (won or new_nums) else "—",
                 "VRS Registration ticket": reg["subject"] if reg else "—",
                 "VRS Reg ticket ID": reg["id"] if reg else "—",
             })
         wb_df = pd.DataFrame(wb_rows)
-        won_n = int((wb_df["Same number back?"] == "✅ Yes").sum())
+        won_n = int((wb_df["Outcome"] == "✅ Same number back").sum())
+        new_n = int((wb_df["Outcome"] == "🔁 Returned on new number").sum())
         tot_n = len(wb_df)
         st.markdown("#### 🔄 Port-Out → VRS Registration (winback)")
-        st.caption("Closed Port-Out tickets where the **same number that ported out is now Live VRS again** "
-                   "— a true port-in winback. A different/new number does **not** count. "
-                   "Read-only flag; nothing is moved in HubSpot.")
-        wc1, wc2, wc3 = st.columns(3)
+        st.caption("Closed Port-Out tickets. **✅ Same number back** = true winback (the exact ported-out "
+                   "number is Live again). **🔁 Returned on new number** = the consumer is Live again but "
+                   "on a different number (not a same-number winback). Read-only; nothing is moved in HubSpot.")
+        wc1, wc2, wc3, wc4 = st.columns(4)
         wc1.metric("Closed Port-Out tickets", f"{tot_n:,}")
-        wc2.metric("✅ Won back (same number) → VRS Registration", f"{won_n:,}",
+        wc2.metric("✅ Same number back", f"{won_n:,}",
                    f"{won_n/tot_n*100:.0f}%" if tot_n else "—")
-        wc3.metric("❌ Not back", f"{tot_n - won_n:,}")
-        _wv = st.radio("Show", ["All", "Won back only", "Not back only"],
+        wc3.metric("🔁 Returned on new number", f"{new_n:,}")
+        wc4.metric("❌ Not back", f"{tot_n - won_n - new_n:,}")
+        _wv = st.radio("Show", ["All", "Same number back", "Returned on new number", "Not back"],
                        horizontal=True, key="wb_view")
         _wshow = wb_df
-        if _wv == "Won back only":
-            _wshow = wb_df[wb_df["Same number back?"] == "✅ Yes"]
-        elif _wv == "Not back only":
-            _wshow = wb_df[wb_df["Same number back?"] == "❌ No"]
+        if _wv == "Same number back":
+            _wshow = wb_df[wb_df["Outcome"] == "✅ Same number back"]
+        elif _wv == "Returned on new number":
+            _wshow = wb_df[wb_df["Outcome"] == "🔁 Returned on new number"]
+        elif _wv == "Not back":
+            _wshow = wb_df[wb_df["Outcome"] == "❌ Not back"]
         st.dataframe(_wshow, use_container_width=True, hide_index=True, height=360)
         st.download_button("Download winback flags CSV", wb_df.to_csv(index=False),
                            "portout_winback_flags.csv", "text/csv", key="wb_csv")
