@@ -39,17 +39,21 @@ def _period_of(month_date):
         return None
 
 
-# ── month window: 6 baseline months + latest completed month ────────────────
+# ── month window ────────────────────────────────────────────────────────────
+# Display 12 months for context; the baseline/retention math uses only the 6
+# months before the latest completed month.
 today = date.today()
 latest = pd.Period(today.strftime("%Y-%m"), freq="M") - 1   # previous completed month
-baseline_months = [latest - i for i in range(6, 0, -1)]   # e.g. Jan..Jun
-all_months = baseline_months + [latest]                   # Jan..Jul
-month_cols = [m.strftime("%b %Y") for m in all_months]
+display_months = [latest - i for i in range(11, -1, -1)]  # 12 months ending at latest
+baseline_months = [latest - i for i in range(6, 0, -1)]   # the 6 months before latest (Jan..Jun)
+all_months = display_months                               # fetch/show all 12
+month_cols = [m.strftime("%b %Y") for m in display_months]
 latest_label = latest.strftime("%b %Y")
 
-st.caption(f"Baseline = average of **months with usage** within "
-           f"**{baseline_months[0].strftime('%b %Y')}–{baseline_months[-1].strftime('%b %Y')}** "
-           f"(empty/data-gap months excluded) · Compared month = **{latest_label}** "
+st.caption(f"Table shows **12 months** ({display_months[0].strftime('%b %Y')}–{latest_label}) for context. "
+           f"Calculation uses only the **6-month baseline** "
+           f"(**{baseline_months[0].strftime('%b %Y')}–{baseline_months[-1].strftime('%b %Y')}**, "
+           f"months with usage) vs. the compared month **{latest_label}** "
            f"(latest completed; current month excluded).")
 
 run = st.button("Run Organization Retention Report", type="primary")
@@ -102,7 +106,7 @@ if run:
     st.caption(f"{len(numbers):,} Organization VRS Live numbers.")
 
     # ── 2) Monthly Values for those numbers (from baseline start) ────────────
-    start_ms = str(int(datetime(baseline_months[0].year, baseline_months[0].month, 1,
+    start_ms = str(int(datetime(display_months[0].year, display_months[0].month, 1,
                                 tzinfo=timezone.utc).timestamp() * 1000))
     usage = {}  # number -> {Period: minutes}
     with st.spinner("Fetching monthly usage values…"):
