@@ -54,20 +54,27 @@ run = st.button("Run Organization Retention Report", type="primary")
 
 if run:
     # ── 1) Organization VRS Live numbers ────────────────────────────────────
+    # usage_type is stored inconsistently (Organization / Business / Org …), so
+    # fetch VRS + Live and match org variants client-side.
+    ORG_VALUES = {"organization", "organisation", "org", "business"}
     with st.spinner("Fetching Organization VRS numbers…"):
         num_recs = fetch_all(
             NUM_OBJECT,
             ["number", "email", "first_name", "last_name", "usage_type",
              "service_type", "number_status"],
             filter_groups=[{"filters": [
-                {"propertyName": "usage_type", "operator": "EQ", "value": "Organization"},
                 {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                 {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
             ]}])
 
     num_info = {}
+    _seen_types = {}
     for r in num_recs:
         p = r.get("properties", {})
+        ut = (p.get("usage_type") or "").strip()
+        _seen_types[ut] = _seen_types.get(ut, 0) + 1
+        if ut.lower() not in ORG_VALUES:
+            continue
         num = str(p.get("number") or "").strip()
         if not num:
             continue
@@ -77,6 +84,10 @@ if run:
 
     if not num_info:
         st.warning("No Organization VRS Live numbers found.")
+        if _seen_types:
+            st.caption("usage_type values seen on VRS Live numbers: "
+                       + ", ".join(f"'{k or '(blank)'}' ({v})"
+                                   for k, v in sorted(_seen_types.items(), key=lambda x: -x[1])[:10]))
         report_header_close()
         st.stop()
 
