@@ -57,24 +57,25 @@ if run:
     # usage_type is stored inconsistently (Organization / Business / Org …), so
     # fetch VRS + Live and match org variants client-side.
     ORG_VALUES = {"organization", "organisation", "org", "business"}
+    # account_status is the canonical Live/Deactivated field (number_status is unreliable).
     with st.spinner("Fetching Organization VRS numbers…"):
         num_recs = fetch_all(
             NUM_OBJECT,
             ["number", "email", "first_name", "last_name", "usage_type",
-             "service_type", "number_status"],
+             "service_type", "account_status", "number_status"],
             filter_groups=[{"filters": [
                 {"propertyName": "usage_type", "operator": "EQ", "value": "Organization"},
                 {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
-                {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
             ]}])
 
     num_info = {}
-    _seen_types = {}
+    _seen_status = {}
+    LIVE_VALUES = {"live"}
     for r in num_recs:
         p = r.get("properties", {})
-        ut = (p.get("usage_type") or "").strip()
-        _seen_types[ut] = _seen_types.get(ut, 0) + 1
-        if ut.lower() not in ORG_VALUES:
+        status = (p.get("account_status") or p.get("number_status") or "").strip()
+        _seen_status[status] = _seen_status.get(status, 0) + 1
+        if status.lower() not in LIVE_VALUES:
             continue
         num = str(p.get("number") or "").strip()
         if not num:
@@ -85,10 +86,13 @@ if run:
 
     if not num_info:
         st.warning("No Organization VRS Live numbers found.")
-        if _seen_types:
-            st.caption("usage_type values seen on VRS Live numbers: "
+        if _seen_status:
+            st.caption("account_status values seen on Organization VRS numbers: "
                        + ", ".join(f"'{k or '(blank)'}' ({v})"
-                                   for k, v in sorted(_seen_types.items(), key=lambda x: -x[1])[:10]))
+                                   for k, v in sorted(_seen_status.items(), key=lambda x: -x[1])[:10]))
+        else:
+            st.caption("The usage_type=Organization + service_type=VRS query returned 0 numbers — "
+                       "the field name or value may differ on your Number object.")
         report_header_close()
         st.stop()
 
