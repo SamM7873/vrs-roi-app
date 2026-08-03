@@ -63,6 +63,7 @@ if run:
             ["number", "email", "first_name", "last_name", "usage_type",
              "service_type", "number_status"],
             filter_groups=[{"filters": [
+                {"propertyName": "usage_type", "operator": "EQ", "value": "Organization"},
                 {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                 {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
             ]}])
