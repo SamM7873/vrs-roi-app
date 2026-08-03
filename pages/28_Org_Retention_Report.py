@@ -47,8 +47,10 @@ all_months = baseline_months + [latest]                   # Jan..Jul
 month_cols = [m.strftime("%b %Y") for m in all_months]
 latest_label = latest.strftime("%b %Y")
 
-st.caption(f"Baseline = mean of **{baseline_months[0].strftime('%b %Y')}–{baseline_months[-1].strftime('%b %Y')}** "
-           f"· Compared month = **{latest_label}** (latest completed; current month excluded).")
+st.caption(f"Baseline = average of **months with usage** within "
+           f"**{baseline_months[0].strftime('%b %Y')}–{baseline_months[-1].strftime('%b %Y')}** "
+           f"(empty/data-gap months excluded) · Compared month = **{latest_label}** "
+           f"(latest completed; current month excluded).")
 
 run = st.button("Run Organization Retention Report", type="primary")
 
@@ -127,7 +129,11 @@ if run:
         mm = usage.get(num, {})
         month_vals = [round(mm.get(m, 0.0), 1) for m in all_months]
         base_vals = [mm.get(m, 0.0) for m in baseline_months]
-        baseline = sum(base_vals) / 6.0
+        # Baseline = average over months that actually have usage data (avoids the
+        # Feb–May data gap dragging the baseline down and faking "improved").
+        active_vals = [v for v in base_vals if v > 0]
+        months_counted = len(active_vals)
+        baseline = (sum(active_vals) / months_counted) if months_counted else 0.0
         jul = mm.get(latest, 0.0)
         variance = jul - baseline
         retention = (jul / baseline * 100) if baseline > 0 else None
@@ -135,7 +141,8 @@ if run:
             "Organization": meta["org"],
             "Number": num,
             **{month_cols[i]: month_vals[i] for i in range(len(all_months))},
-            "6-Month Baseline": round(baseline, 1),
+            "Baseline": round(baseline, 1),
+            "Months counted": months_counted,
             f"{latest_label} vs Baseline": round(variance, 1),
             "Retention %": round(retention, 1) if retention is not None else None,
             "_diff_pct": ((variance / baseline * 100) if baseline > 0 else None),
@@ -164,7 +171,7 @@ if run:
 
     # ── KPIs ──
     total_nums = len(df)
-    avg_baseline = df["6-Month Baseline"].mean()
+    avg_baseline = df["Baseline"].mean()
     total_jul = df[latest_label].sum()
     avg_ret = df["Retention %"].dropna().mean()
     above = int((df["_diff_pct"] > 0).sum())
@@ -185,7 +192,7 @@ if run:
     # ── color-coded table ──
     st.markdown("##### Retention by organization number")
     disp_cols = (["Organization", "Number"] + month_cols +
-                 ["6-Month Baseline", f"{latest_label} vs Baseline", "Retention %", "Status"])
+                 ["Baseline", "Months counted", f"{latest_label} vs Baseline", "Retention %", "Status"])
     disp = df[disp_cols].copy()
 
     _band_color = {
