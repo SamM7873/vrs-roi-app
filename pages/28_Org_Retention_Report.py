@@ -208,11 +208,30 @@ if "org_ret_df" in st.session_state:
 
     # ── color-coded table ──
     st.markdown("##### Retention by organization number")
-    _status_opts = list(dict.fromkeys(df["Status"].tolist()))  # preserve order, unique
-    _pick = st.multiselect("Filter by status", _status_opts, default=_status_opts,
-                           help="Show only the retention statuses you select.")
+    # domain from email
+    df["_domain"] = df["Email"].str.extract(r"@([^@\s]+)$", expand=False).fillna("(none)")
+
+    fc1, fc2, fc3 = st.columns([2, 2, 2])
+    with fc1:
+        _status_opts = list(dict.fromkeys(df["Status"].tolist()))
+        _pick = st.multiselect("Filter by status", _status_opts, default=_status_opts,
+                               help="Show only the retention statuses you select.")
+    with fc2:
+        _dom_opts = sorted(df["_domain"].unique().tolist())
+        _dom_pick = st.multiselect("Filter by email domain", _dom_opts, default=[],
+                                   help="Leave empty for all domains.")
+    with fc3:
+        _q = st.text_input("Search (organization / email / number)",
+                           placeholder="type to filter…").strip().lower()
+
     if _pick:
         df = df[df["Status"].isin(_pick)]
+    if _dom_pick:
+        df = df[df["_domain"].isin(_dom_pick)]
+    if _q:
+        _hay = (df["Organization"].astype(str) + " " + df["Email"].astype(str) + " "
+                + df["Number"].astype(str)).str.lower()
+        df = df[_hay.str.contains(_q, regex=False)]
     st.caption(f"Showing {len(df):,} of {total_nums:,} numbers.")
     disp_cols = (["Organization", "Email", "Number"] + month_cols +
                  ["Baseline", "Months counted", f"{latest_label} vs Baseline", "Retention %", "Status"])
