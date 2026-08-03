@@ -152,8 +152,11 @@ if run:
 
     # ── status band ──
     def _status(row):
+        # July = 0 but had a real baseline → fully churned (not "no data").
         if row["_jul"] <= 0:
-            return "⚪ No usage"
+            if row["_diff_pct"] is not None:          # baseline > 0 → dropped to zero
+                return "🔴 Churned (0 in " + latest_label.split()[0] + ")"
+            return "⚪ No usage"                        # baseline 0 too → nothing to measure
         d = row["_diff_pct"]
         if d is None:
             return "⚪ No baseline"
@@ -176,7 +179,8 @@ if run:
     avg_ret = df["Retention %"].dropna().mean()
     above = int((df["_diff_pct"] > 0).sum())
     below = int((df["_diff_pct"] < 0).sum())
-    no_jul = int((df["_jul"] <= 0).sum())
+    churned = int(((df["_jul"] <= 0) & (df["_diff_pct"].notna())).sum())   # had baseline, 0 now
+    no_data = int(((df["_jul"] <= 0) & (df["_diff_pct"].isna())).sum())    # no baseline either
 
     st.markdown("##### Summary")
     k1, k2, k3, k4 = st.columns(4)
@@ -184,10 +188,11 @@ if run:
     k2.metric("Avg baseline (min)", f"{avg_baseline:,.1f}")
     k3.metric(f"Total {latest_label} usage", f"{total_jul:,.0f} min")
     k4.metric("Avg retention %", f"{avg_ret:.1f}%" if pd.notna(avg_ret) else "—")
-    k5, k6, k7 = st.columns(3)
+    k5, k6, k7, k8 = st.columns(4)
     k5.metric("🟢 Above baseline", f"{above:,}")
     k6.metric("🔴 Below baseline", f"{below:,}")
-    k7.metric(f"⚪ No {latest_label} usage", f"{no_jul:,}")
+    k7.metric(f"🔴 Churned (0 in {latest_label.split()[0]})", f"{churned:,}")
+    k8.metric("⚪ No usage / no data", f"{no_data:,}")
 
     # ── color-coded table ──
     st.markdown("##### Retention by organization number")
@@ -206,12 +211,13 @@ if run:
     }
 
     def _row_style(row):
-        c = _band_color.get(row["Status"], "")
+        s = row["Status"]
+        c = "#E74C3C" if s.startswith("🔴") else _band_color.get(s, "")
         styles = [""] * len(row)
         for col in ("Retention %", f"{latest_label} vs Baseline", "Status"):
             if col in row.index:
                 idx = list(row.index).index(col)
-                dark = row["Status"] in ("🟢 Improved (+10%)", "🔴 At risk (>15%)")
+                dark = s.startswith("🔴") or s == "🟢 Improved (+10%)"
                 styles[idx] = f"background-color:{c};" + ("color:white;" if dark else "")
         return styles
 
