@@ -178,6 +178,11 @@ if run:
         return "🔴 At risk (>15%)"
     df["Status"] = df.apply(_status, axis=1)
     df = df.sort_values("Retention %", ascending=True, na_position="first").reset_index(drop=True)
+    st.session_state["org_ret_df"] = df   # persist so widget clicks don't require re-running
+
+# ── render (from session state so filters/interactions don't need a re-run) ──────
+if "org_ret_df" in st.session_state:
+    df = st.session_state["org_ret_df"].copy()
 
     # ── KPIs ──
     total_nums = len(df)
