@@ -107,12 +107,13 @@ ticket_rpt_page  = st.Page("pages/20_Ticket_Report.py",               title="Tic
 jira_rpt_page    = st.Page("pages/21_Jira_Report.py",                  title="Jira Ticket Report",           icon="🧩")
 retention_page   = st.Page("pages/22_Retention_Report.py",             title="Retention Report",             icon="🔁")
 convo360_page    = st.Page("pages/27_CONVO360_Import.py",               title="CONVO360 Import",              icon="📥")
+org_ret_page     = st.Page("pages/28_Org_Retention_Report.py",           title="Org Retention Report",         icon="🏢")
 
 # Grouped sidebar navigation (sections keep the 24 pages organized).
 pg = st.navigation({
     "Home": [overview_page, this_month_page, weekly_page, daily_page, lookup_page],
     "Numbers": [numbers_page, numfunnel_page, funnel_page, portin_page, winback_page, geo_page, yoy_page],
-    "Customers": [ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, retention_page],
+    "Customers": [ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, retention_page, org_ret_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page],
     "Tools": [bulk_page, explorer_page, pendo_page, dq_page, convo360_page],
     "Admin": [audit_page],
