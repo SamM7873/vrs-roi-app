@@ -203,6 +203,12 @@ if run:
 
     # ── color-coded table ──
     st.markdown("##### Retention by organization number")
+    _status_opts = list(dict.fromkeys(df["Status"].tolist()))  # preserve order, unique
+    _pick = st.multiselect("Filter by status", _status_opts, default=_status_opts,
+                           help="Show only the retention statuses you select.")
+    if _pick:
+        df = df[df["Status"].isin(_pick)]
+    st.caption(f"Showing {len(df):,} of {total_nums:,} numbers.")
     disp_cols = (["Organization", "Email", "Number"] + month_cols +
                  ["Baseline", "Months counted", f"{latest_label} vs Baseline", "Retention %", "Status"])
     disp = df[disp_cols].copy()
