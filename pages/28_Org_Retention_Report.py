@@ -233,6 +233,16 @@ if "org_ret_df" in st.session_state:
                 + df["Number"].astype(str)).str.lower()
         df = df[_hay.str.contains(_q, regex=False)]
     st.caption(f"Showing {len(df):,} of {total_nums:,} numbers.")
+
+    # filtered usage totals (react to the domain/status/search filters)
+    if len(df):
+        f_jul = df[latest_label].sum() if latest_label in df.columns else 0.0
+        f_base = df["Baseline"].sum()
+        f_all = df[[c for c in month_cols if c in df.columns]].sum().sum()
+        fu1, fu2, fu3 = st.columns(3)
+        fu1.metric(f"Filtered {latest_label} usage", f"{f_jul:,.0f} min")
+        fu2.metric("Filtered baseline total", f"{f_base:,.0f} min")
+        fu3.metric("Filtered total usage (all shown months)", f"{f_all:,.0f} min")
     disp_cols = (["Organization", "Email", "Number"] + month_cols +
                  ["Baseline", "Months counted", f"{latest_label} vs Baseline", "Retention %", "Status"])
     disp = df[disp_cols].copy()
