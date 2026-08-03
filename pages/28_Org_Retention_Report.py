@@ -43,18 +43,20 @@ def _period_of(month_date):
 # Display 12 months for context; the baseline/retention math uses only the 6
 # months before the latest completed month.
 today = date.today()
-latest = pd.Period(today.strftime("%Y-%m"), freq="M") - 1   # previous completed month
-display_months = [latest - i for i in range(11, -1, -1)]  # 12 months ending at latest
+current = pd.Period(today.strftime("%Y-%m"), freq="M")      # current (partial) month
+latest = current - 1                                        # previous completed month
+display_months = [latest - i for i in range(11, -1, -1)] + [current]  # 12 completed + current
 baseline_months = [latest - i for i in range(6, 0, -1)]   # the 6 months before latest (Jan..Jun)
-all_months = display_months                               # fetch/show all 12
-month_cols = [m.strftime("%b %Y") for m in display_months]
+all_months = display_months                               # fetch/show all
+current_label = current.strftime("%b %Y") + " (current)"
+month_cols = [(current_label if m == current else m.strftime("%b %Y")) for m in display_months]
 latest_label = latest.strftime("%b %Y")
 
-st.caption(f"Table shows **12 months** ({display_months[0].strftime('%b %Y')}–{latest_label}) for context. "
+st.caption(f"Table shows **12 completed months + {current.strftime('%b %Y')} (current, partial)** for context. "
            f"Calculation uses only the **6-month baseline** "
            f"(**{baseline_months[0].strftime('%b %Y')}–{baseline_months[-1].strftime('%b %Y')}**, "
-           f"months with usage) vs. the compared month **{latest_label}** "
-           f"(latest completed; current month excluded).")
+           f"months with usage) vs. the compared month **{latest_label}**. "
+           f"The current month is shown but **excluded** from baseline, retention, and status.")
 
 run = st.button("Run Organization Retention Report", type="primary")
 
