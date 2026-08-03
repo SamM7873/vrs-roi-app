@@ -145,6 +145,7 @@ if run:
         retention = (jul / baseline * 100) if baseline > 0 else None
         rows.append({
             "Organization": meta["org"],
+            "Email": meta["email"] or "—",
             "Number": num,
             **{month_cols[i]: month_vals[i] for i in range(len(all_months))},
             "Baseline": round(baseline, 1),
@@ -202,7 +203,7 @@ if run:
 
     # ── color-coded table ──
     st.markdown("##### Retention by organization number")
-    disp_cols = (["Organization", "Number"] + month_cols +
+    disp_cols = (["Organization", "Email", "Number"] + month_cols +
                  ["Baseline", "Months counted", f"{latest_label} vs Baseline", "Retention %", "Status"])
     disp = df[disp_cols].copy()
 
