@@ -330,10 +330,12 @@ if _email_q:
         p = r.get("properties", {})
         n = str(p.get("number") or "").strip()
         if n:
+            _ciso = _dt(p.get("number_created_at"))
             num_map[n] = {"service_type": (p.get("service_type") or "").strip(),
                           "status": (p.get("account_status") or "").strip(),
                           "usage_type": (p.get("usage_type") or "").strip(),
-                          "created": _fmt_mdy(_dt(p.get("number_created_at")))}
+                          "created": _fmt_mdy(_ciso),
+                          "created_iso": _ciso}
 
     if not num_map:
         st.warning(f"No Number objects found with email = {_email_q}.")
@@ -341,7 +343,27 @@ if _email_q:
         st.caption(f"Matched {len(num_map)} number(s): "
                    + ", ".join(f"{n} ({m['service_type'] or '—'}/{m['status'] or '—'})"
                                for n, m in num_map.items()))
+
+        # ── Number Created date filter ──
+        _created_dates = sorted([m["created_iso"] for m in num_map.values() if m.get("created_iso")])
         numbers = list(num_map.keys())
+        if _created_dates:
+            from datetime import date as _date
+            _lo = datetime.strptime(_created_dates[0], "%Y-%m-%d").date()
+            _hi = datetime.strptime(_created_dates[-1], "%Y-%m-%d").date()
+            _use_cf = st.checkbox("Filter by Number Created date", value=False, key="usage_cf_on")
+            if _use_cf:
+                _rng = st.date_input("Number created between", value=(_lo, _hi),
+                                     min_value=_lo, max_value=_hi, key="usage_cf_range")
+                if isinstance(_rng, tuple) and len(_rng) == 2:
+                    _s, _e = _rng
+                    numbers = [n for n, m in num_map.items()
+                               if m.get("created_iso") and _s <= datetime.strptime(
+                                   m["created_iso"], "%Y-%m-%d").date() <= _e]
+                    st.caption(f"{len(numbers)} number(s) created {_s:%b %d, %Y}–{_e:%b %d, %Y}.")
+        if not numbers:
+            st.info("No numbers in the selected created-date range.")
+            st.stop()
         rows_mv = []
         with dash_spinner("Pulling Monthly Values (URSA & CfZ)…"):
             for i in range(0, len(numbers), 100):
