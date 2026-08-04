@@ -304,6 +304,20 @@ def _mv_period(v):
 
 _email_q = st.text_input("Email address", placeholder="name@example.com", key="usage_email").strip().lower()
 if _email_q:
+    # Pendo engagement for this email (from the loaded Pendo contacts)
+    _pmatch = df[df["Email"].str.lower() == _email_q]
+    if not _pmatch.empty:
+        st.markdown("###### Pendo engagement for this email")
+        _pcols = ["Name", "Email", "Phone", "Pendo ID", "First Visit", "Last Visit",
+                  "Events (30d)", "Days Active (30d)", "Time on App (30d)", "Usage Trend % (30d)"]
+        _pshow = _pmatch[[c for c in _pcols if c in _pmatch.columns]].copy()
+        if "First Visit" in _pshow.columns:
+            _pshow["First Visit"] = _pshow["First Visit"].map(_fmt_mdy)
+        if "Last Visit" in _pshow.columns:
+            _pshow["Last Visit"] = _pshow["Last Visit"].map(_fmt_mdy)
+        st.dataframe(_pshow, use_container_width=True, hide_index=True)
+    else:
+        st.caption("No Pendo contact loaded with this email (usage still shown below if numbers match).")
     with dash_spinner(f"Finding numbers for {_email_q}…"):
         num_recs = fetch_all(
             "2-40974683", ["number", "email", "service_type", "account_status", "usage_type"],
