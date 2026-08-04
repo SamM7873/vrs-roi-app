@@ -320,7 +320,8 @@ if _email_q:
         st.caption("No Pendo contact loaded with this email (usage still shown below if numbers match).")
     with dash_spinner(f"Finding numbers for {_email_q}…"):
         num_recs = fetch_all(
-            "2-40974683", ["number", "email", "service_type", "account_status", "usage_type"],
+            "2-40974683", ["number", "email", "service_type", "account_status",
+                           "usage_type", "number_created_at"],
             filter_groups=[{"filters": [
                 {"propertyName": "email", "operator": "EQ", "value": _email_q},
                 {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}])
@@ -331,7 +332,8 @@ if _email_q:
         if n:
             num_map[n] = {"service_type": (p.get("service_type") or "").strip(),
                           "status": (p.get("account_status") or "").strip(),
-                          "usage_type": (p.get("usage_type") or "").strip()}
+                          "usage_type": (p.get("usage_type") or "").strip(),
+                          "created": _fmt_mdy(_dt(p.get("number_created_at")))}
 
     if not num_map:
         st.warning(f"No Number objects found with email = {_email_q}.")
@@ -353,8 +355,10 @@ if _email_q:
                         {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}])
                 for o in mv:
                     p = o.get("properties", {})
+                    _n = str(p.get("number") or "").strip()
                     rows_mv.append({
-                        "Number": str(p.get("number") or "").strip(),
+                        "Number": _n,
+                        "Number Created": num_map.get(_n, {}).get("created", ""),
                         "Month": _mv_period(p.get("month_date")),
                         "Service": (p.get("service_type") or "").strip() or "—",
                         "URSA min": to_float(p.get("ursa_minutes")) or 0.0,
