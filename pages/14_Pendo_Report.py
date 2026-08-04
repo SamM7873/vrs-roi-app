@@ -308,7 +308,8 @@ if _email_q:
         num_recs = fetch_all(
             "2-40974683", ["number", "email", "service_type", "account_status", "usage_type"],
             filter_groups=[{"filters": [
-                {"propertyName": "email", "operator": "EQ", "value": _email_q}]}])
+                {"propertyName": "email", "operator": "EQ", "value": _email_q},
+                {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}])
     num_map = {}
     for r in num_recs:
         p = r.get("properties", {})
@@ -334,7 +335,8 @@ if _email_q:
                     ["number", "month_date", "ursa_minutes", "cfz_minutes",
                      "usage_minutes", "service_type"],
                     filter_groups=[{"filters": [
-                        {"propertyName": "number", "operator": "IN", "values": chunk}]}])
+                        {"propertyName": "number", "operator": "IN", "values": chunk},
+                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}])
                 for o in mv:
                     p = o.get("properties", {})
                     rows_mv.append({
