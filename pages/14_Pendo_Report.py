@@ -401,7 +401,7 @@ if _email_q:
                 mvdf_show[c] = mvdf_show[c].round(1)
             st.dataframe(mvdf_show, use_container_width=True, hide_index=True, height=380)
             # monthly totals across all matched numbers
-            monthly = (mvdf.groupby("Month")[["URSA min", "CfZ min", "Usage min"]]
+            monthly = (mvdf.groupby(["Month", "Service"])[["URSA min", "CfZ min", "Usage min"]]
                        .sum().round(1).reset_index())
             st.markdown("###### Monthly totals (all matched numbers)")
             st.dataframe(monthly, use_container_width=True, hide_index=True)
