@@ -279,3 +279,89 @@ st.download_button(
 )
 from utils import pdf_download_button
 pdf_download_button(_df_table, "pendo_contacts.pdf", "Pendo Report", key="pendo")
+
+
+# ── Usage lookup by email: Number (by email) → Monthly Values (URSA + CfZ) ────
+st.markdown("---")
+st.markdown("#### 📞 Usage lookup by email — URSA & CfZ minutes")
+st.caption("Enter an email → match **Number** objects by email → pull associated **Monthly Values** "
+           "and show URSA & CfZ minutes per month.")
+
+
+def _mv_period(v):
+    if not v:
+        return None
+    try:
+        s = str(v)
+        if s.isdigit():
+            d = datetime.utcfromtimestamp(int(s) / 1000)
+        else:
+            d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return d.strftime("%Y-%m")
+    except Exception:
+        return None
+
+
+_email_q = st.text_input("Email address", placeholder="name@example.com", key="usage_email").strip().lower()
+if _email_q:
+    with dash_spinner(f"Finding numbers for {_email_q}…"):
+        num_recs = fetch_all(
+            "2-40974683", ["number", "email", "service_type", "account_status", "usage_type"],
+            filter_groups=[{"filters": [
+                {"propertyName": "email", "operator": "EQ", "value": _email_q}]}])
+    num_map = {}
+    for r in num_recs:
+        p = r.get("properties", {})
+        n = str(p.get("number") or "").strip()
+        if n:
+            num_map[n] = {"service_type": (p.get("service_type") or "").strip(),
+                          "status": (p.get("account_status") or "").strip(),
+                          "usage_type": (p.get("usage_type") or "").strip()}
+
+    if not num_map:
+        st.warning(f"No Number objects found with email = {_email_q}.")
+    else:
+        st.caption(f"Matched {len(num_map)} number(s): "
+                   + ", ".join(f"{n} ({m['service_type'] or '—'}/{m['status'] or '—'})"
+                               for n, m in num_map.items()))
+        numbers = list(num_map.keys())
+        rows_mv = []
+        with dash_spinner("Pulling Monthly Values (URSA & CfZ)…"):
+            for i in range(0, len(numbers), 100):
+                chunk = numbers[i:i + 100]
+                mv = fetch_all(
+                    "2-46246179",
+                    ["number", "month_date", "ursa_minutes", "cfz_minutes",
+                     "usage_minutes", "service_type"],
+                    filter_groups=[{"filters": [
+                        {"propertyName": "number", "operator": "IN", "values": chunk}]}])
+                for o in mv:
+                    p = o.get("properties", {})
+                    rows_mv.append({
+                        "Number": str(p.get("number") or "").strip(),
+                        "Month": _mv_period(p.get("month_date")),
+                        "Service": (p.get("service_type") or "").strip() or "—",
+                        "URSA min": to_float(p.get("ursa_minutes")) or 0.0,
+                        "CfZ min": to_float(p.get("cfz_minutes")) or 0.0,
+                        "Usage min": to_float(p.get("usage_minutes")) or 0.0,
+                    })
+        if not rows_mv:
+            st.info("Numbers matched, but no Monthly Values found for them.")
+        else:
+            mvdf = pd.DataFrame(rows_mv).dropna(subset=["Month"])
+            mvdf = mvdf.sort_values(["Number", "Month"]).reset_index(drop=True)
+            t1, t2, t3 = st.columns(3)
+            t1.metric("Total URSA minutes", f"{mvdf['URSA min'].sum():,.1f}")
+            t2.metric("Total CfZ minutes", f"{mvdf['CfZ min'].sum():,.1f}")
+            t3.metric("Months of data", f"{mvdf['Month'].nunique():,}")
+            mvdf_show = mvdf.copy()
+            for c in ("URSA min", "CfZ min", "Usage min"):
+                mvdf_show[c] = mvdf_show[c].round(1)
+            st.dataframe(mvdf_show, use_container_width=True, hide_index=True, height=380)
+            # monthly totals across all matched numbers
+            monthly = (mvdf.groupby("Month")[["URSA min", "CfZ min", "Usage min"]]
+                       .sum().round(1).reset_index())
+            st.markdown("###### Monthly totals (all matched numbers)")
+            st.dataframe(monthly, use_container_width=True, hide_index=True)
+            st.download_button("Download usage CSV", mvdf.to_csv(index=False),
+                               f"usage_{_email_q}.csv", "text/csv", key="usage_csv")
