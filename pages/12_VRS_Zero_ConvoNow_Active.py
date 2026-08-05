@@ -27,8 +27,13 @@ report_header(
 # ── Filters ───────────────────────────────────────────────────────────────────
 col_range, col_run = st.columns([3, 1])
 with col_range:
-    RANGE_OPTIONS = ["This Month", "This Year", "Jun 2026–Present", "Last 3 Months", "Last 6 Months", "Last 12 Months", "All Time"]
+    RANGE_OPTIONS = ["This Month", "This Year", "Jun 2026–Present", "Last 3 Months", "Last 6 Months", "Last 12 Months", "All Time", "Custom"]
     range_label = st.selectbox("Date range (month_date)", RANGE_OPTIONS)
+    _custom_start = _custom_end = None
+    if range_label == "Custom":
+        _cc1, _cc2 = st.columns(2)
+        _custom_start = _cc1.date_input("From month", value=date(date.today().year, 1, 1), key="vz_custom_start")
+        _custom_end = _cc2.date_input("To month", value=date.today(), key="vz_custom_end")
 with col_run:
     st.markdown("<div style='margin-top:1.65rem;'></div>", unsafe_allow_html=True)
     run = st.button("Run Report", use_container_width=True)
@@ -38,10 +43,13 @@ report_header_close()
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
 _CACHE_VERSION = 9  # bump when columns/fetch logic change
-_report_key = f"vrs_zero_v{_CACHE_VERSION}_" + range_label.replace(" ", "_").replace("–", "_")
+_range_sig = range_label
+if range_label == "Custom" and _custom_start and _custom_end:
+    _range_sig = f"Custom_{_custom_start:%Y%m}_{_custom_end:%Y%m}"
+_report_key = f"vrs_zero_v{_CACHE_VERSION}_" + _range_sig.replace(" ", "_").replace("–", "_")
 
 cached = st.session_state.get("_vrs_zero_cache")
-if cached and (cached.get("range_label") != range_label
+if cached and (cached.get("range_label") != _range_sig
                or cached.get("version") != _CACHE_VERSION):
     del st.session_state["_vrs_zero_cache"]
     cached = None
@@ -53,7 +61,7 @@ if cached is None and not run:
     if disk and disk.get("version") == _CACHE_VERSION and disk.get("df_full") is not None:
         cached = {
             "version": _CACHE_VERSION,
-            "range_label": range_label,
+            "range_label": _range_sig,
             "df_full": disk["df_full"],
             "email_cn_months": disk.get("email_cn_months", {}),
             "saved_at": disk.get("saved_at"),
@@ -67,7 +75,9 @@ if not run and not cached:
 
 # ── Resolve date floor ────────────────────────────────────────────────────────
 today = date.today()
-if range_label == "This Month":
+if range_label == "Custom" and _custom_start:
+    floor = date(_custom_start.year, _custom_start.month, 1)
+elif range_label == "This Month":
     floor = date(today.year, today.month, 1)
 elif range_label == "This Year":
     floor = date(today.year, 1, 1)
@@ -87,7 +97,12 @@ else:
     floor = date(2000, 1, 1)
 
 floor_ms = str(int(datetime(floor.year, floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
-DATE_FILTER = {"propertyName": "month_date", "operator": "GTE", "value": floor_ms}
+DATE_FILTERS = [{"propertyName": "month_date", "operator": "GTE", "value": floor_ms}]
+if range_label == "Custom" and _custom_end:
+    _ceil_ms = str(int(datetime(_custom_end.year, _custom_end.month, 28,
+                                tzinfo=timezone.utc).timestamp() * 1000))
+    DATE_FILTERS.append({"propertyName": "month_date", "operator": "LTE", "value": _ceil_ms})
+DATE_FILTER = DATE_FILTERS[0]  # back-compat single-floor reference
 
 # Skip data fetch if results are already cached for this range
 if run or not cached:
@@ -97,7 +112,7 @@ if run or not cached:
             "2-46246179",
             ["number", "month_date", "usage_minutes", "service_type"],
             filter_groups=[{"filters": [
-                DATE_FILTER,
+                *DATE_FILTERS,
                 {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
                 {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
             ]}]
@@ -292,7 +307,7 @@ if run or not cached:
                 "2-46246179",
                 ["number", "month_date", "usage_minutes", "ursa_minutes", "cfz_minutes", "service_type"],
                 filter_groups=[{"filters": [
-                    DATE_FILTER,
+                    *DATE_FILTERS,
                     {"propertyName": "number",       "operator": "IN", "values": chunk},
                     {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
                 ]}]
@@ -407,7 +422,7 @@ if run or not cached:
     # Persist to session state (fast reruns) AND to disk (survives reloads/sign-outs)
     _payload = {
         "version":       _CACHE_VERSION,
-        "range_label":   range_label,
+        "range_label":   _range_sig,
         "df_full":       df_full,
         "email_cn_months": {k: dict(v) for k, v in email_cn_months.items()},
     }
