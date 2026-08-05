@@ -37,7 +37,7 @@ report_header_close()
 
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
-_CACHE_VERSION = 8  # bump when columns/fetch logic change
+_CACHE_VERSION = 9  # bump when columns/fetch logic change
 _report_key = f"vrs_zero_v{_CACHE_VERSION}_" + range_label.replace(" ", "_").replace("–", "_")
 
 cached = st.session_state.get("_vrs_zero_cache")
@@ -238,12 +238,14 @@ if run or not cached:
             chunk = list(cn_emails)[i:i+100]
             all_num_objs.extend(fetch_all(
                 "2-40974683",
-                ["number", "email", "first_name", "last_name", "service_type", "number_status", "age_bucket", "state"],
+                ["number", "email", "first_name", "last_name", "service_type",
+                 "number_status", "age_bucket", "state", "number_created_at"],
                 filter_groups=[{"filters": [
                     {"propertyName": "email", "operator": "IN", "values": chunk},
                 ]}]
             ))
 
+    email_vrs_created: dict = {}   # email -> earliest VRS number_created_at (ISO date)
     email_vrs_nums: dict = defaultdict(set)
     email_cn_nums:  dict = defaultdict(set)
     all_numbers_by_email: dict = defaultdict(set)
@@ -269,6 +271,13 @@ if run or not cached:
             email_to_state.setdefault(email, state)
         if svc == "vrs":
             email_vrs_nums[email].add(num)
+            _vc = str(p.get("number_created_at") or "").strip()
+            if _vc:
+                _vciso = _vc[:10] if not _vc.isdigit() else \
+                    datetime.utcfromtimestamp(int(_vc) / 1000).strftime("%Y-%m-%d")
+                _prev = email_vrs_created.get(email)
+                if _prev is None or _vciso < _prev:
+                    email_vrs_created[email] = _vciso
         elif svc == "convo now":
             email_cn_nums[email].add(num)
 
@@ -347,7 +356,8 @@ if run or not cached:
             "Industry Type":       (_cinfo.get("industry_type") or "—"),
             "Deaf-Owned Business": (_cinfo.get("deaf_owned_business_") or "—"),
             "Nonprofit Org":       (_cinfo.get("non_profit_organization_") or "—"),
-            "Number Created":    email_to_cn_created.get(email, ""),
+            "CN Number Created":  email_to_cn_created.get(email, ""),
+            "VRS Number Created": email_vrs_created.get(email, ""),
             "Has VRS Number":    "Yes" if vrs_nums else "No",
             "VRS Numbers":       ", ".join(vrs_nums) if vrs_nums else "—",
             "Convo Now Numbers": ", ".join(cn_nums)  if cn_nums  else "—",
@@ -434,18 +444,24 @@ with fcol2:
 if only_cn:
     df_full = df_full[df_full["Has VRS Number"] == "No"]
 
-if _created_on and "Number Created" in df_full.columns:
-    _cd = pd.to_datetime(df_full["Number Created"], errors="coerce")
-    _valid = _cd.dropna()
-    if not _valid.empty:
-        _lo, _hi = _valid.min().date(), _valid.max().date()
-        _rng = st.date_input("Number created between", value=(_lo, _hi),
-                             min_value=_lo, max_value=_hi, key="vz_cf_range")
-        if isinstance(_rng, tuple) and len(_rng) == 2:
-            _s, _e = _rng
-            mask = _cd.dt.date.between(_s, _e)
-            df_full = df_full[mask.fillna(False)]
-            st.caption(f"Number created {_s:%b %d, %Y}–{_e:%b %d, %Y}.")
+if _created_on:
+    _src = st.radio("Created date source", ["VRS number", "Convo Now number"],
+                    horizontal=True, key="vz_cf_src")
+    _col = "VRS Number Created" if _src == "VRS number" else "CN Number Created"
+    if _col in df_full.columns:
+        _cd = pd.to_datetime(df_full[_col], errors="coerce")
+        _valid = _cd.dropna()
+        if _valid.empty:
+            st.info(f"No {_src} created dates available to filter on.")
+        else:
+            _lo, _hi = _valid.min().date(), _valid.max().date()
+            _rng = st.date_input(f"{_src} created between", value=(_lo, _hi),
+                                 min_value=_lo, max_value=_hi, key="vz_cf_range")
+            if isinstance(_rng, tuple) and len(_rng) == 2:
+                _s, _e = _rng
+                mask = _cd.dt.date.between(_s, _e)
+                df_full = df_full[mask.fillna(False)]
+                st.caption(f"{_src} created {_s:%b %d, %Y}–{_e:%b %d, %Y} · {len(df_full):,} rows.")
 
 df_full = df_full.reset_index(drop=True)
 
