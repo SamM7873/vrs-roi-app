@@ -37,7 +37,7 @@ report_header_close()
 
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
-_CACHE_VERSION = 7  # bump when columns/fetch logic change
+_CACHE_VERSION = 8  # bump when columns/fetch logic change
 _report_key = f"vrs_zero_v{_CACHE_VERSION}_" + range_label.replace(" ", "_").replace("–", "_")
 
 cached = st.session_state.get("_vrs_zero_cache")
@@ -126,7 +126,8 @@ if run or not cached:
             cn_obj_records.extend(fetch_all(
                 "2-40974683",
                 ["number", "email", "first_name", "last_name", "service_type",
-                 "number_status", "usage_type", "credit_plan_name", "age_bucket", "state"],
+                 "number_status", "usage_type", "credit_plan_name", "age_bucket", "state",
+                 "number_created_at"],
                 filter_groups=[{"filters": [
                     {"propertyName": "number",           "operator": "IN", "values": chunk},
                     {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
@@ -136,6 +137,7 @@ if run or not cached:
 
     cn_emails: set = set()
     num_to_email: dict = {}
+    email_to_cn_created: dict = {}   # email -> earliest Convo Now number_created_at (ISO date)
     email_to_name: dict = {}
     email_to_pendo: dict = {}
     email_to_age: dict = {}
@@ -156,6 +158,13 @@ if run or not cached:
         if email:
             cn_emails.add(email)
             num_to_email[num] = email
+            _created = str(p.get("number_created_at") or "").strip()
+            if _created:
+                _ciso = _created[:10] if not _created.isdigit() else \
+                    datetime.utcfromtimestamp(int(_created) / 1000).strftime("%Y-%m-%d")
+                _prev = email_to_cn_created.get(email)
+                if _prev is None or _ciso < _prev:
+                    email_to_cn_created[email] = _ciso
             if fn or ln:
                 email_to_name[email] = f"{fn} {ln}".strip()
             age = (p.get("age_bucket") or "").strip()
@@ -338,6 +347,8 @@ if run or not cached:
             "Industry Type":       (_cinfo.get("industry_type") or "—"),
             "Deaf-Owned Business": (_cinfo.get("deaf_owned_business_") or "—"),
             "Nonprofit Org":       (_cinfo.get("non_profit_organization_") or "—"),
+            "Number Created":    email_to_cn_created.get(email, ""),
+            "Has VRS Number":    "Yes" if vrs_nums else "No",
             "VRS Numbers":       ", ".join(vrs_nums) if vrs_nums else "—",
             "Convo Now Numbers": ", ".join(cn_nums)  if cn_nums  else "—",
             "VRS Minutes":       round(vrs_total,  1),
@@ -411,6 +422,32 @@ if _saved_at:
         _ago = f"{_age_s // 86400} d ago"
     st.caption(f"📌 Saved report · last refreshed **{_ago}**. "
                f"It's reused automatically — click **Run Report** above only when you want fresh data.")
+
+# ── Post-run filters (no re-fetch) ────────────────────────────────────────────
+fcol1, fcol2 = st.columns([2, 3])
+with fcol1:
+    only_cn = st.checkbox("Only Convo Now (no VRS number at all)", value=False,
+                          help="Keep only contacts that have NO VRS number — pure Convo Now customers.")
+with fcol2:
+    _created_on = st.checkbox("Filter by Number Created date", value=False, key="vz_cf_on")
+
+if only_cn:
+    df_full = df_full[df_full["Has VRS Number"] == "No"]
+
+if _created_on and "Number Created" in df_full.columns:
+    _cd = pd.to_datetime(df_full["Number Created"], errors="coerce")
+    _valid = _cd.dropna()
+    if not _valid.empty:
+        _lo, _hi = _valid.min().date(), _valid.max().date()
+        _rng = st.date_input("Number created between", value=(_lo, _hi),
+                             min_value=_lo, max_value=_hi, key="vz_cf_range")
+        if isinstance(_rng, tuple) and len(_rng) == 2:
+            _s, _e = _rng
+            mask = _cd.dt.date.between(_s, _e)
+            df_full = df_full[mask.fillna(False)]
+            st.caption(f"Number created {_s:%b %d, %Y}–{_e:%b %d, %Y}.")
+
+df_full = df_full.reset_index(drop=True)
 
 # ── Summary tiles ─────────────────────────────────────────────────────────────
 total_contacts = len(df_full)
