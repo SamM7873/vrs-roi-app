@@ -460,6 +460,11 @@ if only_cn:
     df_full = df_full[df_full["Has VRS Number"] == "No"]
 
 if _created_on:
+    _has_vrs = int((df_full["Has VRS Number"] == "Yes").sum()) if "Has VRS Number" in df_full.columns else 0
+    _n_vrs_dates = int(pd.to_datetime(df_full.get("VRS Number Created"), errors="coerce").notna().sum()) \
+        if "VRS Number Created" in df_full.columns else 0
+    st.caption(f"Of {len(df_full):,} contacts: **{_has_vrs:,}** have a VRS number "
+               f"({_n_vrs_dates:,} with a VRS created date). The rest are Convo-Now-only.")
     _src = st.radio("Created date source", ["VRS number", "Convo Now number"],
                     horizontal=True, key="vz_cf_src")
     _col = "VRS Number Created" if _src == "VRS number" else "CN Number Created"
@@ -467,7 +472,10 @@ if _created_on:
         _cd = pd.to_datetime(df_full[_col], errors="coerce")
         _valid = _cd.dropna()
         if _valid.empty:
-            st.info(f"No {_src} created dates available to filter on.")
+            st.info(f"No **{_src}** created dates in this result — "
+                    + ("these contacts have no VRS number (all Convo-Now-only), so filter by "
+                       "**Convo Now number** instead." if _src == "VRS number"
+                       else "the Convo Now numbers have no created date on record."))
         else:
             _lo, _hi = _valid.min().date(), _valid.max().date()
             _rng = st.date_input(f"{_src} created between", value=(_lo, _hi),
