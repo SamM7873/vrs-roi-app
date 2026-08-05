@@ -92,6 +92,8 @@ if refresh or cached is None:
             p = r.get("properties", {})
             rows.append({
                 "Contact ID":       str(r.get("id") or ""),
+                "First Name":       (p.get("firstname") or "").strip(),
+                "Last Name":        (p.get("lastname") or "").strip(),
                 "Name":             f"{(p.get('firstname') or '').strip()} {(p.get('lastname') or '').strip()}".strip() or "—",
                 "Email":            (p.get("email") or "").strip().lower(),
                 "Phone":            (p.get("phone") or "").strip(),
@@ -113,16 +115,28 @@ if cached is None or cached.get("df") is None or cached["df"].empty:
     st.stop()
 
 df = cached["df"]
+# back-fill name columns for older cached data
+if "First Name" not in df.columns:
+    df["First Name"] = df.get("Name", "").astype(str).str.split().str[0].fillna("")
+if "Last Name" not in df.columns:
+    df["Last Name"] = df.get("Name", "").astype(str).str.split().str[1:].str.join(" ").fillna("")
 if cached.get("saved_at"):
     st.caption(f"📌 Data as of {saved_at_label(cached)} · click the button above to refresh")
 
-# ── Search: email, phone number, name, or Pendo ID ──────────────────────────
+# ── Search + name filters ────────────────────────────────────────────────────
 search = st.text_input(
     "Search",
     placeholder="Search by email, phone number, name, or Pendo ID…",
 )
+nf1, nf2 = st.columns(2)
+first_q = nf1.text_input("First name", placeholder="filter by first name…").strip().lower()
+last_q = nf2.text_input("Last name", placeholder="filter by last name…").strip().lower()
 
 df_view = df.copy()
+if first_q:
+    df_view = df_view[df_view["First Name"].str.lower().str.contains(first_q, na=False, regex=False)]
+if last_q:
+    df_view = df_view[df_view["Last Name"].str.lower().str.contains(last_q, na=False, regex=False)]
 if search.strip():
     q = search.strip().lower()
     q_digits = "".join(ch for ch in q if ch.isdigit())
