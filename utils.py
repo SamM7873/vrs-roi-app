@@ -944,13 +944,14 @@ def to_float(v):
         return None
 
 
-VRS_RATE_PER_MINUTE = 8.33        # legacy constant — use vrs_rate_for_month() for accuracy
 CONVO_NOW_RATE_PER_MINUTE = 2.60
 
-# VRS FCC rate schedule: (year, month) >= threshold → rate
+# VRS FCC rate schedule: (year, month) >= threshold → rate.
+#  • July 2026 onward .......... $8.61
+#  • July 2025 – June 2026 ..... $8.33
 _VRS_RATE_SCHEDULE = [
     ((2026, 7), 8.61),   # July 2026 onward
-    ((2000, 1), 8.33),   # all earlier months
+    ((2000, 1), 8.33),   # all earlier months (incl. Jul 2025–Jun 2026)
 ]
 
 def vrs_rate_for_month(month_str):
