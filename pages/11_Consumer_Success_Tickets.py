@@ -1395,6 +1395,20 @@ if run_clicked or _use_cache:
         _render_cards([r for r in rows if r["Is Closed"]])
     with tab_all:
         _render_cards(rows)
+
+        # ── Ticket description table ──
+        st.markdown("###### Ticket descriptions")
+        _desc_df = pd.DataFrame([{
+            "Ticket ID": r["ID"],
+            "Subject": r["Subject"],
+            "Status": r["Status"],
+            "Owner": r["Owner"],
+            "Created": _fmt(r["Created"]),
+            "Description": r["Description"],
+        } for r in rows])
+        st.dataframe(_desc_df, use_container_width=True, hide_index=True, height=420,
+                     column_config={"Description": st.column_config.TextColumn(width="large")})
+
         st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
         export_cols = ["ID", "Subject", "Status", "Priority", "Category", "Subcategory",
                        "Type of Registration", "Onboarding Type", "Solution Type", "Convo App",
