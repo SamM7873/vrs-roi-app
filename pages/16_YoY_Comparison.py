@@ -296,7 +296,7 @@ if len(years) >= 2:
 for yc in year_cols:
     if yc in disp.columns:
         disp[yc] = disp[yc].map(lambda x: f"{x:,.1f}" if pd.notna(x) else "—")
-if f"Δ {str(years[-1])} vs {str(years[-2])}" in disp.columns:
+if len(years) >= 2 and f"Δ {str(years[-1])} vs {str(years[-2])}" in disp.columns:
     dcol = f"Δ {str(years[-1])} vs {str(years[-2])}"
     disp[dcol] = disp[dcol].map(lambda x: f"{x:+,.1f}" if pd.notna(x) else "—")
 st.dataframe(disp, use_container_width=True, hide_index=True)
