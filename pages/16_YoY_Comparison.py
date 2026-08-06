@@ -311,3 +311,65 @@ pdf_download_button(disp, "yoy.pdf", f"Year-over-Year — {metric_label}",
                     subtitle=f"{metric_label} by month",
                     charts=[{"data": _yoy_cd, "kind": "bar", "x": "MonthName", "y": "Value",
                              "title": f"{metric_label} by month ({_yr})"}], key="yoy")
+
+
+# ── Duplicate check: >1 monthly-value record per number+service in a month? ─────
+st.markdown("---")
+st.markdown("#### 🔎 Duplicate monthly-value check")
+st.caption("Counts monthly-value records per **Number + Service Type** for one month. "
+           "There should be exactly **1** record per number per service each month — more than "
+           "one means minutes are double-counted.")
+
+_dc1, _dc2 = st.columns([2, 1])
+with _dc1:
+    _mopts = sorted(df["Month"].unique().tolist(), reverse=True)
+    _pick_month = st.selectbox("Month to check", _mopts) if _mopts else None
+with _dc2:
+    st.markdown("<div style='margin-top:1.65rem;'></div>", unsafe_allow_html=True)
+    _dup_run = st.button("Check duplicates")
+
+if _dup_run and _pick_month:
+    _y, _m = int(_pick_month[:4]), int(_pick_month[5:7])
+    _start = str(int(datetime(_y, _m, 1, tzinfo=timezone.utc).timestamp() * 1000))
+    _ny, _nm = (_y + 1, 1) if _m == 12 else (_y, _m + 1)
+    _end = str(int(datetime(_ny, _nm, 1, tzinfo=timezone.utc).timestamp() * 1000))
+    with dash_spinner(f"Fetching {_pick_month} monthly values…"):
+        _mv = _search_seek(
+            "2-46246179",
+            ["number", "service_type", "month_date", "usage_minutes"],
+            [{"propertyName": "month_date", "operator": "GTE", "value": _start},
+             {"propertyName": "month_date", "operator": "LT", "value": _end}],
+            progress_label="Duplicate check —")
+    _rows = []
+    for r in _mv:
+        p = r.get("properties", {})
+        _rows.append({
+            "Number": str(p.get("number") or "").strip(),
+            "Service Type": (p.get("service_type") or "").strip() or "—",
+            "Record ID": str(r.get("id") or ""),
+            "Usage min": to_float(p.get("usage_minutes")) or 0.0,
+        })
+    if not _rows:
+        st.info(f"No monthly-value records found for {_pick_month}.")
+    else:
+        _mvdf = pd.DataFrame(_rows)
+        grp = (_mvdf.groupby(["Number", "Service Type"])
+               .agg(Records=("Record ID", "count"), **{"Total usage min": ("Usage min", "sum")})
+               .reset_index())
+        _dupes = grp[grp["Records"] > 1].sort_values("Records", ascending=False)
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Total records", f"{len(_mvdf):,}")
+        k2.metric("Distinct Number+Service", f"{len(grp):,}")
+        k3.metric("With >1 record (dupes)", f"{len(_dupes):,}")
+        _extra = int((grp["Records"] - 1).clip(lower=0).sum())
+        k4.metric("Extra duplicate records", f"{_extra:,}")
+        if _dupes.empty:
+            st.success(f"✅ No duplicates — exactly 1 record per Number+Service for {_pick_month}.")
+        else:
+            _infl = _mvdf.merge(_dupes[["Number", "Service Type"]], on=["Number", "Service Type"])
+            _dup_min = _infl["Usage min"].sum() - _dupes["Total usage min"].sum() / _dupes["Records"].mean() if len(_dupes) else 0
+            st.warning(f"⚠️ {len(_dupes):,} Number+Service combos have more than one record for "
+                       f"{_pick_month} — this inflates the month's minutes.")
+            st.dataframe(_dupes, use_container_width=True, hide_index=True, height=380)
+            st.download_button("Download duplicates CSV", _dupes.to_csv(index=False),
+                               f"mv_dupes_{_pick_month}.csv", "text/csv", key="dupcsv")
