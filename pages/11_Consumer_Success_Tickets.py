@@ -205,8 +205,9 @@ def _is_closed(status_label):
 run_clicked = st.button("Run Consumer Success Tickets", use_container_width=False)
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
-_sig = [preset, str(filter_start), str(filter_end), date_field, status_filter,
-        ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
+_CS_PIPELINE_VERSION = "v2-fcc-rate"  # bump to invalidate old cached costs
+_sig = [_CS_PIPELINE_VERSION, preset, str(filter_start), str(filter_end), date_field,
+        status_filter, ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
 _CS_CACHE_VARS = [
     "rows", "num_monthly", "mv_objects", "month_agg",
     "total_ursa_min", "total_cfz_min", "total_usage_min", "total_vrs_fcc",
@@ -754,8 +755,10 @@ if run_clicked or _use_cache:
         total_ursa_min   = sum(v["ursa_min"]  for v in month_agg.values())
         total_cfz_min    = sum(v["cfz_min"]   for v in month_agg.values())
         total_usage_min  = sum(v["usage_min"] for v in month_agg.values())
-        # Use HubSpot's pre-calculated FCC costs (fcc_cost_based_on_vrs_usage + fcc_cost_based_on_cfz_usage)
-        total_vrs_fcc    = sum(v["fcc_vrs"] + v["fcc_cfz"] for v in month_agg.values())
+        # FCC cost = usage minutes (URSA + CfZ) × the FCC rate for that month
+        # (Jul 2026+ = $8.61, earlier = $8.33). This reconciles with the minutes shown,
+        # rather than HubSpot's pre-calc which is based on a different minute field.
+        total_vrs_fcc = sum(v["usage_min"] * vrs_rate_for_month(mk) for mk, v in month_agg.items())
 
         _cache_vars = {k: globals().get(k) for k in _CS_CACHE_VARS}
         st.session_state["_cs_cache"] = {"sig": _sig, "vars": _cache_vars}
@@ -1159,7 +1162,7 @@ if run_clicked or _use_cache:
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">VRS FCC Cost</div>
     <div style="font-size:1.4rem;font-weight:800;color:#00A651;font-variant-numeric:tabular-nums;">${total_vrs_fcc:,.0f}</div>
-    <div style="font-size:0.72rem;color:#6aab85;">VRS + CfZ FCC (HubSpot)</div>
+    <div style="font-size:0.72rem;color:#6aab85;">{total_usage_min:,.0f} min × FCC rate</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -1202,7 +1205,8 @@ if run_clicked or _use_cache:
                 fcc_rows = []  # one row per month for FCC label
                 for mk in jul26_mks:
                     label = datetime.strptime(mk, "%Y-%m").strftime("%b %Y")
-                    fcc   = round(month_agg[mk]["fcc_vrs"] + month_agg[mk]["fcc_cfz"], 0)
+                    fcc   = round((month_agg[mk]["ursa_min"] + month_agg[mk]["cfz_min"])
+                                  * vrs_rate_for_month(mk), 0)
                     ursa_m = round(month_agg[mk]["ursa_min"], 1)
                     cfz_m  = round(month_agg[mk]["cfz_min"],  1)
                     bar_rows.append({"Month": label, "Type": "URSA Minutes", "Minutes": ursa_m, "FCC Cost ($)": fcc})
