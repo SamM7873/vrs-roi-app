@@ -6,7 +6,8 @@ import time
 import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta, date
-from utils import dash_spinner, require_auth, fetch_all, COMMON_CSS, report_header, report_header_close, norm, vrs_rate_for_month
+from utils import (dash_spinner, require_auth, fetch_all, COMMON_CSS, report_header,
+                   report_header_close, norm, vrs_rate_for_month, save_report, load_report)
 
 CONVO_NOW_RATE = 2.60
 
@@ -216,8 +217,18 @@ _CS_CACHE_VARS = [
     "range_label", "mv_floor", "stage_labels", "owner_names",
     "ticket_contact_email", "filtered_ticket_ids", "vrs_reg_pipeline_id",
 ]
+_report_key_cs = "cs_tickets_" + "_".join(str(x) for x in _sig).replace(" ", "").replace("/", "-")[:120]
 _cs_cache = st.session_state.get("_cs_cache")
 _use_cache = (not run_clicked) and isinstance(_cs_cache, dict) and _cs_cache.get("sig") == _sig
+
+# Disk fallback: reuse a previously-saved run so a page reload / re-login /
+# navigating away doesn't force clicking "Run" again.
+if not run_clicked and not _use_cache:
+    _disk = load_report(_report_key_cs)
+    if _disk and _disk.get("sig") == _sig and isinstance(_disk.get("vars"), dict):
+        st.session_state["_cs_cache"] = {"sig": _sig, "vars": _disk["vars"]}
+        _cs_cache = st.session_state["_cs_cache"]
+        _use_cache = True
 
 if run_clicked or _use_cache:
     if _use_cache:
@@ -746,8 +757,17 @@ if run_clicked or _use_cache:
         # Use HubSpot's pre-calculated FCC costs (fcc_cost_based_on_vrs_usage + fcc_cost_based_on_cfz_usage)
         total_vrs_fcc    = sum(v["fcc_vrs"] + v["fcc_cfz"] for v in month_agg.values())
 
-        st.session_state["_cs_cache"] = {"sig": _sig,
-            "vars": {k: globals().get(k) for k in _CS_CACHE_VARS}}
+        _cache_vars = {k: globals().get(k) for k in _CS_CACHE_VARS}
+        st.session_state["_cs_cache"] = {"sig": _sig, "vars": _cache_vars}
+        # Persist to disk so it survives reloads/sign-outs. month_agg uses a lambda
+        # default factory (not picklable) → store as a plain dict.
+        try:
+            _disk_vars = dict(_cache_vars)
+            if isinstance(_disk_vars.get("month_agg"), dict):
+                _disk_vars["month_agg"] = dict(_disk_vars["month_agg"])
+            save_report(_report_key_cs, {"sig": _sig, "vars": _disk_vars})
+        except Exception:
+            pass
 
     _stage_counts = pd.Series([r["Status"] for r in rows]).value_counts()
     st.caption("Stage breakdown: " + " · ".join(f"**{s}**: {c:,}" for s, c in _stage_counts.items()))
