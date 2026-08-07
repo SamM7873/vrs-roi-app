@@ -42,7 +42,7 @@ report_header_close()
 
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
-_CACHE_VERSION = 9  # bump when columns/fetch logic change
+_CACHE_VERSION = 10  # bump when columns/fetch logic change
 _range_sig = range_label
 if range_label == "Custom" and _custom_start and _custom_end:
     _range_sig = f"Custom_{_custom_start:%Y%m}_{_custom_end:%Y%m}"
@@ -305,7 +305,8 @@ if run or not cached:
             chunk = all_nums_flat[i:i+100]
             all_mvs.extend(fetch_all(
                 "2-46246179",
-                ["number", "month_date", "usage_minutes", "ursa_minutes", "cfz_minutes", "service_type"],
+                ["number", "month_date", "usage_minutes", "ursa_minutes", "cfz_minutes",
+                 "ursa_ios_minutes", "ursa_android_minutes", "ursa_web_minutes", "service_type"],
                 filter_groups=[{"filters": [
                     *DATE_FILTERS,
                     {"propertyName": "number",       "operator": "IN", "values": chunk},
@@ -317,6 +318,9 @@ if run or not cached:
     email_vrs_total:  dict = defaultdict(float)
     email_cfz_total:  dict = defaultdict(float)
     email_ursa_total: dict = defaultdict(float)
+    email_ursa_ios:   dict = defaultdict(float)
+    email_ursa_and:   dict = defaultdict(float)
+    email_ursa_web:   dict = defaultdict(float)
     email_cn_total:   dict = defaultdict(float)
     email_vrs_months: dict = defaultdict(lambda: defaultdict(float))
     email_cn_months:  dict = defaultdict(lambda: defaultdict(float))
@@ -336,6 +340,9 @@ if run or not cached:
             email_vrs_total[email]       += usage
             email_cfz_total[email]       += cfz_min
             email_ursa_total[email]      += ursa_min
+            email_ursa_ios[email]        += to_float(p.get("ursa_ios_minutes")) or 0.0
+            email_ursa_and[email]        += to_float(p.get("ursa_android_minutes")) or 0.0
+            email_ursa_web[email]        += to_float(p.get("ursa_web_minutes")) or 0.0
             email_vrs_months[email][mk]  += usage
         elif svc == "convo now":
             email_cn_total[email]        += usage
@@ -378,6 +385,9 @@ if run or not cached:
             "Convo Now Numbers": ", ".join(cn_nums)  if cn_nums  else "—",
             "VRS Minutes":       round(vrs_total,  1),
             "URSA Minutes":      round(ursa_total, 1),
+            "URSA iOS":          round(email_ursa_ios.get(email, 0.0), 1),
+            "URSA Android":      round(email_ursa_and.get(email, 0.0), 1),
+            "URSA Web":          round(email_ursa_web.get(email, 0.0), 1),
             "CfZ Minutes":       round(cfz_total,  1),
             "Convo Now Min":     round(cn_total,   1),
             "Convo Now Cost":    round(cn_cost,    2),
@@ -724,7 +734,7 @@ display_df = df_view[[
     "Company Name", "Company Description", "Industry Type",
     "Deaf-Owned Business", "Nonprofit Org",
     "Convo Now Numbers", "VRS Numbers",
-    "VRS Minutes", "URSA Minutes", "CfZ Minutes",
+    "VRS Minutes", "URSA Minutes", "URSA iOS", "URSA Android", "URSA Web", "CfZ Minutes",
     "Convo Now Min", "Convo Now Cost", "Active Months", "Latest Month", "Latest Month Min"
 ]]
 
@@ -735,6 +745,9 @@ st.dataframe(
     column_config={
         "VRS Minutes":      st.column_config.NumberColumn(format="%.1f"),
         "URSA Minutes":     st.column_config.NumberColumn(format="%.1f"),
+        "URSA iOS":         st.column_config.NumberColumn(format="%.1f"),
+        "URSA Android":     st.column_config.NumberColumn(format="%.1f"),
+        "URSA Web":         st.column_config.NumberColumn(format="%.1f"),
         "CfZ Minutes":      st.column_config.NumberColumn(format="%.1f"),
         "Convo Now Min":    st.column_config.NumberColumn("CN Min (Total)", format="%.1f"),
         "Convo Now Cost":   st.column_config.NumberColumn("CN Cost ($)",    format="$%.2f"),
