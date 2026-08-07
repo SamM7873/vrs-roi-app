@@ -53,12 +53,17 @@ def _seek_mv(props, start_ms, label):
                     {"propertyName": "hs_object_id", "operator": "GT", "value": last}]}]}
         r = None
         for attempt in range(6):
-            r = requests.post(url, headers=_H, json=body, timeout=30)
+            try:
+                r = requests.post(url, headers=_H, json=body, timeout=30)
+            except requests.exceptions.RequestException:
+                # transient network/SSL blip — back off and retry
+                r = None
+                time.sleep(1.5 * (attempt + 1)); continue
             if r.status_code == 429:
                 time.sleep(1.0 * (attempt + 1)); continue
             break
         if r is None or r.status_code != 200:
-            ph.empty(); st.error(f"HubSpot error {getattr(r,'status_code','?')}"); break
+            ph.empty(); st.error(f"HubSpot error {getattr(r,'status_code','network/SSL')}"); break
         batch = r.json().get("results", [])
         time.sleep(0.08)
         out.extend(batch)
