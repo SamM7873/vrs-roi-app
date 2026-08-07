@@ -50,11 +50,33 @@ def _date_prop():
     return "hs_createdate"
 
 
+# Registration object fields (internal name → column label). Only those that
+# actually exist on the object are pulled — the rest are skipped automatically.
+FIELD_MAP = [
+    ("registration_type", "Reg Type"),
+    ("usage_type", "Usage Type"),
+    ("registration_id", "Registration Id"),
+    ("registration_uuid", "Registration UUID"),
+    ("is_itrs_registered", "ITRS Registered"),
+    ("lex_verification_status", "Lex Status"),
+    ("lex_verified_at", "Lex Verified At"),
+    ("lex_errors", "Lex Errors"),
+    ("lex_error_message", "Lex Error Msg"),
+    ("urd_status", "URD Status"),
+    ("urd_filling_error_message", "URD Filling Error"),
+    ("urd_identity_error_message", "URD Identity Error"),
+    ("urd_terminated_at", "URD Terminated At"),
+    ("manually_verified_at", "Manually Verified At"),
+    ("number", "Number"),
+    ("email", "Email"),
+]
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def _extra_props(date_prop):
-    """Which optional descriptive fields exist on the Registrations object."""
+    """Which of the mapped fields actually exist on the Registrations object."""
     out = []
-    for cand in ("number", "email", "type_of_registration", "service_type", "usage_type"):
+    for cand, _label in FIELD_MAP:
         try:
             r = requests.post(f"{_B}/crm/v3/objects/{REG_OBJECT}/search", headers=_H,
                               json={"limit": 1, "properties": [cand]}, timeout=15)
@@ -158,17 +180,15 @@ if run:
     props = _extra_props(date_prop)
     with dash_spinner("Fetching registrations…"):
         recs = _seek(date_prop, props, _ms(start_d), _ms(end_d, end=True), "Loaded")
+    _labels = {k: v for k, v in FIELD_MAP}
     rows = []
     for r in recs:
         p = r.get("properties", {})
         dt = _parse(p.get(date_prop))
-        rows.append({
-            "Registered": dt.strftime("%Y-%m-%d") if dt else "",
-            "Number": p.get("number", "") if "number" in props else "",
-            "Email": (p.get("email") or "") if "email" in props else "",
-            "Type": (p.get("type_of_registration") or "—") if "type_of_registration" in props else "—",
-            "Service": (p.get("service_type") or "—") if "service_type" in props else "—",
-        })
+        row = {"Registered": dt.strftime("%Y-%m-%d") if dt else ""}
+        for cand in props:
+            row[_labels[cand]] = (p.get(cand) or "—")
+        rows.append(row)
     df = pd.DataFrame(rows)
     save_report(_key, {"df": df, "start": str(start_d), "end": str(end_d), "date_prop": date_prop})
 
@@ -190,10 +210,28 @@ total = len(df)
 _d = pd.to_datetime(df["Registered"], errors="coerce")
 span_days = (end_d - start_d).days + 1
 per_day = total / span_days if span_days else total
-k1, k2, k3 = st.columns(3)
+k1, k2, k3, k4 = st.columns(4)
 k1.metric("Total registrations", f"{total:,}")
 k2.metric("Avg per day", f"{per_day:,.1f}")
-k3.metric("Days in period", f"{span_days:,}")
+if "Lex Status" in df.columns:
+    _verified = int(df["Lex Status"].astype(str).str.strip().str.lower().eq("verified").sum())
+    k3.metric("Lex verified", f"{_verified:,}", f"{_verified/total*100:.0f}%" if total else "—")
+    k4.metric("Not verified", f"{total - _verified:,}")
+else:
+    k3.metric("Days in period", f"{span_days:,}")
+
+# breakdown helper
+def _breakdown(col, title):
+    if col in df.columns and (df[col].astype(str) != "—").any():
+        st.markdown(f"##### {title}")
+        b = (df.groupby(col).size().reset_index(name="Registrations")
+             .sort_values("Registrations", ascending=False))
+        st.dataframe(b, use_container_width=True, hide_index=True)
+
+bc1, bc2, bc3 = st.columns(3)
+with bc1: _breakdown("Reg Type", "By registration type")
+with bc2: _breakdown("Usage Type", "By usage type")
+with bc3: _breakdown("Lex Status", "By Lex verification")
 
 # ── trend (bucket by span) ──
 st.markdown("##### Registrations over time")
@@ -212,15 +250,12 @@ ch = (alt.Chart(trend).mark_bar(color="#0D3B26", cornerRadiusEnd=3)
       .properties(height=260))
 st.altair_chart(ch, use_container_width=True)
 
-# ── by type ──
-if (df["Type"] != "—").any():
-    st.markdown("##### By registration type")
-    bt = df.groupby("Type").size().reset_index(name="Registrations").sort_values("Registrations", ascending=False)
-    st.dataframe(bt, use_container_width=True, hide_index=True)
-
 # ── detail ──
 st.markdown("##### Registration detail")
-_cols = [c for c in ["Registered", "Number", "Email", "Type", "Service"] if c in df.columns]
+_pref = ["Registered", "Reg Type", "Usage Type", "Lex Status", "URD Status",
+         "Number", "Email", "Registration Id", "Lex Error Msg", "URD Filling Error",
+         "URD Identity Error", "Registration UUID"]
+_cols = [c for c in _pref if c in df.columns] + [c for c in df.columns if c not in _pref]
 st.dataframe(df.sort_values("Registered", ascending=False)[_cols],
              use_container_width=True, hide_index=True, height=420)
 st.download_button("📥 Export CSV", df.to_csv(index=False),
