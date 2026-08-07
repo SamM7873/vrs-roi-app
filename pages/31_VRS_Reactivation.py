@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+import time
 from datetime import date, datetime, timezone
 from collections import defaultdict
 from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
@@ -43,10 +44,18 @@ def _seek_mv(filters, label):
                 "sorts": [{"propertyName": "hs_object_id", "direction": "ASCENDING"}],
                 "filterGroups": [{"filters": filters + [
                     {"propertyName": "hs_object_id", "operator": "GT", "value": last}]}]}
-        r = requests.post(url, headers=_H, json=body, timeout=30)
-        if r.status_code != 200:
-            ph.empty(); st.error(f"HubSpot error {r.status_code}: {r.text[:200]}"); break
+        # retry on 429 (per-second rate limit) with backoff
+        r = None
+        for attempt in range(6):
+            r = requests.post(url, headers=_H, json=body, timeout=30)
+            if r.status_code == 429:
+                time.sleep(1.0 * (attempt + 1))
+                continue
+            break
+        if r is None or r.status_code != 200:
+            ph.empty(); st.error(f"HubSpot error {getattr(r,'status_code','?')}: {getattr(r,'text','')[:200]}"); break
         batch = r.json().get("results", [])
+        time.sleep(0.12)   # stay under the secondly limit
         out.extend(batch)
         ph.caption(f"{label} {len(out):,} usage rows…")
         if len(batch) < 100:
