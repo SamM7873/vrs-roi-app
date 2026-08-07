@@ -296,8 +296,9 @@ with st.expander("🔬 Diagnostics — how these counts are derived"):
     # tenure / created-date health — this drives the "New" count
     blank_created = int((df["Created"].fillna("") == "").sum())
     bad_tenure = int(df["Tenure"].isna().sum())
-    st.markdown(f"**Registration dates:** {blank_created:,} numbers have a blank `number_created_at` · "
-                f"{bad_tenure:,} could not compute tenure (unparseable date).")
+    st.markdown(f"**Registration dates** (from `registered_at`, fallback `number_created_at`): "
+                f"{blank_created:,} numbers have no usable date · "
+                f"{bad_tenure:,} could not compute tenure.")
     _valid = df[df["Tenure"].notna()]
     if not _valid.empty:
         st.caption(f"Tenure range: **{_valid['Tenure'].min():.1f}y – {_valid['Tenure'].max():.1f}y** · "
@@ -309,10 +310,10 @@ with st.expander("🔬 Diagnostics — how these counts are derived"):
             st.dataframe(new_cand[["Number", "Created", "Tenure", "Recent"]].head(20),
                          use_container_width=True, hide_index=True)
         else:
-            st.caption("→ No live consumer number has `number_created_at` within the last 90 days, "
-                       "so **New = 0**. If that seems wrong, the field likely reflects an import/backfill "
-                       "date rather than the true registration date — tell me which field holds real "
-                       "registration and I'll switch tenure to use it.")
+            st.caption("→ On the Number object, the newest `registered_at` / `number_created_at` is "
+                       f"**{_valid['Created'].max()}**, so no live consumer registered in the last 90 days "
+                       "→ **New = 0**. Either provisioning genuinely paused, or new-consumer dates live "
+                       "outside this object (e.g. the Registrations object).")
 
 # ── filters + performance list ─────────────────────────────────────────────────
 st.markdown("#### Consumers by health score")
