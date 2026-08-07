@@ -313,9 +313,13 @@ def _who(by_col, at_col, title):
         return
     st.markdown(f"##### {title} — {len(sub):,}")
     if by_col in sub.columns and _nonblank(by_col)[mask].any():
-        g = (sub.assign(_p=sub[by_col].where(_nonblank(by_col)[mask].values, "(unknown)"))
-             .groupby("_p").size().reset_index(name="Count")
-             .rename(columns={"_p": "Person"}).sort_values("Count", ascending=False))
+        s2 = sub.assign(Person=sub[by_col].where(_nonblank(by_col)[mask].values, "(unknown)"))
+        if "Reg Type" in s2.columns:
+            g = (s2.groupby(["Person", "Reg Type"]).size().reset_index(name="Count")
+                 .sort_values("Count", ascending=False))
+        else:
+            g = (s2.groupby("Person").size().reset_index(name="Count")
+                 .sort_values("Count", ascending=False))
         st.dataframe(g, use_container_width=True, hide_index=True)
 
 st.markdown("#### Manual activity")
