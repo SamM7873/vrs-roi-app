@@ -90,6 +90,35 @@ def _extra_props(date_prop):
     return out
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _owners():
+    """HubSpot user/owner id → display name (active + archived)."""
+    out = {}
+    for arch in (False, True):
+        after = None
+        for _ in range(40):
+            url = (f"{_B}/crm/v3/owners?limit=100" + ("&archived=true" if arch else "")
+                   + (f"&after={after}" if after else ""))
+            try:
+                r = requests.get(url, headers=_H, timeout=20)
+            except Exception:
+                break
+            if r.status_code != 200:
+                break
+            d = r.json()
+            for o in d.get("results", []):
+                nm = f"{(o.get('firstName') or '').strip()} {(o.get('lastName') or '').strip()}".strip() \
+                     or o.get("email", "")
+                if nm:
+                    out[str(o.get("id"))] = nm + (" (deactivated)" if arch else "")
+                    if o.get("userId"):
+                        out[str(o.get("userId"))] = out[str(o.get("id"))]
+            after = d.get("paging", {}).get("next", {}).get("after")
+            if not after:
+                break
+    return out
+
+
 def _seek(date_prop, props, start_ms, end_ms, label):
     url = f"{_B}/crm/v3/objects/{REG_OBJECT}/search"
     results, last = [], "0"
@@ -247,6 +276,32 @@ bc1, bc2, bc3 = st.columns(3)
 with bc1: _breakdown("Reg Type", "By registration type")
 with bc2: _breakdown("Usage Type", "By usage type")
 with bc3: _breakdown("Lex Status", "By Lex verification")
+
+# ── who did the manual work (resolve owner IDs → names) ──
+_own = _owners()
+for _c in ("Manually Edited By", "Manually Verified By"):
+    if _c in df.columns:
+        df[_c] = df[_c].map(lambda v: _own.get(str(v).strip(), v))
+
+def _who(by_col, at_col, title):
+    if by_col not in df.columns and at_col not in df.columns:
+        return
+    mask = _nonblank(by_col) | _nonblank(at_col)
+    sub = df[mask]
+    if sub.empty:
+        st.caption(f"{title}: none in this period.")
+        return
+    st.markdown(f"##### {title} — {len(sub):,}")
+    if by_col in sub.columns and _nonblank(by_col)[mask].any():
+        g = (sub.assign(_p=sub[by_col].where(_nonblank(by_col)[mask].values, "(unknown)"))
+             .groupby("_p").size().reset_index(name="Count")
+             .rename(columns={"_p": "Person"}).sort_values("Count", ascending=False))
+        st.dataframe(g, use_container_width=True, hide_index=True)
+
+st.markdown("#### Manual activity")
+wc1, wc2 = st.columns(2)
+with wc1: _who("Manually Verified By", "Manually Verified At", "✍️ Manually verified by")
+with wc2: _who("Manually Edited By", "Manually Edited At", "✏️ Manually edited by")
 
 # ── trend (bucket by span) ──
 st.markdown("##### Registrations over time")
