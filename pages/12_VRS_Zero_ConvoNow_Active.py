@@ -514,6 +514,75 @@ st.markdown(f"""
   {tile("Convo Now Cost", f"${total_cn_cost:,.2f}", f"@ ${CONVO_RATE}/min", "#3B82F6")}
 </div>""", unsafe_allow_html=True)
 
+# ── Newly active: who from this list started generating VRS minutes recently ──
+st.markdown("### 🚀 Newly active — generated VRS minutes recently")
+st.caption("Of the Convo-Now-only list above, who has since generated **VRS minutes**? "
+           "Usage is monthly, so this checks VRS Monthly Values in the month(s) on/after the "
+           "chosen date (e.g. the upsell-guide deploy date).")
+_na1, _na2 = st.columns([2, 1])
+with _na1:
+    active_since = st.date_input("Became active since", value=date(2026, 7, 31), key="vz_active_since")
+with _na2:
+    st.markdown("<div style='margin-top:1.7rem;'></div>", unsafe_allow_html=True)
+    find_active = st.button("Find newly active", key="vz_active_btn", use_container_width=True)
+
+if find_active:
+    _emails = sorted({e for e in df_full["Email"] if e and "@" in str(e)})
+    _floor = date(active_since.year, active_since.month, 1)
+    _floor_ms = str(int(datetime(_floor.year, _floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
+    # VRS numbers for the cohort's emails
+    _vrs_nums, _num_email = [], {}
+    with dash_spinner("Finding VRS numbers for the list…"):
+        for i in range(0, len(_emails), 100):
+            chunk = _emails[i:i + 100]
+            for r in fetch_all("2-40974683", ["number", "email", "service_type"],
+                               filter_groups=[{"filters": [
+                                   {"propertyName": "email", "operator": "IN", "values": chunk},
+                                   {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}]):
+                p = r.get("properties", {})
+                n = str(p.get("number") or "").strip()
+                e = (p.get("email") or "").strip().lower()
+                if n and e:
+                    _vrs_nums.append(n); _num_email[n] = e
+    # VRS usage on/after the floor month
+    _email_recent: dict = defaultdict(float)
+    if _vrs_nums:
+        with dash_spinner("Checking recent VRS usage…"):
+            for i in range(0, len(_vrs_nums), 100):
+                chunk = _vrs_nums[i:i + 100]
+                for o in fetch_all("2-46246179",
+                                   ["number", "month_date", "usage_minutes", "service_type"],
+                                   filter_groups=[{"filters": [
+                                       {"propertyName": "number", "operator": "IN", "values": chunk},
+                                       {"propertyName": "month_date", "operator": "GTE", "value": _floor_ms},
+                                       {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
+                                       {"propertyName": "usage_minutes", "operator": "GT", "value": "0"}]}]):
+                    p = o.get("properties", {})
+                    n = str(p.get("number") or "").strip()
+                    e = _num_email.get(n)
+                    if e:
+                        _email_recent[e] += to_float(p.get("usage_minutes")) or 0.0
+    _active = df_full[df_full["Email"].isin(set(_email_recent))].copy()
+    _active["VRS Min (since)"] = _active["Email"].map(lambda e: round(_email_recent.get(e, 0.0), 1))
+    _active = _active.sort_values("VRS Min (since)", ascending=False)
+    _n_list = len(df_full)
+    _n_active = len(_active)
+    aa1, aa2, aa3 = st.columns(3)
+    aa1.metric("List size", f"{_n_list:,}")
+    aa2.metric("🚀 Became active (VRS)", f"{_n_active:,}",
+               f"{_n_active/_n_list*100:.1f}%" if _n_list else "—")
+    aa3.metric("VRS min generated", f"{_active['VRS Min (since)'].sum():,.1f}")
+    st.caption(f"'Active' = has VRS usage in **{_floor:%b %Y} onward**. "
+               f"Guide deploy: {active_since:%b %d, %Y}.")
+    if _n_active:
+        _acols = [c for c in ["Name", "Email", "VRS Min (since)", "Convo Now Min",
+                              "Convo Now Numbers", "Active Months"] if c in _active.columns]
+        st.dataframe(_active[_acols], use_container_width=True, hide_index=True, height=380)
+        st.download_button("📥 Export newly-active CSV", _active[_acols].to_csv(index=False),
+                           f"newly_active_vrs_{active_since:%Y%m%d}.csv", "text/csv", key="vz_active_csv")
+    else:
+        st.info("No one from this list has generated VRS minutes in that window yet.")
+
 # ── Charts ────────────────────────────────────────────────────────────────────
 filtered_emails = set(df_full["Email"])
 
