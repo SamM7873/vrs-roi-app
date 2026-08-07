@@ -563,14 +563,20 @@ if find_active:
                     if _cf_on and _ciso and _ciso < created_since.strftime("%Y-%m-%d"):
                         continue  # created before the cutoff → skip
                     _vrs_nums.append(n); _num_email[n] = e; _num_created[n] = _ciso
-    # VRS usage on/after the floor month
+    # VRS usage on/after the floor month (+ URSA platforms, CfZ, and which months)
     _email_recent: dict = defaultdict(float)
+    _r_ios: dict = defaultdict(float)
+    _r_and: dict = defaultdict(float)
+    _r_web: dict = defaultdict(float)
+    _r_cfz: dict = defaultdict(float)
+    _r_months: dict = defaultdict(set)
     if _vrs_nums:
         with dash_spinner("Checking recent VRS usage…"):
             for i in range(0, len(_vrs_nums), 100):
                 chunk = _vrs_nums[i:i + 100]
                 for o in fetch_all("2-46246179",
-                                   ["number", "month_date", "usage_minutes", "service_type"],
+                                   ["number", "month_date", "usage_minutes", "ursa_ios_minutes",
+                                    "ursa_android_minutes", "ursa_web_minutes", "cfz_minutes", "service_type"],
                                    filter_groups=[{"filters": [
                                        {"propertyName": "number", "operator": "IN", "values": chunk},
                                        {"propertyName": "month_date", "operator": "GTE", "value": _floor_ms},
@@ -581,8 +587,20 @@ if find_active:
                     e = _num_email.get(n)
                     if e:
                         _email_recent[e] += to_float(p.get("usage_minutes")) or 0.0
+                        _r_ios[e] += to_float(p.get("ursa_ios_minutes")) or 0.0
+                        _r_and[e] += to_float(p.get("ursa_android_minutes")) or 0.0
+                        _r_web[e] += to_float(p.get("ursa_web_minutes")) or 0.0
+                        _r_cfz[e] += to_float(p.get("cfz_minutes")) or 0.0
+                        _mk = (p.get("month_date") or "")[:7]
+                        if _mk:
+                            _r_months[e].add(_mk)
     _active = df_full[df_full["Email"].isin(set(_email_recent))].copy()
     _active["VRS Min (since)"] = _active["Email"].map(lambda e: round(_email_recent.get(e, 0.0), 1))
+    _active["URSA iOS"] = _active["Email"].map(lambda e: round(_r_ios.get(e, 0.0), 1))
+    _active["URSA Android"] = _active["Email"].map(lambda e: round(_r_and.get(e, 0.0), 1))
+    _active["URSA Web"] = _active["Email"].map(lambda e: round(_r_web.get(e, 0.0), 1))
+    _active["CfZ Min (since)"] = _active["Email"].map(lambda e: round(_r_cfz.get(e, 0.0), 1))
+    _active["Month(s)"] = _active["Email"].map(lambda e: ", ".join(sorted(_r_months.get(e, set()))))
     _active = _active.sort_values("VRS Min (since)", ascending=False)
     _n_list = len(df_full)
     _n_active = len(_active)
@@ -598,8 +616,10 @@ if find_active:
                + (f" · Only VRS numbers **created on/after {created_since:%b %d, %Y}**."
                   if _cf_on else ""))
     if _n_active:
-        _acols = [c for c in ["Name", "Email", "VRS Min (since)", "Convo Now Min",
-                              "Convo Now Numbers", "Active Months"] if c in _active.columns]
+        _acols = [c for c in ["Name", "Email", "Month(s)", "VRS Min (since)",
+                              "URSA iOS", "URSA Android", "URSA Web", "CfZ Min (since)",
+                              "Convo Now Min", "Convo Now Numbers", "Active Months"]
+                  if c in _active.columns]
         st.dataframe(_active[_acols], use_container_width=True, hide_index=True, height=380)
         st.download_button("📥 Export newly-active CSV", _active[_acols].to_csv(index=False),
                            f"newly_active_vrs_{active_since:%Y%m%d}.csv", "text/csv", key="vz_active_csv")
