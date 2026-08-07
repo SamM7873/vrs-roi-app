@@ -35,20 +35,31 @@ def _ms(d, end=False):
     return str(int(t.timestamp() * 1000))
 
 
+# Date fields you can filter the period on (internal name → label). Only existing ones show.
+DATE_CANDS = [
+    ("registered_at", "Registered At"),
+    ("manually_verified_at", "Manually Verified At"),
+    ("manually_edited_at", "Manually Edited At"),
+    ("registration_created_at", "Registration Created At"),
+    ("registration_updated_at", "Registration Updated At"),
+    ("lex_verified_at", "Lex Verified At"),
+    ("hs_createdate", "Record Created"),
+]
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
-def _date_prop():
-    """Pick the registration date field that exists (registered_at, else create date)."""
-    for cand in ("registered_at", "hs_createdate", "createdate"):
+def _date_fields():
+    """Return [(internal, label)] date fields that exist on the object."""
+    out = []
+    for cand, label in DATE_CANDS:
         try:
             r = requests.post(f"{_B}/crm/v3/objects/{REG_OBJECT}/search", headers=_H,
-                              json={"limit": 1, "properties": [cand],
-                                    "sorts": [{"propertyName": cand, "direction": "DESCENDING"}]},
-                              timeout=20)
+                              json={"limit": 1, "properties": [cand]}, timeout=15)
             if r.status_code == 200:
-                return cand
+                out.append((cand, label))
         except Exception:
             pass
-    return "hs_createdate"
+    return out or [("hs_createdate", "Record Created")]
 
 
 # Registration object fields (internal name → column label). Only those that
@@ -192,7 +203,9 @@ def _range(preset, today=None):
 PRESETS = ["Today", "Yesterday", "This Week", "This Month", "This Quarter", "This Year",
            "Last Month", "Last Quarter", "Last Year", "Custom"]
 
-c1, c2 = st.columns([2, 1])
+_dfields = _date_fields()
+_dlabels = [lb for _n, lb in _dfields]
+c1, c2, c3 = st.columns([2, 2, 1])
 with c1:
     preset = st.selectbox("Period", PRESETS, index=3)
     start_d, end_d = _range(preset)
@@ -201,15 +214,20 @@ with c1:
         if isinstance(dr, tuple) and len(dr) == 2:
             start_d, end_d = dr
 with c2:
+    _basis_label = st.selectbox("Filter dates by", _dlabels, index=0,
+                                help="Which date the period applies to. Pick 'Manually Verified At' "
+                                     "to see all manual verifications in the period, etc.")
+    date_prop = next(n for n, lb in _dfields if lb == _basis_label)
+with c3:
     st.markdown("<div style='margin-top:1.7rem;'></div>", unsafe_allow_html=True)
     run = st.button("Run", type="primary", use_container_width=True)
 
-st.caption(f"Showing registrations from **{start_d:%b %d, %Y}** to **{end_d:%b %d, %Y}**.")
+st.caption(f"Showing registrations where **{_basis_label}** is between "
+           f"**{start_d:%b %d, %Y}** and **{end_d:%b %d, %Y}**.")
 
-_key = f"registrations_{start_d:%Y%m%d}_{end_d:%Y%m%d}"
+_key = f"registrations_{date_prop}_{start_d:%Y%m%d}_{end_d:%Y%m%d}"
 
 if run:
-    date_prop = _date_prop()
     props = _extra_props(date_prop)
     with dash_spinner("Fetching registrations…"):
         recs = _seek(date_prop, props, _ms(start_d), _ms(end_d, end=True), "Loaded")
@@ -218,7 +236,7 @@ if run:
     for r in recs:
         p = r.get("properties", {})
         dt = _parse(p.get(date_prop))
-        row = {"Registered": dt.strftime("%Y-%m-%d") if dt else ""}
+        row = {"Date": dt.strftime("%Y-%m-%d") if dt else ""}
         for cand in props:
             row[_labels[cand]] = (p.get(cand) or "—")
         rows.append(row)
@@ -242,7 +260,7 @@ if df.empty:
 
 # ── KPIs ──
 total = len(df)
-_d = pd.to_datetime(df["Registered"], errors="coerce")
+_d = pd.to_datetime(df["Date"], errors="coerce")
 span_days = (end_d - start_d).days + 1
 per_day = total / span_days if span_days else total
 # Verified = Lex status "Verified" OR manually verified (has a Manually Verified At).
@@ -328,12 +346,12 @@ st.markdown("##### Registration detail")
 for _mc in ("Manually Edited At", "Manually Edited By", "Manually Verified At", "Manually Verified By"):
     if _mc not in df.columns:
         df[_mc] = "—"
-_pref = ["Registered", "Reg Type", "Usage Type", "Lex Status", "URD Status",
+_pref = ["Date", "Reg Type", "Usage Type", "Lex Status", "URD Status",
          "Manually Verified At", "Manually Verified By", "Manually Edited At", "Manually Edited By",
          "Number", "Email", "Registration Id", "Lex Error Msg", "URD Filling Error",
          "URD Identity Error", "Registration UUID"]
 _cols = [c for c in _pref if c in df.columns] + [c for c in df.columns if c not in _pref]
-st.dataframe(df.sort_values("Registered", ascending=False)[_cols],
+st.dataframe(df.sort_values("Date", ascending=False)[_cols],
              use_container_width=True, hide_index=True, height=420)
 st.download_button("📥 Export CSV", df.to_csv(index=False),
                    f"registrations_{start_d:%Y%m%d}_{end_d:%Y%m%d}.csv", "text/csv")
