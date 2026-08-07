@@ -315,7 +315,56 @@ pick = st.text_input("Enter a consumer phone # to open their card", key="drill")
 if pick:
     hit = df[df["Number"].str.contains(pick, na=False)]
     if hit.empty:
-        st.warning(f"No consumer number matching '{pick}'.")
+        st.warning(f"'{pick}' isn't in the loaded consumer set (only VRS + Convo Now numbers "
+                   f"are pulled). Looking it up directly in HubSpot…")
+        # Direct lookup: what does this number actually look like in HubSpot?
+        recs = fetch_all(NUM_OBJECT,
+                         ["number", "email", "first_name", "last_name", "service_type",
+                          "account_status", "usage_type", "number_created_at"],
+                         filter_groups=[{"filters": [
+                             {"propertyName": "number", "operator": "EQ", "value": pick}]}])
+        if not recs:
+            st.error(f"No Number object at all with number = {pick}. "
+                     "Check the exact value stored in HubSpot (formatting / country code).")
+        else:
+            nrows = []
+            for rr in recs:
+                p = rr.get("properties", {})
+                nrows.append({
+                    "Number": p.get("number") or "", "Service Type": p.get("service_type") or "(blank)",
+                    "Status": p.get("account_status") or "(blank)",
+                    "Usage Type": p.get("usage_type") or "(blank)",
+                    "Email": p.get("email") or "",
+                    "Created": str(p.get("number_created_at") or "")[:10]})
+            st.markdown("###### What HubSpot has for this number")
+            st.dataframe(pd.DataFrame(nrows), use_container_width=True, hide_index=True)
+            svcs = {(r.get("properties", {}).get("service_type") or "(blank)") for r in recs}
+            if svcs - {"VRS", "Convo Now"}:
+                st.info(f"This number's service_type is **{', '.join(sorted(svcs))}** — the dashboard "
+                        f"only loads **VRS** and **Convo Now**, which is why it wasn't in the list. "
+                        f"Tell me if you want this service type included.")
+            # pull its monthly usage directly
+            mvrec = fetch_all(MV_OBJECT,
+                              ["number", "month_date", "ursa_ios_minutes", "ursa_android_minutes",
+                               "ursa_web_minutes", "cfz_minutes", "usage_minutes", "service_type"],
+                              filter_groups=[{"filters": [
+                                  {"propertyName": "number", "operator": "EQ", "value": pick}]}])
+            if mvrec:
+                mv_rows = []
+                for o in sorted(mvrec, key=lambda x: str(x.get("properties", {}).get("month_date"))):
+                    p = o.get("properties", {})
+                    mv_rows.append({
+                        "Month": (_period_of(p.get("month_date")) or ""),
+                        "Service": p.get("service_type") or "",
+                        "URSA": round((to_float(p.get("ursa_ios_minutes")) or 0)
+                                      + (to_float(p.get("ursa_android_minutes")) or 0)
+                                      + (to_float(p.get("ursa_web_minutes")) or 0), 1),
+                        "CfZ": round(to_float(p.get("cfz_minutes")) or 0, 1),
+                        "Usage": round(to_float(p.get("usage_minutes")) or 0, 1)})
+                st.markdown("###### Monthly Values on record (all history)")
+                st.dataframe(pd.DataFrame(mv_rows).astype(str), use_container_width=True, hide_index=True)
+            else:
+                st.caption("No Monthly Values records exist for this number — nothing to score.")
     else:
         r = hit.iloc[0]
         d1, d2 = st.columns([2, 1])
