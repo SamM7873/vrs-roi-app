@@ -7,7 +7,7 @@ from utils import (require_auth, is_app_admin, COMMON_CSS,
                    save_report, load_report, saved_at_label)
 
 SAVE_KEY = "work_hours_audit"
-TTL_SECONDS = 48 * 3600   # keep the last uploaded report for 48 hours
+RETENTION_OPTS = {"24 hours": 24, "48 hours": 48, "7 days": 168}   # label -> hours
 
 st.set_page_config(page_title="Work-Hours Audit", layout="wide", page_icon="⏱️")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -28,7 +28,14 @@ st.markdown(
     "This measures each person's **first-to-last recorded action per day** — a proxy for workday "
     "length. Breaks inside that window are included; work outside HubSpot is not counted.")
 
-up = st.file_uploader("HubSpot audit log CSV", type=["csv"], key="wh_csv")
+c_up, c_ret = st.columns([3, 1])
+with c_up:
+    up = st.file_uploader("HubSpot audit log CSV", type=["csv"], key="wh_csv")
+with c_ret:
+    _ret_label = st.selectbox("Keep report for", list(RETENTION_OPTS.keys()),
+                              index=1, key="wh_ret",
+                              help="How long the uploaded report stays saved before it expires.")
+TTL_SECONDS = RETENTION_OPTS[_ret_label] * 3600
 
 
 def _hm(h):
@@ -68,16 +75,16 @@ else:
         report_header_close(); st.stop()
     age = time.time() - (saved.get("saved_at") or 0)
     if age > TTL_SECONDS:
-        st.warning("The saved report is more than 48 hours old — please upload a fresh export.")
+        st.warning(f"The saved report is older than {_ret_label} — please upload a fresh export.")
         report_header_close(); st.stop()
     g, n_events, d0, d1 = saved["g"], saved["n_events"], saved["d0"], saved["d1"]
 
-# saved-state banner (48h retention)
+# saved-state banner (retention window)
 if saved and saved.get("saved_at"):
-    _rem = TTL_SECONDS - (time.time() - saved["saved_at"])
-    _hrs = max(0, int(_rem // 3600))
-    st.caption(f"📌 Saved {saved_at_label(saved)} · kept for 48h "
-               f"(~{_hrs}h left) · upload a new CSV to replace it.")
+    _rem = max(0, TTL_SECONDS - (time.time() - saved["saved_at"]))
+    _left = f"~{int(_rem // 3600)}h left" if _rem >= 3600 else f"~{int(_rem // 60)}m left"
+    st.caption(f"📌 Saved {saved_at_label(saved)} · kept for {_ret_label} "
+               f"({_left}) · upload a new CSV to replace it.")
 
 MIN_DAY = st.slider("Ignore days shorter than (hours) — filters out quick check-ins",
                     0.0, 3.0, 1.0, 0.5, key="wh_min")
