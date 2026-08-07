@@ -1,8 +1,13 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import time
 from utils import (require_auth, is_app_admin, COMMON_CSS,
-                   report_header, report_header_close, log_report_view)
+                   report_header, report_header_close, log_report_view,
+                   save_report, load_report, saved_at_label)
+
+SAVE_KEY = "work_hours_audit"
+TTL_SECONDS = 48 * 3600   # keep the last uploaded report for 48 hours
 
 st.set_page_config(page_title="Work-Hours Audit", layout="wide", page_icon="⏱️")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -24,28 +29,55 @@ st.markdown(
     "length. Breaks inside that window are included; work outside HubSpot is not counted.")
 
 up = st.file_uploader("HubSpot audit log CSV", type=["csv"], key="wh_csv")
-if up is None:
-    st.info("Upload the audit CSV to see the report.")
-    report_header_close(); st.stop()
 
-raw = pd.read_csv(up, dtype=str).fillna("")
-# expected columns: "Modified by", "Date of change" (YYYY-MM-DD HH:MM)
-_user_col = next((c for c in raw.columns if c.strip().lower() in
-                  ("modified by", "user", "performed by")), None)
-_date_col = next((c for c in raw.columns if "date" in c.strip().lower()), None)
-if not _user_col or not _date_col:
-    st.error(f"Couldn't find user / date columns. Found: {list(raw.columns)}")
-    report_header_close(); st.stop()
 
-raw["_u"] = raw[_user_col].str.strip()
-raw["_t"] = pd.to_datetime(raw[_date_col].str.strip(), errors="coerce")
-raw = raw[(raw["_u"] != "") & raw["_t"].notna()].copy()
-raw["_day"] = raw["_t"].dt.date
+def _hm(h):
+    return f"{int(h)}h {int(round((h - int(h)) * 60)):02d}m"
 
-# ── per user / per day span ──────────────────────────────────────────────────
-g = raw.groupby(["_u", "_day"]).agg(
-    start=("_t", "min"), end=("_t", "max"), events=("_t", "size")).reset_index()
-g["span_h"] = (g["end"] - g["start"]).dt.total_seconds() / 3600.0
+
+def _parse(file):
+    """Return (day-span df `g`, event_count, first_day, last_day) or an error string."""
+    raw = pd.read_csv(file, dtype=str).fillna("")
+    _user_col = next((c for c in raw.columns if c.strip().lower() in
+                      ("modified by", "user", "performed by")), None)
+    _date_col = next((c for c in raw.columns if "date" in c.strip().lower()), None)
+    if not _user_col or not _date_col:
+        return f"Couldn't find user / date columns. Found: {list(raw.columns)}"
+    raw["_u"] = raw[_user_col].str.strip()
+    raw["_t"] = pd.to_datetime(raw[_date_col].str.strip(), errors="coerce")
+    raw = raw[(raw["_u"] != "") & raw["_t"].notna()].copy()
+    raw["_day"] = raw["_t"].dt.date
+    g = raw.groupby(["_u", "_day"]).agg(
+        start=("_t", "min"), end=("_t", "max"), events=("_t", "size")).reset_index()
+    g["span_h"] = (g["end"] - g["start"]).dt.total_seconds() / 3600.0
+    return g, len(raw), raw["_day"].min(), raw["_day"].max()
+
+
+# On upload: parse + persist for 48h. Otherwise fall back to a saved report if fresh.
+if up is not None:
+    res = _parse(up)
+    if isinstance(res, str):
+        st.error(res); report_header_close(); st.stop()
+    g, n_events, d0, d1 = res
+    save_report(SAVE_KEY, {"g": g, "n_events": n_events, "d0": d0, "d1": d1})
+    saved = load_report(SAVE_KEY)
+else:
+    saved = load_report(SAVE_KEY)
+    if saved is None:
+        st.info("Upload the audit CSV to see the report.")
+        report_header_close(); st.stop()
+    age = time.time() - (saved.get("saved_at") or 0)
+    if age > TTL_SECONDS:
+        st.warning("The saved report is more than 48 hours old — please upload a fresh export.")
+        report_header_close(); st.stop()
+    g, n_events, d0, d1 = saved["g"], saved["n_events"], saved["d0"], saved["d1"]
+
+# saved-state banner (48h retention)
+if saved and saved.get("saved_at"):
+    _rem = TTL_SECONDS - (time.time() - saved["saved_at"])
+    _hrs = max(0, int(_rem // 3600))
+    st.caption(f"📌 Saved {saved_at_label(saved)} · kept for 48h "
+               f"(~{_hrs}h left) · upload a new CSV to replace it.")
 
 MIN_DAY = st.slider("Ignore days shorter than (hours) — filters out quick check-ins",
                     0.0, 3.0, 1.0, 0.5, key="wh_min")
@@ -54,13 +86,7 @@ if clean.empty:
     st.warning("No qualifying working days after the filter.")
     report_header_close(); st.stop()
 
-
-def _hm(h):
-    return f"{int(h)}h {int(round((h - int(h)) * 60)):02d}m"
-
-
-d0, d1 = raw["_day"].min(), raw["_day"].max()
-st.caption(f"Window **{d0:%b %d}–{d1:%b %d, %Y}** · {len(raw):,} events · "
+st.caption(f"Window **{d0:%b %d}–{d1:%b %d, %Y}** · {n_events:,} events · "
            f"{clean['_u'].nunique()} users · times as exported (account timezone).")
 
 # ── per-user summary ─────────────────────────────────────────────────────────
