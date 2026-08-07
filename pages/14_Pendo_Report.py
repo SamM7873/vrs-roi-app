@@ -324,11 +324,13 @@ from utils import pdf_download_button
 pdf_download_button(_df_table, "pendo_contacts.pdf", "Pendo Report", key="pendo")
 
 
-# ── Usage lookup by email: Number (by email) → Monthly Values (URSA + CfZ) ────
+# ── Bulk usage lookup: names/emails → Number (by email) → Monthly Values ──────
 st.markdown("---")
-st.markdown("#### 📞 Usage lookup by email — URSA & CfZ minutes")
-st.caption("Enter an email → match **Number** objects by email → pull associated **Monthly Values** "
-           "and show URSA & CfZ minutes per month.")
+st.markdown("#### 📞 Usage lookup — URSA (iOS/Android/Web) & CfZ minutes")
+st.caption("Paste **first name, last name, or email** (one per line or comma-separated). "
+           "Names resolve to emails from the loaded Pendo contacts, then we match **Number** "
+           "objects by email and pull associated **Monthly Values** with URSA (iOS/Android/Web) "
+           "& CfZ minutes per month.")
 
 
 def _mv_period(v):
@@ -345,12 +347,53 @@ def _mv_period(v):
         return None
 
 
-_email_q = st.text_input("Email address", placeholder="name@example.com", key="usage_email").strip().lower()
-if _email_q:
-    # Pendo engagement for this email (from the loaded Pendo contacts)
-    _pmatch = df[df["Email"].str.lower() == _email_q]
+_bulk_raw = st.text_area(
+    "First name, last name, or email — one per line or comma-separated",
+    placeholder="John Smith\njane@example.com\nMaria", key="usage_bulk", height=110)
+# split on newlines and commas
+_entries = [e.strip() for e in _bulk_raw.replace(",", "\n").splitlines() if e.strip()]
+
+if _entries:
+    # resolve each entry to one or more emails
+    _emails = set()
+    _unresolved = []
+    _lc = {c: c for c in df.columns}
+    _first = df["First Name"].astype(str).str.strip().str.lower() if "First Name" in df.columns else None
+    _last = df["Last Name"].astype(str).str.strip().str.lower() if "Last Name" in df.columns else None
+    _name = df["Name"].astype(str).str.strip().str.lower() if "Name" in df.columns else None
+    _mail = df["Email"].astype(str).str.strip().str.lower() if "Email" in df.columns else None
+    for e in _entries:
+        el = e.lower()
+        if "@" in el:
+            _emails.add(el)
+            continue
+        _hit = pd.Series(False, index=df.index)
+        if _name is not None:
+            _hit = _hit | (_name == el) | _name.str.contains(el, regex=False, na=False)
+        if _first is not None:
+            _hit = _hit | (_first == el)
+        if _last is not None:
+            _hit = _hit | (_last == el)
+        _found = _mail[_hit].dropna() if _mail is not None else pd.Series([], dtype=str)
+        _found = [x for x in _found.tolist() if x and "@" in x]
+        if _found:
+            _emails.update(_found)
+        else:
+            _unresolved.append(e)
+    _emails = sorted(_emails)
+    if _unresolved:
+        st.caption("⚠️ Could not resolve to an email: " + ", ".join(_unresolved[:20])
+                   + (" …" if len(_unresolved) > 20 else ""))
+    if not _emails:
+        st.warning("No emails resolved from your entries. Paste emails directly, or load the "
+                   "Pendo contacts above so names can be matched.")
+        st.stop()
+    st.caption(f"Resolved **{len(_emails)}** email(s) from {len(_entries)} entr(y/ies).")
+
+    # Pendo engagement for these emails (from the loaded Pendo contacts)
+    _pmatch = df[df["Email"].str.lower().isin(_emails)] if "Email" in df.columns else pd.DataFrame()
     if not _pmatch.empty:
-        st.markdown("###### Pendo engagement for this email")
+        st.markdown("###### Pendo engagement for matched emails")
         _pcols = ["Name", "Email", "Phone", "Pendo ID", "First Visit", "Last Visit",
                   "Events (30d)", "Days Active (30d)", "Time on App (30d)", "Usage Trend % (30d)"]
         _pshow = _pmatch[[c for c in _pcols if c in _pmatch.columns]].copy()
@@ -359,39 +402,39 @@ if _email_q:
         if "Last Visit" in _pshow.columns:
             _pshow["Last Visit"] = _pshow["Last Visit"].map(_fmt_mdy)
         st.dataframe(_pshow, use_container_width=True, hide_index=True)
-    else:
-        st.caption("No Pendo contact loaded with this email (usage still shown below if numbers match).")
-    with dash_spinner(f"Finding numbers for {_email_q}…"):
-        num_recs = fetch_all(
-            "2-40974683", ["number", "email", "service_type", "account_status",
-                           "usage_type", "number_created_at"],
-            filter_groups=[{"filters": [
-                {"propertyName": "email", "operator": "EQ", "value": _email_q},
-                {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}])
+
+    # Number objects by email IN (chunked)
     num_map = {}
-    for r in num_recs:
-        p = r.get("properties", {})
-        n = str(p.get("number") or "").strip()
-        if n:
-            _ciso = _dt(p.get("number_created_at"))
-            num_map[n] = {"service_type": (p.get("service_type") or "").strip(),
-                          "status": (p.get("account_status") or "").strip(),
-                          "usage_type": (p.get("usage_type") or "").strip(),
-                          "created": _fmt_mdy(_ciso),
-                          "created_iso": _ciso}
+    with dash_spinner(f"Finding numbers for {len(_emails)} email(s)…"):
+        for i in range(0, len(_emails), 100):
+            chunk = _emails[i:i + 100]
+            num_recs = fetch_all(
+                "2-40974683", ["number", "email", "service_type", "account_status",
+                               "usage_type", "number_created_at"],
+                filter_groups=[{"filters": [
+                    {"propertyName": "email", "operator": "IN", "values": chunk},
+                    {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}])
+            for r in num_recs:
+                p = r.get("properties", {})
+                n = str(p.get("number") or "").strip()
+                if n:
+                    _ciso = _dt(p.get("number_created_at"))
+                    num_map[n] = {"email": (p.get("email") or "").strip(),
+                                  "service_type": (p.get("service_type") or "").strip(),
+                                  "status": (p.get("account_status") or "").strip(),
+                                  "usage_type": (p.get("usage_type") or "").strip(),
+                                  "created": _fmt_mdy(_ciso),
+                                  "created_iso": _ciso}
 
     if not num_map:
-        st.warning(f"No Number objects found with email = {_email_q}.")
+        st.warning("No VRS Number objects found for the resolved email(s).")
     else:
-        st.caption(f"Matched {len(num_map)} number(s): "
-                   + ", ".join(f"{n} ({m['service_type'] or '—'}/{m['status'] or '—'})"
-                               for n, m in num_map.items()))
+        st.caption(f"Matched {len(num_map)} number(s) across {len(_emails)} email(s).")
 
         # ── Number Created date filter ──
         _created_dates = sorted([m["created_iso"] for m in num_map.values() if m.get("created_iso")])
         numbers = list(num_map.keys())
         if _created_dates:
-            from datetime import date as _date
             _lo = datetime.strptime(_created_dates[0], "%Y-%m-%d").date()
             _hi = datetime.strptime(_created_dates[-1], "%Y-%m-%d").date()
             _use_cf = st.checkbox("Filter by Number Created date", value=False, key="usage_cf_on")
@@ -408,12 +451,13 @@ if _email_q:
             st.info("No numbers in the selected created-date range.")
             st.stop()
         rows_mv = []
-        with dash_spinner("Pulling Monthly Values (URSA & CfZ)…"):
+        with dash_spinner("Pulling Monthly Values (URSA iOS/Android/Web & CfZ)…"):
             for i in range(0, len(numbers), 100):
                 chunk = numbers[i:i + 100]
                 mv = fetch_all(
                     "2-46246179",
-                    ["number", "month_date", "ursa_minutes", "cfz_minutes",
+                    ["number", "month_date", "ursa_minutes", "ursa_ios_minutes",
+                     "ursa_android_minutes", "ursa_web_minutes", "cfz_minutes",
                      "usage_minutes", "service_type"],
                     filter_groups=[{"filters": [
                         {"propertyName": "number", "operator": "IN", "values": chunk},
@@ -422,10 +466,14 @@ if _email_q:
                     p = o.get("properties", {})
                     _n = str(p.get("number") or "").strip()
                     rows_mv.append({
+                        "Email": num_map.get(_n, {}).get("email", ""),
                         "Number": _n,
                         "Number Created": num_map.get(_n, {}).get("created", ""),
                         "Month": _mv_period(p.get("month_date")),
                         "Service": (p.get("service_type") or "").strip() or "—",
+                        "URSA iOS": to_float(p.get("ursa_ios_minutes")) or 0.0,
+                        "URSA Android": to_float(p.get("ursa_android_minutes")) or 0.0,
+                        "URSA Web": to_float(p.get("ursa_web_minutes")) or 0.0,
                         "URSA min": to_float(p.get("ursa_minutes")) or 0.0,
                         "CfZ min": to_float(p.get("cfz_minutes")) or 0.0,
                         "Usage min": to_float(p.get("usage_minutes")) or 0.0,
@@ -434,19 +482,21 @@ if _email_q:
             st.info("Numbers matched, but no Monthly Values found for them.")
         else:
             mvdf = pd.DataFrame(rows_mv).dropna(subset=["Month"])
-            mvdf = mvdf.sort_values(["Number", "Month"]).reset_index(drop=True)
-            t1, t2, t3 = st.columns(3)
+            mvdf = mvdf.sort_values(["Email", "Number", "Month"]).reset_index(drop=True)
+            t1, t2, t3, t4 = st.columns(4)
             t1.metric("Total URSA minutes", f"{mvdf['URSA min'].sum():,.1f}")
             t2.metric("Total CfZ minutes", f"{mvdf['CfZ min'].sum():,.1f}")
-            t3.metric("Months of data", f"{mvdf['Month'].nunique():,}")
+            t3.metric("Numbers", f"{mvdf['Number'].nunique():,}")
+            t4.metric("Months of data", f"{mvdf['Month'].nunique():,}")
             mvdf_show = mvdf.copy()
-            for c in ("URSA min", "CfZ min", "Usage min"):
+            for c in ("URSA iOS", "URSA Android", "URSA Web", "URSA min", "CfZ min", "Usage min"):
                 mvdf_show[c] = mvdf_show[c].round(1)
             st.dataframe(mvdf_show, use_container_width=True, hide_index=True, height=380)
             # monthly totals across all matched numbers
-            monthly = (mvdf.groupby(["Month", "Service"])[["URSA min", "CfZ min", "Usage min"]]
-                       .sum().round(1).reset_index())
+            monthly = (mvdf.groupby(["Month", "Service"])[
+                ["URSA iOS", "URSA Android", "URSA Web", "URSA min", "CfZ min", "Usage min"]]
+                .sum().round(1).reset_index())
             st.markdown("###### Monthly totals (all matched numbers)")
             st.dataframe(monthly, use_container_width=True, hide_index=True)
             st.download_button("Download usage CSV", mvdf.to_csv(index=False),
-                               f"usage_{_email_q}.csv", "text/csv", key="usage_csv")
+                               "usage_bulk_lookup.csv", "text/csv", key="usage_csv")
