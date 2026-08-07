@@ -132,7 +132,30 @@ nf1, nf2 = st.columns(2)
 first_q = nf1.text_input("First name", placeholder="filter by first name…").strip().lower()
 last_q = nf2.text_input("Last name", placeholder="filter by last name…").strip().lower()
 
+with st.expander("📋 Bulk name / email lookup — paste a list"):
+    bulk_raw = st.text_area("One name or email per line (or comma-separated)",
+                            placeholder="Jane Doe\njohn@example.com\nSmith", height=120)
+    bulk_exact = st.checkbox("Match whole name exactly", value=False,
+                             help="On = exact full-name/email match; Off = contains match.")
+
 df_view = df.copy()
+
+# bulk list filter (names or emails)
+_bulk_terms = [t.strip().lower() for t in bulk_raw.replace(",", "\n").splitlines() if t.strip()] \
+    if bulk_raw.strip() else []
+if _bulk_terms:
+    _name_l = df_view["Name"].astype(str).str.lower()
+    _email_l = df_view["Email"].astype(str).str.lower()
+    if bulk_exact:
+        _terms = set(_bulk_terms)
+        _bmask = _name_l.isin(_terms) | _email_l.isin(_terms)
+    else:
+        import re as _re
+        _pat = "|".join(_re.escape(t) for t in _bulk_terms)
+        _bmask = _name_l.str.contains(_pat, na=False, regex=True) | _email_l.str.contains(_pat, na=False, regex=True)
+    df_view = df_view[_bmask]
+    st.caption(f"Bulk: {len(_bulk_terms):,} entries pasted → {len(df_view):,} contacts matched.")
+
 if first_q:
     df_view = df_view[df_view["First Name"].str.lower().str.contains(first_q, na=False, regex=False)]
 if last_q:
