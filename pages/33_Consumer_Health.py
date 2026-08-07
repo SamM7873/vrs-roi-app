@@ -90,10 +90,12 @@ months = [current - i for i in range(LOOKBACK - 1, -1, -1)]     # oldest → cur
 month_labels = [m.strftime("%b") for m in months]
 
 c1, c2 = st.columns([1, 3])
+_opts = [m.strftime("%b %Y") + (" (current, partial)" if m == current else "") for m in months]
 with c1:
-    period_label = st.selectbox("Period (compared month)", [m.strftime("%b %Y") for m in months],
-                                index=len(months) - 1)
-period = months[[m.strftime("%b %Y") for m in months].index(period_label)]
+    # default to the last COMPLETED month (not the partial current month), so most
+    # consumers actually have usage to compare — the current month is barely started.
+    period_label = st.selectbox("Period (compared month)", _opts, index=len(months) - 2)
+period = months[_opts.index(period_label)]
 run = st.button("Run consumer health report", type="primary")
 
 _key = f"consumer_health_v{CACHE_VERSION}"
