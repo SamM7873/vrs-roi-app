@@ -264,20 +264,23 @@ def _nonblank(col):
     s = df[col].astype(str).str.strip()
     return ~s.isin(["", "—", "nan", "None"])
 
-_lex_ok = (df["Lex Status"].astype(str).str.strip().str.lower().eq("verified")
-           if "Lex Status" in df.columns else pd.Series(False, index=df.index))
-_manual_ok = _nonblank("Manually Verified At")
+# Lex "verified" = automatic_success or manual_success (also accept a plain "verified").
+VERIFIED_STATUSES = {"automatic_success", "manual_success", "verified", "success"}
+_lex = df["Lex Status"].astype(str).str.strip().str.lower() if "Lex Status" in df.columns \
+    else pd.Series("", index=df.index)
+_lex_ok = _lex.isin(VERIFIED_STATUSES)
+_manual_ok = _nonblank("Manually Verified At") | _lex.eq("manual_success")
 _verified = int((_lex_ok | _manual_ok).sum())
 _manual_n = int(_manual_ok.sum())
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Total registrations", f"{total:,}")
-k2.metric("✅ Verified", f"{_verified:,}", f"{_verified/total*100:.0f}%" if total else "—",
-          help="Lex status = Verified OR manually verified.")
-k3.metric("❌ Not verified", f"{total - _verified:,}",
-          help="Not Lex-verified and not manually verified (incl. 'Not Verified' and blanks).")
-k4.metric("✍️ Manually verified", f"{_manual_n:,}",
-          help="Has a 'Manually Verified At' timestamp.")
+k2.metric("✅ Verified", f"{_verified:,}")
+k2.caption(f"{_verified/total*100:.0f}% of total · auto + manual success")
+k3.metric("❌ Not verified", f"{total - _verified:,}")
+k3.caption("Lex not_verified (and any blanks)")
+k4.metric("✍️ Manually verified", f"{_manual_n:,}")
+k4.caption("manual_success / has Manually Verified At")
 
 # breakdown helper
 def _breakdown(col, title):
