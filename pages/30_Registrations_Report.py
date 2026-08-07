@@ -379,7 +379,9 @@ if not _nv.empty:
             _e = (_nv[~_nv[_ecol].astype(str).str.strip().isin(["", "—", "None", "nan"])]
                   .groupby(_ecol).size().reset_index(name="Count").sort_values("Count", ascending=False))
             if not _e.empty:
-                st.caption(_elabel + ":")
+                _et = _e["Count"].sum()
+                _e["%"] = (_e["Count"] / _et * 100).round(1).astype(str) + "%"
+                st.caption(f"{_elabel} ({_et:,}):")
                 st.dataframe(_e, use_container_width=True, hide_index=True)
 
 # ── detail ──
