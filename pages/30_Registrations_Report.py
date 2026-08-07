@@ -18,7 +18,7 @@ report_header("Registrations Report",
               section="Numbers")
 
 REG_OBJECT = "2-58833629"
-REPORT_VERSION = "v2-manual-fields"  # bump to invalidate old saved runs when fields change
+REPORT_VERSION = "v3-schema-fields"  # bump to invalidate old saved runs when fields change
 
 
 # ── central-time helpers (match HubSpot report boundaries) ──────────────────
@@ -35,71 +35,65 @@ def _ms(d, end=False):
     return str(int(t.timestamp() * 1000))
 
 
-# Date fields you can filter the period on (internal name → label). Only existing ones show.
-DATE_CANDS = [
-    ("registered_at", "Registered At"),
-    ("manually_verified_at", "Manually Verified At"),
-    ("manually_edited_at", "Manually Edited At"),
-    ("registration_created_at", "Registration Created At"),
-    ("registration_updated_at", "Registration Updated At"),
-    ("lex_verified_at", "Lex Verified At"),
-    ("hs_createdate", "Record Created"),
+@st.cache_data(ttl=1800, show_spinner=False)
+def _schema():
+    """Full property list for the object: [(name, label, type)]. Read once from HubSpot."""
+    try:
+        r = requests.get(f"{_B}/crm/v3/properties/{REG_OBJECT}", headers=_H, timeout=25)
+        if r.status_code == 200:
+            return [(p["name"], (p.get("label") or p["name"]).strip(), p.get("type"))
+                    for p in r.json().get("results", [])]
+    except Exception:
+        pass
+    return []
+
+
+# (HubSpot label to match, short display label). We resolve the internal name from
+# the schema by the HubSpot label, so empty "By" columns are fixed regardless of naming.
+WANTED = [
+    ("Registration Type", "Reg Type"), ("Usage Type", "Usage Type"),
+    ("Lex Verification Status", "Lex Status"), ("Lex Verified At", "Lex Verified At"),
+    ("Lex Errors", "Lex Errors"), ("Lex Error Message", "Lex Error Msg"),
+    ("Urd Status", "URD Status"), ("Urd Filling Error Message", "URD Filling Error"),
+    ("Urd Identity Error Message", "URD Identity Error"), ("Urd Terminated At", "URD Terminated At"),
+    ("Manually Edited At", "Manually Edited At"), ("Manually Edited By", "Manually Edited By"),
+    ("Manually Verified At", "Manually Verified At"), ("Manually Verified By", "Manually Verified By"),
+    ("Registration Id", "Registration Id"), ("Registration Uuid", "Registration UUID"),
+    ("Is Itrs Registered", "ITRS Registered"), ("Number", "Number"), ("Email", "Email"),
+]
+DATE_LABELS = [
+    "Registered At", "Manually Verified At", "Manually Edited At",
+    "Registration Created At", "Registration Updated At", "Lex Verified At",
 ]
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def _date_fields():
-    """Return [(internal, label)] date fields that exist on the object."""
-    out = []
-    for cand, label in DATE_CANDS:
-        try:
-            r = requests.post(f"{_B}/crm/v3/objects/{REG_OBJECT}/search", headers=_H,
-                              json={"limit": 1, "properties": [cand]}, timeout=15)
-            if r.status_code == 200:
-                out.append((cand, label))
-        except Exception:
-            pass
-    return out or [("hs_createdate", "Record Created")]
-
-
-# Registration object fields (internal name → column label). Only those that
-# actually exist on the object are pulled — the rest are skipped automatically.
-FIELD_MAP = [
-    ("registration_type", "Reg Type"),
-    ("usage_type", "Usage Type"),
-    ("registration_id", "Registration Id"),
-    ("registration_uuid", "Registration UUID"),
-    ("is_itrs_registered", "ITRS Registered"),
-    ("lex_verification_status", "Lex Status"),
-    ("lex_verified_at", "Lex Verified At"),
-    ("lex_errors", "Lex Errors"),
-    ("lex_error_message", "Lex Error Msg"),
-    ("urd_status", "URD Status"),
-    ("urd_filling_error_message", "URD Filling Error"),
-    ("urd_identity_error_message", "URD Identity Error"),
-    ("urd_terminated_at", "URD Terminated At"),
-    ("manually_edited_at", "Manually Edited At"),
-    ("manually_edited_by", "Manually Edited By"),
-    ("manually_verified_at", "Manually Verified At"),
-    ("manually_verified_by", "Manually Verified By"),
-    ("number", "Number"),
-    ("email", "Email"),
-]
-
-
-@st.cache_data(ttl=1800, show_spinner=False)
-def _extra_props(date_prop):
-    """Which of the mapped fields actually exist on the Registrations object."""
-    out = []
-    for cand, _label in FIELD_MAP:
-        try:
-            r = requests.post(f"{_B}/crm/v3/objects/{REG_OBJECT}/search", headers=_H,
-                              json={"limit": 1, "properties": [cand]}, timeout=15)
-            if r.status_code == 200:
-                out.append(cand)
-        except Exception:
-            pass
-    return out
+def _resolve_fields():
+    """Resolve wanted + date labels to actual internal names via the object schema.
+    Returns (value_fields, date_fields) each as [(internal_name, display_label)]."""
+    sch = _schema()
+    if not sch:   # schema unreadable → fall back to best-guess internal names
+        val = [(d.lower().replace(" ", "_"), disp) for d, disp in WANTED]
+        val = [(n if n != "reg_type" else "registration_type", disp) for n, disp in val]
+        return val, [("registered_at", "Registered At"), ("hs_createdate", "Record Created")]
+    by_label = {lb.lower(): nm for nm, lb, _t in sch}
+    names = {nm for nm, _lb, _t in sch}
+    val, dat = [], []
+    for match_lb, disp in WANTED:
+        nm = by_label.get(match_lb.lower()) or (disp.lower() if disp.lower() in names else None)
+        if nm:
+            val.append((nm, disp))
+    for lb in DATE_LABELS:
+        nm = by_label.get(lb.lower())
+        if nm:
+            dat.append((nm, lb))
+    # date fallbacks
+    for nm, lb in (("registered_at", "Registered At"), ("hs_createdate", "Record Created")):
+        if nm in names and not any(n == nm for n, _ in dat):
+            dat.append((nm, lb))
+    if not dat:
+        dat = [("hs_createdate", "Record Created")]
+    return val, dat
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -203,7 +197,7 @@ def _range(preset, today=None):
 PRESETS = ["Today", "Yesterday", "This Week", "This Month", "This Quarter", "This Year",
            "Last Month", "Last Quarter", "Last Year", "Custom"]
 
-_dfields = _date_fields()
+_valfields, _dfields = _resolve_fields()
 _dlabels = [lb for _n, lb in _dfields]
 c1, c2, c3 = st.columns([2, 2, 1])
 with c1:
@@ -228,10 +222,10 @@ st.caption(f"Showing registrations where **{_basis_label}** is between "
 _key = f"registrations_{date_prop}_{start_d:%Y%m%d}_{end_d:%Y%m%d}"
 
 if run:
-    props = _extra_props(date_prop)
+    props = [nm for nm, _lb in _valfields]
     with dash_spinner("Fetching registrations…"):
         recs = _seek(date_prop, props, _ms(start_d), _ms(end_d, end=True), "Loaded")
-    _labels = {k: v for k, v in FIELD_MAP}
+    _labels = {nm: lb for nm, lb in _valfields}
     rows = []
     for r in recs:
         p = r.get("properties", {})
