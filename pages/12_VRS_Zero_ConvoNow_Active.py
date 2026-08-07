@@ -519,10 +519,14 @@ st.markdown("### 🚀 Newly active — generated VRS minutes recently")
 st.caption("Of the Convo-Now-only list above, who has since generated **VRS minutes**? "
            "Usage is monthly, so this checks VRS Monthly Values in the month(s) on/after the "
            "chosen date (e.g. the upsell-guide deploy date).")
-_na1, _na2 = st.columns([2, 1])
+_na1, _na2, _na3 = st.columns([2, 2, 1])
 with _na1:
     active_since = st.date_input("Became active since", value=date(2026, 7, 31), key="vz_active_since")
 with _na2:
+    _cf_on = st.checkbox("Only VRS numbers created on/after…", value=False, key="vz_active_cf_on")
+    created_since = st.date_input("VRS number created on/after", value=date(2026, 7, 31),
+                                  key="vz_active_created", disabled=not _cf_on)
+with _na3:
     st.markdown("<div style='margin-top:1.7rem;'></div>", unsafe_allow_html=True)
     find_active = st.button("Find newly active", key="vz_active_btn", use_container_width=True)
 
@@ -531,11 +535,11 @@ if find_active:
     _floor = date(active_since.year, active_since.month, 1)
     _floor_ms = str(int(datetime(_floor.year, _floor.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
     # VRS numbers for the cohort's emails
-    _vrs_nums, _num_email = [], {}
+    _vrs_nums, _num_email, _num_created = [], {}, {}
     with dash_spinner("Finding VRS numbers for the list…"):
         for i in range(0, len(_emails), 100):
             chunk = _emails[i:i + 100]
-            for r in fetch_all("2-40974683", ["number", "email", "service_type"],
+            for r in fetch_all("2-40974683", ["number", "email", "service_type", "number_created_at"],
                                filter_groups=[{"filters": [
                                    {"propertyName": "email", "operator": "IN", "values": chunk},
                                    {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}]):
@@ -543,7 +547,12 @@ if find_active:
                 n = str(p.get("number") or "").strip()
                 e = (p.get("email") or "").strip().lower()
                 if n and e:
-                    _vrs_nums.append(n); _num_email[n] = e
+                    _cv = str(p.get("number_created_at") or "").strip()
+                    _ciso = _cv[:10] if (_cv and not _cv.isdigit()) else (
+                        datetime.utcfromtimestamp(int(_cv) / 1000).strftime("%Y-%m-%d") if _cv.isdigit() else "")
+                    if _cf_on and _ciso and _ciso < created_since.strftime("%Y-%m-%d"):
+                        continue  # created before the cutoff → skip
+                    _vrs_nums.append(n); _num_email[n] = e; _num_created[n] = _ciso
     # VRS usage on/after the floor month
     _email_recent: dict = defaultdict(float)
     if _vrs_nums:
@@ -573,7 +582,9 @@ if find_active:
                f"{_n_active/_n_list*100:.1f}%" if _n_list else "—")
     aa3.metric("VRS min generated", f"{_active['VRS Min (since)'].sum():,.1f}")
     st.caption(f"'Active' = has VRS usage in **{_floor:%b %Y} onward**. "
-               f"Guide deploy: {active_since:%b %d, %Y}.")
+               f"Guide deploy: {active_since:%b %d, %Y}."
+               + (f" · Only VRS numbers **created on/after {created_since:%b %d, %Y}**."
+                  if _cf_on else ""))
     if _n_active:
         _acols = [c for c in ["Name", "Email", "VRS Min (since)", "Convo Now Min",
                               "Convo Now Numbers", "Active Months"] if c in _active.columns]
