@@ -19,7 +19,7 @@ report_header("How are our consumers doing?",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 LOOKBACK = 6   # months of history for baseline + trend
 
 
@@ -50,6 +50,7 @@ def _seek_mv(props, start_ms, label):
                 "sorts": [{"propertyName": "hs_object_id", "direction": "ASCENDING"}],
                 "filterGroups": [{"filters": [
                     {"propertyName": "month_date", "operator": "GTE", "value": start_ms},
+                    {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
                     {"propertyName": "hs_object_id", "operator": "GT", "value": last}]}]}
         r = None
         for attempt in range(6):
@@ -65,7 +66,6 @@ def _seek_mv(props, start_ms, label):
         if r is None or r.status_code != 200:
             ph.empty(); st.error(f"HubSpot error {getattr(r,'status_code','network/SSL')}"); break
         batch = r.json().get("results", [])
-        time.sleep(0.08)
         out.extend(batch)
         ph.caption(f"{label} {len(out):,} usage rows…")
         if len(batch) < 100:
