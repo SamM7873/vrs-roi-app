@@ -86,14 +86,24 @@ if saved and saved.get("saved_at"):
     st.caption(f"📌 Saved {saved_at_label(saved)} · kept for {_ret_label} "
                f"({_left}) · upload a new CSV to replace it.")
 
-MIN_DAY = st.slider("Ignore days shorter than (hours) — filters out quick check-ins",
-                    0.0, 3.0, 1.0, 0.5, key="wh_min")
-clean = g[g["span_h"] >= MIN_DAY].copy()
+# ── month + min-day filters ──────────────────────────────────────────────────
+g["_month"] = pd.to_datetime(g["_day"]).dt.to_period("M")
+_month_opts = sorted(g["_month"].unique())
+_month_labels = [p.strftime("%b %Y") for p in _month_opts]
+fm1, fm2 = st.columns([2, 2])
+_pick = fm1.multiselect("Filter by month", _month_labels, default=_month_labels, key="wh_month")
+MIN_DAY = fm2.slider("Ignore days shorter than (hours) — filters out quick check-ins",
+                     0.0, 3.0, 1.0, 0.5, key="wh_min")
+
+_keep = {p for p, lab in zip(_month_opts, _month_labels) if lab in _pick} or set(_month_opts)
+clean = g[(g["span_h"] >= MIN_DAY) & (g["_month"].isin(_keep))].copy()
 if clean.empty:
-    st.warning("No qualifying working days after the filter.")
+    st.warning("No qualifying working days after the filters.")
     report_header_close(); st.stop()
 
-st.caption(f"Window **{d0:%b %d}–{d1:%b %d, %Y}** · {n_events:,} events · "
+_span0, _span1 = clean["_day"].min(), clean["_day"].max()
+st.caption(f"Window **{_span0:%b %d}–{_span1:%b %d, %Y}** · "
+           f"{len(_pick) if _pick else len(_month_opts)} month(s) · "
            f"{clean['_u'].nunique()} users · times as exported (account timezone).")
 
 # ── per-user summary ─────────────────────────────────────────────────────────
@@ -127,7 +137,7 @@ st.caption("🟢 ≥ 8h · 🟡 6.5–8h · 🔴 < 6.5h average day. "
 # ── day-by-day detail ────────────────────────────────────────────────────────
 st.markdown("##### Day-by-day detail")
 who = st.selectbox("User", sorted(clean["_u"].unique()), key="wh_who")
-det = g[g["_u"] == who].sort_values("_day").copy()
+det = g[(g["_u"] == who) & (g["_month"].isin(_keep))].sort_values("_day").copy()
 det["Date"] = det["_day"].map(lambda d: d.strftime("%a %b %d"))
 det["Start"] = det["start"].dt.strftime("%H:%M")
 det["End"] = det["end"].dt.strftime("%H:%M")
