@@ -261,6 +261,41 @@ for col, (title, val, sub, color) in zip(cols, cards):
 
 st.markdown("")
 
+# ── diagnostics (why these numbers?) ───────────────────────────────────────────
+with st.expander("🔬 Diagnostics — how these counts are derived"):
+    total = len(df)
+    st.markdown(f"**Numbers pulled (VRS + Convo Now):** {total:,} · "
+                f"**Live (account_status = Live):** {len(live):,}")
+    d1, d2 = st.columns(2)
+    with d1:
+        st.markdown("**account_status values** (all numbers)")
+        sc = df["Status"].replace("", "(blank)").value_counts().rename_axis("Status").reset_index(name="Count")
+        st.dataframe(sc, use_container_width=True, hide_index=True)
+    with d2:
+        st.markdown("**usage_type values** (all numbers)")
+        uc = df["UsageType"].replace("", "(blank)").value_counts().rename_axis("Usage type").reset_index(name="Count")
+        st.dataframe(uc, use_container_width=True, hide_index=True)
+    # tenure / created-date health — this drives the "New" count
+    blank_created = int((df["Created"].fillna("") == "").sum())
+    bad_tenure = int(df["Tenure"].isna().sum())
+    st.markdown(f"**Registration dates:** {blank_created:,} numbers have a blank `number_created_at` · "
+                f"{bad_tenure:,} could not compute tenure (unparseable date).")
+    _valid = df[df["Tenure"].notna()]
+    if not _valid.empty:
+        st.caption(f"Tenure range: **{_valid['Tenure'].min():.1f}y – {_valid['Tenure'].max():.1f}y** · "
+                   f"newest registration: **{_valid['Created'].max()}** · "
+                   f"oldest: **{_valid['Created'].min()}**")
+        new_cand = live[(live["Tenure"].notna()) & (live["Tenure"] * 365.25 <= 90)]
+        st.markdown(f"**New candidates (live, registered ≤ 90 days):** {len(new_cand):,}")
+        if not new_cand.empty:
+            st.dataframe(new_cand[["Number", "Created", "Tenure", "Recent"]].head(20),
+                         use_container_width=True, hide_index=True)
+        else:
+            st.caption("→ No live consumer number has `number_created_at` within the last 90 days, "
+                       "so **New = 0**. If that seems wrong, the field likely reflects an import/backfill "
+                       "date rather than the true registration date — tell me which field holds real "
+                       "registration and I'll switch tenure to use it.")
+
 # ── filters + performance list ─────────────────────────────────────────────────
 st.markdown("#### Consumers by health score")
 f1, f2, f3, f4 = st.columns([1.4, 1.4, 1.4, 2])
