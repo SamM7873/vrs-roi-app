@@ -580,7 +580,9 @@ if find_active:
     aa1.metric("List size", f"{_n_list:,}")
     aa2.metric("🚀 Became active (VRS)", f"{_n_active:,}",
                f"{_n_active/_n_list*100:.1f}%" if _n_list else "—")
-    aa3.metric("VRS min generated", f"{_active['VRS Min (since)'].sum():,.1f}")
+    _vrs_total = float(pd.to_numeric(_active["VRS Min (since)"], errors="coerce").fillna(0).sum()) \
+        if _n_active else 0.0
+    aa3.metric("VRS min generated", f"{_vrs_total:,.1f}")
     st.caption(f"'Active' = has VRS usage in **{_floor:%b %Y} onward**. "
                f"Guide deploy: {active_since:%b %d, %Y}."
                + (f" · Only VRS numbers **created on/after {created_since:%b %d, %Y}**."
