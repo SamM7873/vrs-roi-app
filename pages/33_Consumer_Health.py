@@ -19,7 +19,7 @@ report_header("How are our consumers doing?",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 LOOKBACK = 6   # months of history for baseline + trend
 
 
@@ -75,12 +75,24 @@ def _seek_mv(props, start_ms, label):
     return out
 
 
-def _tenure_years(iso):
+def _to_date(v):
+    """Parse a HubSpot date/datetime (epoch-ms or ISO) to a date, or None."""
+    if not v:
+        return None
     try:
-        d = datetime.fromisoformat(str(iso)[:10]).date()
-        return round((date.today() - d).days / 365.25, 1)
+        s = str(v).strip()
+        if s.isdigit():                       # epoch milliseconds
+            return datetime.fromtimestamp(int(s) / 1000, tz=timezone.utc).date()
+        return datetime.fromisoformat(s[:10]).date()
     except Exception:
         return None
+
+
+def _tenure_years(v):
+    d = _to_date(v)
+    if d is None:
+        return None
+    return round((date.today() - d).days / 365.25, 1)
 
 
 # ── window ─────────────────────────────────────────────────────────────────────
@@ -107,7 +119,7 @@ if run:
         num_recs = fetch_all(
             NUM_OBJECT,
             ["number", "email", "first_name", "last_name", "service_type",
-             "account_status", "usage_type", "number_created_at"],
+             "account_status", "usage_type", "number_created_at", "registered_at"],
             filter_groups=[{"filters": [
                 {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]}]}])
     num_info = {}
@@ -118,11 +130,14 @@ if run:
             continue
         status = (p.get("account_status") or "").strip()
         svc = (p.get("service_type") or "").strip()
+        # Registration date: prefer registered_at (true registration on the Number
+        # object); fall back to number_created_at when blank.
+        reg_d = _to_date(p.get("registered_at")) or _to_date(p.get("number_created_at"))
         info = num_info.setdefault(n, {
             "email": (p.get("email") or "").strip(),
             "name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
             "status": status, "usage_type": (p.get("usage_type") or "").strip(),
-            "created": (str(p.get("number_created_at") or "")[:10]),
+            "created": (reg_d.isoformat() if reg_d else ""),
             "has_vrs": False, "has_cn": False})
         if svc == "VRS":
             info["has_vrs"] = True
