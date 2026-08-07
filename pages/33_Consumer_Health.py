@@ -209,7 +209,8 @@ def _score(row):
 def _band(row):
     if row["Tenure"] is not None and row["Tenure"] * 365.25 <= 90:
         return "New"
-    if row["Recent"] <= 0:
+    # Inactive = zero billable across the WHOLE 6-month window (not just the compared month).
+    if row["lifetime"] <= 0:
         return "Inactive"
     s = row["Score"]
     return "Healthy" if s >= 70 else ("Watch" if s >= 40 else "Action")
@@ -221,7 +222,8 @@ df["MinsAtRisk"] = (df["Baseline"] - df["Recent"]).clip(lower=0).round(1)
 df["CN20only"] = (~df["HasVRS"]) & (df["HasCN"])
 
 live = df[df["Status"].str.lower() == "live"]
-active = live[live["Recent"] > 0]
+# "Active" = any billable minutes in the 6-month window.
+active = live[live["lifetime"] > 0]
 n_active = len(active)
 
 
@@ -232,13 +234,14 @@ def _pct(n):
 # ── KPI cards ──────────────────────────────────────────────────────────────────
 st.caption(f"**{len(live):,} live consumer numbers.** Usage spans VRS (Ursa/Legacy) + IVCS "
            f"(Convo for Zoom) + CN20 (Convo Now). Health = compared month vs each consumer's "
-           f"6-month baseline. ASA / Abandoned not available (no data).")
+           f"6-month baseline. Active = any billable minutes in the last 6 months; "
+           f"Inactive = zero across all 6. ASA / Abandoned not available (no data).")
 
 healthy = int((active["Band"] == "Healthy").sum())
 watch = int((active["Band"] == "Watch").sum())
 actn = int((active["Band"] == "Action").sum())
 new90 = int((live["Band"] == "New").sum())
-inactive = int((live["Recent"] <= 0).sum())
+inactive = int((live["Band"] == "Inactive").sum())
 cn20only = int(live["CN20only"].sum())
 
 cards = [
@@ -246,7 +249,7 @@ cards = [
     ("👀 Watch", watch, _pct(watch), "#E8952A"),
     ("🔴 Action", actn, _pct(actn), "#E5484D"),
     ("✨ New (first 90 days)", new90, f"{(new90/len(live)*100):.1f}% of live" if len(live) else "—", "#4C8DFF"),
-    ("💤 Inactive", inactive, "Zero billable minutes", "#8792A2"),
+    ("💤 Inactive", inactive, "Zero billable (6 months)", "#8792A2"),
     ("📱 CN20 account only", cn20only, "Without VRS number", "#B0B7C3"),
 ]
 cols = st.columns(len(cards))
