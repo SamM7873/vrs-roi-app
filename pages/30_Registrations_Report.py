@@ -314,13 +314,19 @@ def _who(by_col, at_col, title):
     st.markdown(f"##### {title} — {len(sub):,}")
     if by_col in sub.columns and _nonblank(by_col)[mask].any():
         s2 = sub.assign(Person=sub[by_col].where(_nonblank(by_col)[mask].values, "(unknown)"))
+        _n = len(s2)
+        # per-person totals
+        tot = (s2.groupby("Person").size().reset_index(name="Total")
+               .sort_values("Total", ascending=False))
+        tot["%"] = (tot["Total"] / _n * 100).round(1).astype(str) + "%"
+        st.dataframe(tot, use_container_width=True, hide_index=True)
+        # split by reg type
         if "Reg Type" in s2.columns:
             g = (s2.groupby(["Person", "Reg Type"]).size().reset_index(name="Count")
                  .sort_values("Count", ascending=False))
-        else:
-            g = (s2.groupby("Person").size().reset_index(name="Count")
-                 .sort_values("Count", ascending=False))
-        st.dataframe(g, use_container_width=True, hide_index=True)
+            g["%"] = (g["Count"] / _n * 100).round(1).astype(str) + "%"
+            st.caption("By registration type:")
+            st.dataframe(g, use_container_width=True, hide_index=True)
 
 st.markdown("#### Manual activity")
 wc1, wc2 = st.columns(2)
