@@ -272,16 +272,19 @@ seg_pick = f3.selectbox("Usage type", seg_opts)
 search = f4.text_input("Search phone # / email", placeholder="2025597251 or name@…").strip().lower()
 
 view = df.copy()
-if status_pick == "Live only":
-    view = view[view["Status"].str.lower() == "live"]
-if band_pick:
-    view = view[view["Band"].isin(band_pick)]
-if seg_pick != "All usage types":
-    view = view[view["UsageType"] == seg_pick]
 if search:
+    # A direct search overrides band/status/type filters — always find the number.
     view = view[view["Number"].str.contains(search, case=False, na=False)
                 | view["Email"].str.contains(search, case=False, na=False)
                 | view["Name"].str.contains(search, case=False, na=False)]
+    st.caption("🔎 Showing search matches across **all** bands and statuses (filters ignored while searching).")
+else:
+    if status_pick == "Live only":
+        view = view[view["Status"].str.lower() == "live"]
+    if band_pick:
+        view = view[view["Band"].isin(band_pick)]
+    if seg_pick != "All usage types":
+        view = view[view["UsageType"] == seg_pick]
 
 view = view.sort_values("Score", ascending=False)
 st.caption(f"{len(view):,} consumer numbers")
