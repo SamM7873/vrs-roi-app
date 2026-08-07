@@ -358,6 +358,30 @@ ch = (alt.Chart(trend).mark_bar(color="#0D3B26", cornerRadiusEnd=3)
       .properties(height=260))
 st.altair_chart(ch, use_container_width=True)
 
+# ── Not-verified worklist (needs attention) ──
+_not_ok = ~(_lex_ok | _manual_ok)
+_nv = df[_not_ok]
+if not _nv.empty:
+    st.markdown(f"##### ⚠️ Not verified — worklist ({len(_nv):,})")
+    st.caption("Registrations still not verified (not automatic/manual success). "
+               "Includes the error message where present.")
+    _wcols = [c for c in ["Date", "Reg Type", "Usage Type", "Lex Status", "URD Status",
+                          "Number", "Email", "Lex Error Msg", "URD Filling Error",
+                          "URD Identity Error", "Registration Id"] if c in _nv.columns]
+    st.dataframe(_nv.sort_values("Date", ascending=False)[_wcols],
+                 use_container_width=True, hide_index=True, height=340)
+    st.download_button("📥 Export not-verified CSV", _nv[_wcols].to_csv(index=False),
+                       f"registrations_not_verified_{start_d:%Y%m%d}_{end_d:%Y%m%d}.csv", "text/csv")
+    # top error reasons
+    for _ecol, _elabel in (("Lex Error Msg", "Top Lex errors"),
+                           ("URD Filling Error", "Top URD filling errors")):
+        if _ecol in _nv.columns and (_nv[_ecol].astype(str).str.strip().isin(["", "—", "None", "nan"]) == False).any():
+            _e = (_nv[~_nv[_ecol].astype(str).str.strip().isin(["", "—", "None", "nan"])]
+                  .groupby(_ecol).size().reset_index(name="Count").sort_values("Count", ascending=False))
+            if not _e.empty:
+                st.caption(_elabel + ":")
+                st.dataframe(_e, use_container_width=True, hide_index=True)
+
 # ── detail ──
 st.markdown("##### Registration detail")
 for _mc in ("Manually Edited At", "Manually Edited By", "Manually Verified At", "Manually Verified By"):
