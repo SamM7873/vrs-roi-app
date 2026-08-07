@@ -18,6 +18,7 @@ report_header("Registrations Report",
               section="Numbers")
 
 REG_OBJECT = "2-58833629"
+REPORT_VERSION = "v2-manual-fields"  # bump to invalidate old saved runs when fields change
 
 
 # ── central-time helpers (match HubSpot report boundaries) ──────────────────
@@ -222,11 +223,13 @@ if run:
             row[_labels[cand]] = (p.get(cand) or "—")
         rows.append(row)
     df = pd.DataFrame(rows)
-    save_report(_key, {"df": df, "start": str(start_d), "end": str(end_d), "date_prop": date_prop})
+    save_report(_key, {"df": df, "start": str(start_d), "end": str(end_d),
+                       "date_prop": date_prop, "v": REPORT_VERSION})
 
 saved = load_report(_key)
-if saved is None:
-    st.info("Pick a period and click **Run**. Results are saved and reload automatically.")
+if saved is None or saved.get("v") != REPORT_VERSION:
+    st.info("Pick a period and click **Run**. Results are saved and reload automatically. "
+            "(Fields were updated — please Run once to refresh.)")
     report_header_close(); st.stop()
 
 df = saved["df"]
@@ -322,6 +325,9 @@ st.altair_chart(ch, use_container_width=True)
 
 # ── detail ──
 st.markdown("##### Registration detail")
+for _mc in ("Manually Edited At", "Manually Edited By", "Manually Verified At", "Manually Verified By"):
+    if _mc not in df.columns:
+        df[_mc] = "—"
 _pref = ["Registered", "Reg Type", "Usage Type", "Lex Status", "URD Status",
          "Manually Verified At", "Manually Verified By", "Manually Edited At", "Manually Edited By",
          "Number", "Email", "Registration Id", "Lex Error Msg", "URD Filling Error",
