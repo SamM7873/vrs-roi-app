@@ -483,6 +483,16 @@ if _entries:
         else:
             mvdf = pd.DataFrame(rows_mv).dropna(subset=["Month"])
             mvdf = mvdf.sort_values(["Email", "Number", "Month"]).reset_index(drop=True)
+            # ── Month date filter ──
+            _all_months = sorted(mvdf["Month"].unique())
+            _pick = st.multiselect("Filter by month", _all_months, default=_all_months,
+                                   key="usage_month_filter",
+                                   help="Limit the usage below to the selected month(s).")
+            if _pick:
+                mvdf = mvdf[mvdf["Month"].isin(_pick)].reset_index(drop=True)
+            if mvdf.empty:
+                st.info("No usage in the selected month(s).")
+                st.stop()
             t1, t2, t3, t4 = st.columns(4)
             t1.metric("Total URSA minutes", f"{mvdf['URSA min'].sum():,.1f}")
             t2.metric("Total CfZ minutes", f"{mvdf['CfZ min'].sum():,.1f}")
