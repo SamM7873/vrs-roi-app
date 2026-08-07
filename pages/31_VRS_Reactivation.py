@@ -128,6 +128,24 @@ if run:
                     "Number Created": (str(p.get("number_created_at") or "")[:10]),
                     "VRS Min (reactivated)": round(reactivated[n], 1),
                 })
+    # Pendo ID lives on the Contact (convo_now_account_id) — look it up by email.
+    if rows:
+        _emails = sorted({r["Email"].lower() for r in rows if r["Email"] and "@" in r["Email"]})
+        _email_pendo = {}
+        with dash_spinner("Matching Pendo IDs…"):
+            for i in range(0, len(_emails), 100):
+                chunk = _emails[i:i + 100]
+                for c in fetch_all("contacts", ["email", "convo_now_account_id"],
+                                   filter_groups=[{"filters": [
+                                       {"propertyName": "email", "operator": "IN", "values": chunk}]}]):
+                    cp = c.get("properties", {})
+                    e = (cp.get("email") or "").strip().lower()
+                    pid = (cp.get("convo_now_account_id") or "").strip()
+                    if e and pid:
+                        _email_pendo.setdefault(e, pid)
+        for r in rows:
+            r["Pendo ID"] = _email_pendo.get(r["Email"].lower(), "—")
+
     df = pd.DataFrame(rows).sort_values("VRS Min (reactivated)", ascending=False) if rows else pd.DataFrame()
     save_report(_key, {"df": df})
 
