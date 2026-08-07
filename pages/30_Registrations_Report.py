@@ -66,7 +66,10 @@ FIELD_MAP = [
     ("urd_filling_error_message", "URD Filling Error"),
     ("urd_identity_error_message", "URD Identity Error"),
     ("urd_terminated_at", "URD Terminated At"),
+    ("manually_edited_at", "Manually Edited At"),
+    ("manually_edited_by", "Manually Edited By"),
     ("manually_verified_at", "Manually Verified At"),
+    ("manually_verified_by", "Manually Verified By"),
     ("number", "Number"),
     ("email", "Email"),
 ]
@@ -210,15 +213,27 @@ total = len(df)
 _d = pd.to_datetime(df["Registered"], errors="coerce")
 span_days = (end_d - start_d).days + 1
 per_day = total / span_days if span_days else total
+# Verified = Lex status "Verified" OR manually verified (has a Manually Verified At).
+def _nonblank(col):
+    if col not in df.columns:
+        return pd.Series(False, index=df.index)
+    s = df[col].astype(str).str.strip()
+    return ~s.isin(["", "—", "nan", "None"])
+
+_lex_ok = (df["Lex Status"].astype(str).str.strip().str.lower().eq("verified")
+           if "Lex Status" in df.columns else pd.Series(False, index=df.index))
+_manual_ok = _nonblank("Manually Verified At")
+_verified = int((_lex_ok | _manual_ok).sum())
+_manual_n = int(_manual_ok.sum())
+
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Total registrations", f"{total:,}")
-k2.metric("Avg per day", f"{per_day:,.1f}")
-if "Lex Status" in df.columns:
-    _verified = int(df["Lex Status"].astype(str).str.strip().str.lower().eq("verified").sum())
-    k3.metric("Lex verified", f"{_verified:,}", f"{_verified/total*100:.0f}%" if total else "—")
-    k4.metric("Not verified", f"{total - _verified:,}")
-else:
-    k3.metric("Days in period", f"{span_days:,}")
+k2.metric("✅ Verified", f"{_verified:,}", f"{_verified/total*100:.0f}%" if total else "—",
+          help="Lex status = Verified OR manually verified.")
+k3.metric("❌ Not verified", f"{total - _verified:,}",
+          help="Not Lex-verified and not manually verified (incl. 'Not Verified' and blanks).")
+k4.metric("✍️ Manually verified", f"{_manual_n:,}",
+          help="Has a 'Manually Verified At' timestamp.")
 
 # breakdown helper
 def _breakdown(col, title):
@@ -253,6 +268,7 @@ st.altair_chart(ch, use_container_width=True)
 # ── detail ──
 st.markdown("##### Registration detail")
 _pref = ["Registered", "Reg Type", "Usage Type", "Lex Status", "URD Status",
+         "Manually Verified At", "Manually Verified By", "Manually Edited At", "Manually Edited By",
          "Number", "Email", "Registration Id", "Lex Error Msg", "URD Filling Error",
          "URD Identity Error", "Registration UUID"]
 _cols = [c for c in _pref if c in df.columns] + [c for c in df.columns if c not in _pref]
