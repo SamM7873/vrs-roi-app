@@ -328,6 +328,14 @@ def _who(by_col, at_col, title):
             st.caption("By registration type:")
             st.dataframe(g, use_container_width=True, hide_index=True)
 
+# ── Reg Type × Lex verification cross-tab (shows where each type lands) ──
+if "Reg Type" in df.columns and "Lex Status" in df.columns:
+    st.markdown("##### Reg type × Lex verification")
+    ct = pd.crosstab(df["Reg Type"], df["Lex Status"], margins=True, margins_name="Total")
+    st.dataframe(ct, use_container_width=True)
+    st.caption("How each registration type was verified — e.g. how many port_in were "
+               "automatic_success vs not_verified vs manual_success.")
+
 st.markdown("#### Manual activity")
 wc1, wc2 = st.columns(2)
 with wc1: _who("Manually Verified By", "Manually Verified At", "✍️ Manually verified by")
