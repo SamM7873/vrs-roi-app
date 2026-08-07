@@ -288,6 +288,8 @@ def _breakdown(col, title):
         st.markdown(f"##### {title}")
         b = (df.groupby(col).size().reset_index(name="Registrations")
              .sort_values("Registrations", ascending=False))
+        _tot = b["Registrations"].sum()
+        b["%"] = (b["Registrations"] / _tot * 100).round(1).astype(str) + "%" if _tot else "—"
         st.dataframe(b, use_container_width=True, hide_index=True)
 
 bc1, bc2, bc3 = st.columns(3)
