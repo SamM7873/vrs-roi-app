@@ -184,6 +184,35 @@ else:
                  use_container_width=True, hide_index=True)
     st.caption("🟢 ≥ 8h · 🟡 6.5–8h · 🔴 < 6.5h average day.")
 
+    # ── efficiency: tickets per hour & minutes per ticket ──────────────────────
+    if not tickets.empty:
+        st.markdown("##### ⚡ Efficiency — tickets per hour & minutes per ticket")
+        hrs = summ.set_index("_u")["Total"]                       # work hours per agent
+        tk_by_agent = tickets.groupby("_u")
+        eff_rows = []
+        for u, h in hrs.items():
+            sub = tk_by_agent.get_group(u) if u in tk_by_agent.groups else None
+            events = 0 if sub is None else len(sub)
+            touched = 0 if sub is None else sub["Target object id"].replace("", pd.NA).nunique()
+            created = 0 if sub is None else int((sub["Action"] == "Create").sum())
+            eff_rows.append({
+                "Agent": u.split("@")[0],
+                "Work hours": round(h, 1),
+                "Tickets touched": int(touched),
+                "Tickets created": created,
+                "Ticket events": events,
+                "Tickets/hour": round(touched / h, 2) if h > 0 else 0,
+                "Events/hour": round(events / h, 1) if h > 0 else 0,
+                "Min/ticket": round(h * 60 / touched, 1) if touched else 0,
+                "Min/event": round(h * 60 / events, 1) if events else 0,
+            })
+        eff = pd.DataFrame(eff_rows).sort_values("Tickets touched", ascending=False)
+        st.dataframe(eff, use_container_width=True, hide_index=True)
+        st.caption("**Tickets/hour** = unique tickets touched ÷ work hours · "
+                   "**Min/ticket** = work hours × 60 ÷ unique tickets touched (avg time per ticket) · "
+                   "'events' count every individual change, 'tickets touched' counts distinct tickets. "
+                   "Work hours is a span proxy, so treat these as directional.")
+
     # day-by-day
     st.markdown("##### Day-by-day detail")
     who = st.selectbox("Agent", sorted(clean["_u"].unique()), key="tk_who")
