@@ -113,6 +113,7 @@ registrations_page = st.Page("pages/30_Registrations_Report.py",         title="
 vrs_react_page   = st.Page("pages/31_VRS_Reactivation.py",               title="VRS Reactivation",             icon="🔁")
 work_hours_page  = st.Page("pages/32_Work_Hours_Audit.py",               title="Work-Hours Audit",             icon="⏱️")
 consumer_health_page = st.Page("pages/33_Consumer_Health.py",            title="Consumer Health",              icon="💚")
+ticket_audit_page = st.Page("pages/34_Ticket_Audit_Report.py",           title="Ticket Audit Report",          icon="🎫")
 
 # Grouped sidebar navigation (sections keep the 24 pages organized).
 pg = st.navigation({
@@ -121,7 +122,7 @@ pg = st.navigation({
     "Customers": [consumer_health_page, ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, vrs_react_page, retention_page, org_ret_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page],
     "Tools": [bulk_page, explorer_page, pendo_page, dq_page, convo360_page, data_health_page],
-    "Admin": [audit_page, work_hours_page],
+    "Admin": [audit_page, work_hours_page, ticket_audit_page],
 })
 render_sync_widget()
 pg.run()
