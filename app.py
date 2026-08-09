@@ -122,7 +122,7 @@ pg = st.navigation({
     "Customers": [consumer_health_page, ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, vrs_react_page, retention_page, org_ret_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page],
     "Tools": [bulk_page, explorer_page, pendo_page, dq_page, convo360_page, data_health_page],
-    "Admin": [audit_page, work_hours_page, ticket_audit_page],
+    "Admin": [ticket_audit_page, work_hours_page, audit_page],
 })
 render_sync_widget()
 pg.run()
