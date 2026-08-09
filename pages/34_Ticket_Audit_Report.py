@@ -3,7 +3,7 @@ import pandas as pd
 import time
 from utils import (require_auth, is_app_admin, COMMON_CSS,
                    report_header, report_header_close, log_report_view,
-                   save_report, load_report, saved_at_label)
+                   save_report, load_report, saved_at_label, fetch_all, dash_spinner)
 
 st.set_page_config(page_title="Ticket Audit Report", layout="wide", page_icon="🎫")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -147,6 +147,50 @@ else:
     st.markdown("##### Action breakdown")
     ab = tickets["Action"].value_counts().rename_axis("Action").reset_index(name="Count")
     st.dataframe(ab, use_container_width=True, hide_index=True)
+
+    # ── ticket-level table (ID + activity, optional name/description enrichment) ─
+    st.markdown("##### Tickets touched — detail")
+    tdet = (tickets[tickets["Target object id"] != ""].groupby("Target object id")
+            .agg(Events=("Action", "size"),
+                 Created=("Action", lambda s: "Yes" if (s == "Create").any() else ""),
+                 Updates=("Action", lambda s: int((s == "Update").sum())),
+                 Agents=("_u", lambda s: ", ".join(sorted({x.split("@")[0] for x in s}))),
+                 Last_activity=("_t", "max"))
+            .reset_index().rename(columns={"Target object id": "Ticket ID",
+                                           "Last_activity": "Last activity"}))
+    tdet["Last activity"] = pd.to_datetime(tdet["Last activity"]).dt.strftime("%b %d, %I:%M %p")
+    tdet = tdet.sort_values("Events", ascending=False)
+
+    st.caption(f"{len(tdet):,} unique tickets. The audit export has no ticket name/description — "
+               "click below to pull them live from HubSpot by ID.")
+    enrich = st.checkbox("🔗 Load ticket name & description from HubSpot", key="tk_enrich")
+    if enrich:
+        ids = tdet["Ticket ID"].tolist()
+        info = {}
+        with dash_spinner(f"Fetching {len(ids):,} tickets from HubSpot…"):
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                for rec in fetch_all("tickets",
+                                     ["hs_object_id", "subject", "content",
+                                      "hs_pipeline", "hs_pipeline_stage"],
+                                     filter_groups=[{"filters": [
+                                         {"propertyName": "hs_object_id",
+                                          "operator": "IN", "values": chunk}]}]):
+                    p = rec.get("properties", {})
+                    hid = str(p.get("hs_object_id") or "").strip()
+                    if hid:
+                        desc = (p.get("content") or "").strip().replace("\n", " ")
+                        info[hid] = {"Ticket Name": (p.get("subject") or "").strip() or "—",
+                                     "Description": (desc[:200] + "…") if len(desc) > 200 else (desc or "—")}
+        tdet["Ticket Name"] = tdet["Ticket ID"].map(lambda x: info.get(x, {}).get("Ticket Name", "—"))
+        tdet["Description"] = tdet["Ticket ID"].map(lambda x: info.get(x, {}).get("Description", "—"))
+        cols_t = ["Ticket ID", "Ticket Name", "Description", "Events", "Created", "Updates",
+                  "Agents", "Last activity"]
+    else:
+        cols_t = ["Ticket ID", "Events", "Created", "Updates", "Agents", "Last activity"]
+    st.dataframe(tdet[cols_t], use_container_width=True, hide_index=True, height=460)
+    st.download_button("📥 Download ticket detail (CSV)", tdet[cols_t].to_csv(index=False),
+                       "ticket_detail.csv", "text/csv", key="tk_detail_csv")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # 2) WORK HOURS
