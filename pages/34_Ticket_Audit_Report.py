@@ -171,7 +171,7 @@ else:
             for i in range(0, len(ids), 100):
                 chunk = ids[i:i + 100]
                 for rec in fetch_all("tickets",
-                                     ["hs_object_id", "subject", "content",
+                                     ["hs_object_id", "subject", "content", "createdate",
                                       "hs_pipeline", "hs_pipeline_stage"],
                                      filter_groups=[{"filters": [
                                          {"propertyName": "hs_object_id",
@@ -180,12 +180,20 @@ else:
                     hid = str(p.get("hs_object_id") or "").strip()
                     if hid:
                         desc = (p.get("content") or "").strip().replace("\n", " ")
+                        cd = str(p.get("createdate") or "").strip()
+                        try:
+                            cd = (pd.to_datetime(int(cd), unit="ms") if cd.isdigit()
+                                  else pd.to_datetime(cd)).strftime("%b %d, %Y")
+                        except Exception:
+                            cd = cd[:10] or "—"
                         info[hid] = {"Ticket Name": (p.get("subject") or "").strip() or "—",
-                                     "Description": (desc[:200] + "…") if len(desc) > 200 else (desc or "—")}
+                                     "Description": (desc[:200] + "…") if len(desc) > 200 else (desc or "—"),
+                                     "Ticket Created": cd}
         tdet["Ticket Name"] = tdet["Ticket ID"].map(lambda x: info.get(x, {}).get("Ticket Name", "—"))
         tdet["Description"] = tdet["Ticket ID"].map(lambda x: info.get(x, {}).get("Description", "—"))
-        cols_t = ["Ticket ID", "Ticket Name", "Description", "Events", "Created", "Updates",
-                  "Agents", "Last activity"]
+        tdet["Ticket Created"] = tdet["Ticket ID"].map(lambda x: info.get(x, {}).get("Ticket Created", "—"))
+        cols_t = ["Ticket ID", "Ticket Name", "Description", "Ticket Created", "Events", "Created",
+                  "Updates", "Agents", "Last activity"]
     else:
         cols_t = ["Ticket ID", "Events", "Created", "Updates", "Agents", "Last activity"]
     st.dataframe(tdet[cols_t], use_container_width=True, hide_index=True, height=460)
