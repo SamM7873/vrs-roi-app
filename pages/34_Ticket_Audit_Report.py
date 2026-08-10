@@ -36,6 +36,9 @@ with c_ret:
                               help="How long the uploaded report stays saved before it expires.")
 TTL_SECONDS = RETENTION_OPTS[_ret_label] * 3600
 
+run = st.button("▶ Run ticket audit", type="primary", disabled=(up is None),
+                help="Upload a CSV, then click to process it.")
+
 
 def _hm(h):
     return f"{int(h)}h {int(round((h - int(h)) * 60)):02d}m"
@@ -59,7 +62,8 @@ def _parse(file):
     return keep, len(raw), raw["_day"].min(), raw["_day"].max()
 
 
-if up is not None:
+if run and up is not None:
+    # Only process the upload when the user clicks Run.
     res = _parse(up)
     if isinstance(res, str):
         st.error(res); report_header_close(); st.stop()
@@ -69,11 +73,14 @@ if up is not None:
 else:
     saved = load_report(SAVE_KEY)
     if saved is None:
-        st.info("Upload the audit CSV to see the report.")
+        st.info("Upload the audit CSV, then click **▶ Run ticket audit**.")
         report_header_close(); st.stop()
     if time.time() - (saved.get("saved_at") or 0) > TTL_SECONDS:
-        st.warning(f"The saved report is older than {_ret_label} — please upload a fresh export.")
+        st.warning(f"The saved report is older than {_ret_label} — please upload a fresh export and Run.")
         report_header_close(); st.stop()
+    if up is not None:
+        st.info("New CSV uploaded — click **▶ Run ticket audit** to process it "
+                "(showing the previously saved report until then).")
     ev, n_events, d0, d1 = saved["ev"], saved["n_events"], saved["d0"], saved["d1"]
 
 if saved and saved.get("saved_at"):
