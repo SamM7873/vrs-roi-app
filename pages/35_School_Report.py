@@ -44,14 +44,23 @@ run = st.button("Run school report", type="primary")
 _key = f"school_report_v{CACHE_VERSION}"
 
 if run:
-    # ── 1) all .edu numbers (server-side token filter, then confirm client-side) ─
-    with dash_spinner("Finding .edu numbers…"):
-        recs = fetch_all(
-            NUM_OBJECT,
-            ["number", "email", "first_name", "last_name", "service_type",
-             "account_status", "usage_type", "number_created_at", "registered_at", "state"],
-            filter_groups=[{"filters": [
-                {"propertyName": "email", "operator": "CONTAINS_TOKEN", "value": "*.edu"}]}])
+    _props = ["number", "email", "first_name", "last_name", "service_type",
+              "account_status", "usage_type", "number_created_at", "registered_at", "state"]
+    # ── 1) find .edu numbers ────────────────────────────────────────────────────
+    # Try the server-side token filter first; if it returns nothing (leading-wildcard
+    # matches are unreliable in HubSpot), fall back to scanning all consumer numbers
+    # and filtering client-side.
+    with dash_spinner("Finding .edu numbers (fast path)…"):
+        recs = fetch_all(NUM_OBJECT, _props, filter_groups=[{"filters": [
+            {"propertyName": "email", "operator": "CONTAINS_TOKEN", "value": "*.edu"}]}])
+    _edu = [r for r in recs
+            if (r.get("properties", {}).get("email") or "").strip().lower().endswith(".edu")]
+    if not _edu:
+        with dash_spinner("No match on fast path — scanning all consumer numbers…"):
+            recs = fetch_all(NUM_OBJECT, _props, filter_groups=[{"filters": [
+                {"propertyName": "service_type", "operator": "IN", "values": ["VRS", "Convo Now"]},
+                {"propertyName": "email", "operator": "HAS_PROPERTY"}]}])
+    st.caption(f"Scanned {len(recs):,} records for .edu emails.")
     num_info = {}
     for r in recs:
         p = r.get("properties", {})
