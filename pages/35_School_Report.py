@@ -17,7 +17,7 @@ report_header("School Report",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 LOOKBACK = 6
 
 
@@ -142,12 +142,17 @@ if df.empty:
 # ── KPIs ────────────────────────────────────────────────────────────────────────
 live = df[df["Status"].str.lower() == "live"]
 active = df[df["Total Min (6mo)"] > 0]
-k = st.columns(5)
+k = st.columns(4)
 k[0].metric("🎓 .edu numbers", f"{len(df):,}")
 k[1].metric("Live", f"{len(live):,}")
 k[2].metric("Active (6mo)", f"{len(active):,}")
 k[3].metric("Unique schools", f"{df['School Domain'].nunique():,}")
-k[4].metric("Total minutes (6mo)", f"{df['Total Min (6mo)'].sum():,.0f}")
+# minutes split — makes VRS / CfZ / CN20 visible without scrolling the table
+m = st.columns(4)
+m[0].metric("Total minutes (6mo)", f"{df['Total Min (6mo)'].sum():,.0f}")
+m[1].metric("VRS minutes", f"{df['VRS Min'].sum():,.0f}")
+m[2].metric("CfZ minutes", f"{df['CfZ Min'].sum():,.0f}")
+m[3].metric("CN20 minutes", f"{df['CN20 Min'].sum():,.0f}")
 
 # ── by school domain ────────────────────────────────────────────────────────────
 st.markdown("##### By school (email domain)")
