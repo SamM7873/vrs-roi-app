@@ -39,7 +39,7 @@ months = [current - i for i in range(LOOKBACK - 1, -1, -1)]
 month_labels = [m.strftime("%b") for m in months]
 
 st.markdown("Pulls **all Number records whose email ends in `.edu`** (VRS + Convo Now), "
-            "then aggregates their last 6 months of billable minutes (VRS + IVCS + CN20).")
+            "then aggregates their last 6 months of billable minutes (VRS + CfZ + CN20).")
 run = st.button("Run school report", type="primary")
 _key = f"school_report_v{CACHE_VERSION}"
 
@@ -78,7 +78,7 @@ if run:
             info["status"] = "Live"
 
     numbers = list(num_info.keys())
-    # ── 2) 6-month usage split VRS / IVCS / CN20 ─────────────────────────────────
+    # ── 2) 6-month usage split VRS / CfZ / CN20 ─────────────────────────────────
     usage = defaultdict(lambda: {"vrs": 0.0, "ivcs": 0.0, "cn20": 0.0, "trend": [0.0] * len(months)})
     if numbers:
         with dash_spinner(f"Pulling usage for {len(numbers):,} numbers…"):
@@ -118,7 +118,7 @@ if run:
             "School Domain": meta["domain"], "Name": meta["name"], "Email": meta["email"],
             "Number": n, "Status": meta["status"] or "—", "Usage Type": meta["usage_type"] or "—",
             "State": meta["state"] or "—", "Registered": meta["created"] or "—",
-            "VRS Min": round(u["vrs"], 1), "IVCS Min": round(u["ivcs"], 1),
+            "VRS Min": round(u["vrs"], 1), "CfZ Min": round(u["ivcs"], 1),
             "CN20 Min": round(u["cn20"], 1), "Total Min (6mo)": total6,
             "Trend": [round(x, 1) for x in u["trend"]],
         })
@@ -155,10 +155,10 @@ bysch = (df.groupby("School Domain")
          .agg(Numbers=("Number", "size"),
               Live=("Status", lambda s: int((s.str.lower() == "live").sum())),
               **{"Total Min (6mo)": ("Total Min (6mo)", "sum"),
-                 "VRS Min": ("VRS Min", "sum"), "IVCS Min": ("IVCS Min", "sum"),
+                 "VRS Min": ("VRS Min", "sum"), "CfZ Min": ("CfZ Min", "sum"),
                  "CN20 Min": ("CN20 Min", "sum")})
          .reset_index().sort_values("Numbers", ascending=False))
-for c in ("Total Min (6mo)", "VRS Min", "IVCS Min", "CN20 Min"):
+for c in ("Total Min (6mo)", "VRS Min", "CfZ Min", "CN20 Min"):
     bysch[c] = bysch[c].round(1)
 st.dataframe(bysch, use_container_width=True, hide_index=True, height=320)
 
@@ -186,7 +186,7 @@ st.caption(f"{len(view):,} numbers")
 
 st.dataframe(
     view[["School Domain", "Name", "Email", "Number", "Status", "Usage Type", "State",
-          "Registered", "Trend", "VRS Min", "IVCS Min", "CN20 Min", "Total Min (6mo)"]],
+          "Registered", "Trend", "VRS Min", "CfZ Min", "CN20 Min", "Total Min (6mo)"]],
     use_container_width=True, hide_index=True, height=460,
     column_config={"Trend": st.column_config.BarChartColumn("Trend (6mo)", y_min=0)})
 st.download_button("📥 Export CSV",
