@@ -44,6 +44,25 @@ def _hm(h):
     return f"{int(h)}h {int(round((h - int(h)) * 60)):02d}m"
 
 
+# ── team roster ────────────────────────────────────────────────────────────────
+FULL_TIME = {"heather.garafola"}
+CONTRACTORS_360 = {"alyssa.vela", "ashley.thurman", "dante.whitty",
+                   "jonah.hazelett", "hannah.puent", "ilan.ben-moshe"}
+
+
+def _agent(email):
+    return str(email).split("@")[0].strip().lower()
+
+
+def _team(email):
+    a = _agent(email)
+    if a in FULL_TIME:
+        return "Full-time"
+    if a in CONTRACTORS_360:
+        return "360 Direct"
+    return "Other"
+
+
 def _parse(file):
     raw = pd.read_csv(file, dtype=str).fillna("")
     ucol = next((c for c in raw.columns if c.strip().lower() in
@@ -136,6 +155,19 @@ else:
     per_day["Day"] = per_day.iloc[:, 0].astype(str)
     st.bar_chart(per_day.set_index("Day")["Ticket events"], height=240)
 
+    # per-team rollup
+    st.markdown("##### By team")
+    tk_team = tickets.copy()
+    tk_team["Team"] = tk_team["_u"].map(_team)
+    team = (tk_team.groupby("Team")
+            .agg(Agents=("_u", lambda s: s.map(_agent).nunique()),
+                 **{"Ticket events": ("Action", "size"),
+                    "Created": ("Action", lambda s: int((s == "Create").sum())),
+                    "Tickets touched": ("Target object id",
+                                        lambda s: s.replace("", pd.NA).nunique())})
+            .reset_index().sort_values("Ticket events", ascending=False))
+    st.dataframe(team, use_container_width=True, hide_index=True)
+
     # per-agent
     st.markdown("##### By agent")
     agent = (tickets.groupby("_u")
@@ -146,7 +178,9 @@ else:
                                    lambda s: s.replace("", pd.NA).nunique()))
              .reset_index().rename(columns={"_u": "Agent", "Ticket_events": "Ticket events",
                                             "Tickets_touched": "Tickets touched"}))
-    agent["Agent"] = agent["Agent"].str.split("@").str[0]
+    agent["Team"] = agent["Agent"].map(_team)
+    agent["Agent"] = agent["Agent"].map(_agent)
+    agent = agent[["Agent", "Team", "Ticket events", "Created", "Updated", "Tickets touched"]]
     agent = agent.sort_values("Ticket events", ascending=False)
     st.dataframe(agent, use_container_width=True, hide_index=True)
 
@@ -235,13 +269,16 @@ else:
         col.metric(r["_u"].split("@")[0], _hm(r["Avg"]), _tag(r["Avg"]))
 
     show = summ.copy()
-    show["Agent"] = show["_u"].str.split("@").str[0]
+    show["Agent"] = show["_u"].map(_agent)
+    show["Team"] = show["_u"].map(_team)
     for c in ("Avg", "Median", "Longest"):
         show[c] = show[c].map(_hm)
     show["Total"] = show["Total"].map(lambda h: f"{h:.0f}h")
-    st.dataframe(show[["Agent", "Days", "Avg", "Median", "Longest", "Total"]],
+    st.dataframe(show[["Agent", "Team", "Days", "Avg", "Median", "Longest", "Total"]],
                  use_container_width=True, hide_index=True)
-    st.caption("🟢 ≥ 8h · 🟡 6.5–8h · 🔴 < 6.5h average day.")
+    st.caption("🟢 ≥ 8h · 🟡 6.5–8h · 🔴 < 6.5h average day. "
+               "Full-time: heather.garafola · 360 Direct (contractor): alyssa, ashley, dante, "
+               "jonah, hannah, ilan.")
 
     # ── efficiency: tickets per hour & minutes per ticket ──────────────────────
     if not tickets.empty:
