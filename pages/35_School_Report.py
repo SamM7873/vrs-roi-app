@@ -148,39 +148,10 @@ if df.empty:
     st.warning("No .edu email numbers found.")
     report_header_close(); st.stop()
 
-# ── KPIs ────────────────────────────────────────────────────────────────────────
-live = df[df["Status"].str.lower() == "live"]
-active = df[df["Total Min (6mo)"] > 0]
-k = st.columns(4)
-k[0].metric("🎓 .edu numbers", f"{len(df):,}")
-k[1].metric("Live", f"{len(live):,}")
-k[2].metric("Active (6mo)", f"{len(active):,}")
-k[3].metric("Unique schools", f"{df['School Domain'].nunique():,}")
-# minutes split — makes VRS / CfZ / CN20 visible without scrolling the table
-m = st.columns(4)
-m[0].metric("Total minutes (6mo)", f"{df['Total Min (6mo)'].sum():,.0f}")
-m[1].metric("VRS minutes", f"{df['VRS Min'].sum():,.0f}")
-m[2].metric("CfZ minutes", f"{df['CfZ Min'].sum():,.0f}")
-m[3].metric("CN20 minutes", f"{df['CN20 Min'].sum():,.0f}")
-
-# ── by school domain ────────────────────────────────────────────────────────────
-st.markdown("##### By school (email domain)")
-bysch = (df.groupby("School Domain")
-         .agg(Numbers=("Number", "size"),
-              Live=("Status", lambda s: int((s.str.lower() == "live").sum())),
-              **{"Total Min (6mo)": ("Total Min (6mo)", "sum"),
-                 "VRS Min": ("VRS Min", "sum"), "CfZ Min": ("CfZ Min", "sum"),
-                 "CN20 Min": ("CN20 Min", "sum")})
-         .reset_index().sort_values("Numbers", ascending=False))
-for c in ("Total Min (6mo)", "VRS Min", "CfZ Min", "CN20 Min"):
-    bysch[c] = bysch[c].round(1)
-st.dataframe(bysch, use_container_width=True, hide_index=True, height=320)
-
-# ── filters + full list ─────────────────────────────────────────────────────────
-st.markdown("##### All .edu consumers")
+# ── filters (drive the WHOLE dashboard) ─────────────────────────────────────────
 f1, f2, f3 = st.columns([1.5, 1.5, 2])
 sch_opts = ["All schools"] + sorted(df["School Domain"].unique().tolist())
-sch = f1.selectbox("School", sch_opts)
+sch = f1.selectbox("School", sch_opts, help="Pick a school to focus the whole dashboard on it.")
 status = f2.selectbox("Status", ["All", "Live only", "Active (6mo) only"])
 search = f3.text_input("Search name / email / number").strip().lower()
 
@@ -196,7 +167,41 @@ if search:
                 | view["Email"].str.contains(search, case=False, na=False)
                 | view["Name"].str.contains(search, case=False, na=False)]
 view = view.sort_values("Total Min (6mo)", ascending=False)
-st.caption(f"{len(view):,} numbers")
+
+_scope = "all .edu" if sch == "All schools" else sch
+st.caption(f"Showing **{_scope}** · {len(view):,} numbers "
+           + ("(unfiltered)" if (sch == "All schools" and status == "All" and not search)
+              else "(filtered)"))
+
+# ── KPIs (reflect the current selection) ────────────────────────────────────────
+live = view[view["Status"].str.lower() == "live"]
+active = view[view["Total Min (6mo)"] > 0]
+k = st.columns(4)
+k[0].metric("🎓 .edu numbers", f"{len(view):,}")
+k[1].metric("Live", f"{len(live):,}")
+k[2].metric("Active (6mo)", f"{len(active):,}")
+k[3].metric("Schools in view", f"{view['School Domain'].nunique():,}")
+m = st.columns(4)
+m[0].metric("Total minutes (6mo)", f"{view['Total Min (6mo)'].sum():,.0f}")
+m[1].metric("VRS minutes", f"{view['VRS Min'].sum():,.0f}")
+m[2].metric("CfZ minutes", f"{view['CfZ Min'].sum():,.0f}")
+m[3].metric("CN20 minutes", f"{view['CN20 Min'].sum():,.0f}")
+
+# ── by school domain (reflects the current selection) ───────────────────────────
+st.markdown("##### By school (email domain)")
+bysch = (view.groupby("School Domain")
+         .agg(Numbers=("Number", "size"),
+              Live=("Status", lambda s: int((s.str.lower() == "live").sum())),
+              **{"Total Min (6mo)": ("Total Min (6mo)", "sum"),
+                 "VRS Min": ("VRS Min", "sum"), "CfZ Min": ("CfZ Min", "sum"),
+                 "CN20 Min": ("CN20 Min", "sum")})
+         .reset_index().sort_values("Numbers", ascending=False))
+for c in ("Total Min (6mo)", "VRS Min", "CfZ Min", "CN20 Min"):
+    bysch[c] = bysch[c].round(1)
+st.dataframe(bysch, use_container_width=True, hide_index=True, height=320)
+
+# ── full list ───────────────────────────────────────────────────────────────────
+st.markdown("##### All .edu consumers")
 
 st.dataframe(
     view[["School Domain", "Name", "Email", "Number", "Status", "Usage Type", "State",
