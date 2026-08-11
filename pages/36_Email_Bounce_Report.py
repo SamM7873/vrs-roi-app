@@ -44,24 +44,49 @@ def _dt(v):
         return str(v)[:10]
 
 
-st.markdown("Pulls all contacts with an email and flags **hard bounces** "
-            "(HubSpot property `hs_email_hard_bounce_reason`).")
+st.markdown("Pulls all contacts with an email and flags **bounced / undeliverable** addresses. "
+            "Bounce data can live in different HubSpot fields depending on how email is sent — "
+            "this checks several and uses whichever has data.")
+
+# candidate bounce signals (property, how-to-detect)
+BOUNCE_PROPS = [
+    ("hs_email_hard_bounce_reason", "HAS_PROPERTY", None),
+    ("hs_email_hard_bounce_reason_enum", "HAS_PROPERTY", None),
+    ("hs_emailconfirmationstatus", "EQ", "5"),          # 5 = Bounced (marketing status)
+    ("hs_email_quarantined", "EQ", "true"),
+    ("hs_email_bounce", "GT", "0"),
+]
 run = st.button("Run email bounce report", type="primary")
 
 if run:
-    # totals (fast — reads the search `total`)
     total_email = _count([{"propertyName": "email", "operator": "HAS_PROPERTY"}])
-    total_bounced = _count([{"propertyName": "hs_email_hard_bounce_reason", "operator": "HAS_PROPERTY"}])
+    # probe each candidate property to see which one actually holds data
+    probe = {}
+    for prop, op, val in BOUNCE_PROPS:
+        flt = {"propertyName": prop, "operator": op}
+        if val is not None:
+            flt["value"] = val
+        probe[prop] = _count([flt])
+    # pick the properties that returned any matches
+    active = [(p, op, v) for (p, op, v) in BOUNCE_PROPS if (probe.get(p) or 0) > 0]
+    total_bounced = sum(probe.get(p, 0) or 0 for p, _, _ in active) if active else 0
 
-    # pull every bounced contact
-    with dash_spinner("Pulling bounced contacts…"):
-        recs = fetch_all(
-            "contacts",
-            ["email", "firstname", "lastname", "hs_email_hard_bounce_reason",
-             "hs_email_hard_bounce_reason_enum", "hs_email_last_send_date",
-             "hs_email_optout", "lifecyclestage"],
-            filter_groups=[{"filters": [
-                {"propertyName": "hs_email_hard_bounce_reason", "operator": "HAS_PROPERTY"}]}])
+    recs = []
+    if active:
+        with dash_spinner("Pulling bounced contacts…"):
+            # OR across the active signals via multiple filterGroups
+            fgs = []
+            for p, op, v in active:
+                f = {"propertyName": p, "operator": op}
+                if v is not None:
+                    f["value"] = v
+                fgs.append({"filters": [f]})
+            recs = fetch_all(
+                "contacts",
+                ["email", "firstname", "lastname", "hs_email_hard_bounce_reason",
+                 "hs_email_hard_bounce_reason_enum", "hs_email_bounce", "hs_email_quarantined",
+                 "hs_email_last_send_date", "hs_email_optout", "lifecyclestage"],
+                filter_groups=fgs)
     rows = []
     for r in recs:
         p = r.get("properties", {})
@@ -74,12 +99,15 @@ if run:
             "Domain": email.split("@")[-1].lower() if "@" in email else "",
             "Bounce Reason": (p.get("hs_email_hard_bounce_reason") or "").strip() or "—",
             "Reason Type": (p.get("hs_email_hard_bounce_reason_enum") or "").strip() or "—",
+            "Bounces": p.get("hs_email_bounce") or "",
+            "Quarantined": "Yes" if str(p.get("hs_email_quarantined")).lower() == "true" else "",
             "Last Send": _dt(p.get("hs_email_last_send_date")),
             "Opted Out": "Yes" if (p.get("hs_email_optout") in ("true", "True", True)) else "",
             "Lifecycle": (p.get("lifecyclestage") or "").strip() or "—",
         })
     df = pd.DataFrame(rows)
-    save_report(_key, {"df": df, "total_email": total_email, "total_bounced": total_bounced})
+    save_report(_key, {"df": df, "total_email": total_email, "total_bounced": total_bounced,
+                       "probe": probe})
 
 saved = load_report(_key)
 if saved is None:
@@ -101,8 +129,20 @@ k[1].metric("⛔ Hard bounced", f"{total_bounced:,}" if total_bounced is not Non
 k[2].metric("Bounce rate", f"{rate:.1f}%" if rate is not None else "—")
 k[3].metric("Bounced domains", f"{df['Domain'].nunique():,}" if not df.empty else "0")
 
+# diagnostic — which bounce field actually holds data
+_probe = saved.get("probe") or {}
+if _probe:
+    with st.expander("🔬 Which bounce field has data?"):
+        pdf = (pd.DataFrame([{"Property": k, "Contacts matched": (v if v is not None else "error")}
+                             for k, v in _probe.items()]))
+        st.dataframe(pdf, use_container_width=True, hide_index=True)
+        st.caption("If every property shows 0, this HubSpot portal simply doesn't record email "
+                   "bounces on contacts (e.g. email isn't sent through HubSpot). Tell me where "
+                   "bounces are tracked and I'll point the report there.")
+
 if df.empty:
-    st.success("No hard-bounced contacts found. 🎉")
+    st.warning("No bounced contacts matched any of the checked fields. See the diagnostic above "
+               "for which fields were probed.")
     report_header_close(); st.stop()
 
 # ── by reason type ──────────────────────────────────────────────────────────────
