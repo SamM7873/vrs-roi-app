@@ -145,10 +145,41 @@ if df.empty:
                "for which fields were probed.")
     report_header_close(); st.stop()
 
+# ── reason-type meaning + recommended action ────────────────────────────────────
+REASON_INFO = {
+    "UNKNOWN_USER": ("Mailbox doesn't exist — wrong, mistyped, or deleted address.",
+                     "Permanent", "🧹 Clean up / correct — will never deliver."),
+    "MAILBOX_FULL": ("Recipient's inbox is full.",
+                     "Often abandoned", "⏳ Usually an inactive account; low priority to retry."),
+    "POLICY": ("Recipient's mail server blocked the message (blocklist, sender "
+               "reputation, or a content/attachment rule).",
+               "Sender-side", "🔎 Check your sending domain reputation — may affect many contacts."),
+    "SPAM": ("Recipient's server flagged the message as spam.",
+             "Sender-side", "🔎 Review email content & reputation."),
+    "OTHER": ("A delivery error that doesn't fit the standard categories.",
+              "Mixed", "👀 Review case-by-case."),
+    "—": ("Hard bounce recorded, but HubSpot didn't capture a specific reason.",
+          "Unknown", "👀 Treat like a bounce; verify the address."),
+}
+
+with st.expander("📖 What do these bounce reasons mean?", expanded=True):
+    st.markdown("HubSpot classifies each **hard bounce** (permanent failure) into a reason type. "
+                "The two big ones — **UNKNOWN_USER** and **MAILBOX_FULL** — are about the "
+                "*recipient*; **POLICY** and **SPAM** are about *your sending reputation*.")
+    gl = pd.DataFrame([{"Reason Type": k, "Meaning": v[0], "Nature": v[1],
+                        "What to do": v[2]} for k, v in REASON_INFO.items()])
+    st.dataframe(gl, use_container_width=True, hide_index=True)
+    st.caption("**Hard bounce** = permanent failure (won't retry). **Soft bounce** = temporary "
+               "(server retries). This report shows hard bounces / quarantined addresses. "
+               "**Quarantined** = HubSpot has stopped sending to that address after repeated failures.")
+
 # ── by reason type ──────────────────────────────────────────────────────────────
 st.markdown("##### By bounce reason type")
 byreason = (df["Reason Type"].value_counts().rename_axis("Reason Type").reset_index(name="Count"))
 byreason["%"] = (byreason["Count"] / len(df) * 100).round(1)
+byreason["Meaning"] = byreason["Reason Type"].map(lambda x: REASON_INFO.get(x, ("—",))[0])
+byreason["Recommended action"] = byreason["Reason Type"].map(
+    lambda x: REASON_INFO.get(x, ("", "", "—"))[2])
 st.dataframe(byreason, use_container_width=True, hide_index=True)
 
 # ── top bounced domains ─────────────────────────────────────────────────────────
