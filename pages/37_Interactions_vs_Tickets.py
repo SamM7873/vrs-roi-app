@@ -12,6 +12,28 @@ PIPE_TOKENS = {"T1": ["t1", "tier 1", "tier1"], "T2": ["t2", "tier 2", "tier2"],
                "VRS Registration": ["vrs registration", "vrs reg"]}
 
 
+def _owner_map():
+    """{owner_id: 'First Last' or email} — resolves HubSpot ticket owners."""
+    out = {}
+    try:
+        after = None
+        for _ in range(20):
+            url = f"{_B}/crm/v3/owners?limit=100" + (f"&after={after}" if after else "")
+            r = requests.get(url, headers=_H, timeout=15)
+            if r.status_code != 200:
+                break
+            j = r.json()
+            for o in j.get("results", []):
+                nm = f"{(o.get('firstName') or '').strip()} {(o.get('lastName') or '').strip()}".strip()
+                out[str(o.get("id"))] = nm or (o.get("email") or "").strip() or str(o.get("id"))
+            after = (j.get("paging", {}).get("next", {}) or {}).get("after")
+            if not after:
+                break
+    except Exception:
+        pass
+    return out
+
+
 def _pipeline_map():
     """{hubspot_pipeline_id: friendly label} for T1/T2/VRS Reg (others -> real label)."""
     out = {}
@@ -447,6 +469,7 @@ st.caption("The audit CSV has ticket IDs but no pipeline/subject — click to en
 if st.button("🔗 Load ticket pipelines & subjects", key="ivt_pipe_btn"):
     ids = sorted(tkf[tkf["_created"]]["Target object id"].replace("", pd.NA).dropna().unique().tolist())
     pipe_map = _pipeline_map()
+    owner_map = _owner_map()
     trows = []
     with dash_spinner(f"Fetching {len(ids):,} created tickets…"):
         for i in range(0, len(ids), 100):
@@ -454,7 +477,7 @@ if st.button("🔗 Load ticket pipelines & subjects", key="ivt_pipe_btn"):
             for rec in fetch_all("tickets",
                                  ["hs_object_id", "subject", "hs_pipeline", "hs_pipeline_stage",
                                   "hs_ticket_priority", "createdate", "hs_object_source_label",
-                                  "hs_object_source", "hs_created_by_user_id"],
+                                  "hs_object_source", "hs_created_by_user_id", "hubspot_owner_id"],
                                  filter_groups=[{"filters": [
                                      {"propertyName": "hs_object_id", "operator": "IN", "values": chunk}]}]):
                 p = rec.get("properties", {})
@@ -480,6 +503,7 @@ if st.button("🔗 Load ticket pipelines & subjects", key="ivt_pipe_btn"):
                     "Ticket ID": str(p.get("hs_object_id") or ""),
                     "Pipeline": pipe_map.get(p.get("hs_pipeline"), "Other"),
                     "Origin": origin,
+                    "Owner": owner_map.get(str(p.get("hubspot_owner_id") or ""), "Unassigned"),
                     "Source": src or "—",
                     "Subject": (p.get("subject") or "").strip() or "—",
                     "Priority": (p.get("hs_ticket_priority") or "").strip() or "—",
@@ -505,16 +529,27 @@ if "ivt_tickets_df" in st.session_state:
         st.dataframe(ov, use_container_width=True, hide_index=True)
     st.caption("**Manual** = created by a person in HubSpot. **Automatic** = created by a form, "
                "workflow, integration, API, email, or bot (from the ticket's source field).")
-    fc1, fc2 = st.columns(2)
+    # tickets by owner
+    if "Owner" in tdf.columns:
+        st.markdown("**Tickets created by owner**")
+        ov2 = tdf["Owner"].value_counts().rename_axis("Owner").reset_index(name="Tickets")
+        st.dataframe(ov2, use_container_width=True, hide_index=True,
+                     column_config={"Tickets": _bar("Tickets", ov2["Tickets"].max() if not ov2.empty else 1)})
+    fc1, fc2, fc3 = st.columns(3)
     _pp = fc1.selectbox("Filter by pipeline", ["All"] + pv["Pipeline"].tolist(), key="ivt_pp")
     _oo = fc2.selectbox("Filter by origin", ["All", "Manual", "Automatic"], key="ivt_oo")
+    _own_opts = ["All"] + (sorted(tdf["Owner"].unique().tolist()) if "Owner" in tdf.columns else [])
+    _ow = fc3.selectbox("Filter by owner", _own_opts, key="ivt_ow")
     _tv = tdf.copy()
     if _pp != "All":
         _tv = _tv[_tv["Pipeline"] == _pp]
     if _oo != "All":
         _tv = _tv[_tv["Origin"] == _oo]
-    st.dataframe(_tv[["Ticket ID", "Pipeline", "Origin", "Source", "Subject", "Priority", "Created"]]
-                 .sort_values(["Origin", "Pipeline"]),
+    if _ow != "All" and "Owner" in _tv.columns:
+        _tv = _tv[_tv["Owner"] == _ow]
+    _detail_cols = [c for c in ["Ticket ID", "Pipeline", "Origin", "Owner", "Source",
+                                "Subject", "Priority", "Created"] if c in _tv.columns]
+    st.dataframe(_tv[_detail_cols].sort_values(["Origin", "Pipeline"]),
                  use_container_width=True, hide_index=True, height=380)
     st.download_button("📥 Export tickets (CSV)", tdf.to_csv(index=False),
                        "created_tickets_by_pipeline.csv", "text/csv", key="ivt_pipe_csv")
