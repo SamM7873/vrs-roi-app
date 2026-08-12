@@ -28,6 +28,27 @@ def _pipeline_map():
         pass
     return out
 
+def _metric_cards(items):
+    """items = list of (title, value, subtitle, hex_color). Renders a row of styled cards."""
+    cols = st.columns(len(items))
+    for col, (t, v, s, c) in zip(cols, items):
+        col.markdown(
+            f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
+                 padding:14px 16px 12px;background:rgba(127,127,127,0.03);">
+            <div style="font-size:.72rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+                 color:#667085;">{t}</div>
+            <div style="font-size:2rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
+            <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""",
+            unsafe_allow_html=True)
+    st.markdown("")
+
+
+def _bar(label, mx, color="#4C8DFF", fmt="%d"):
+    """A NumberColumn rendered as an in-cell progress bar."""
+    return st.column_config.ProgressColumn(label, min_value=0, max_value=int(mx) if mx else 1,
+                                           format=fmt, help=None)
+
+
 st.set_page_config(page_title="Interactions vs Tickets", layout="wide", page_icon="🔀")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -284,23 +305,12 @@ tpi = (n_created / n_int) if n_int else None
 
 # ── KPI cards (visual summary) ──────────────────────────────────────────────────
 _tpi_color = "#8792A2" if tpi is None else ("#2DB84B" if tpi <= 0.8 else ("#E8952A" if tpi <= 1.2 else "#E5484D"))
-_cards = [
+_metric_cards([
     ("📞 Incoming interactions", f"{n_int:,}", "calls · chats · video", "#4C8DFF"),
     ("🎫 Tickets created", f"{n_created:,}", "new tickets opened", "#7A5CFF"),
     ("🗂️ Tickets touched", f"{n_touched:,}", "distinct tickets worked", "#0FB5AE"),
     ("⚖️ Tickets per interaction", f"{tpi:.1f}" if tpi else "—", "tickets ÷ calls", _tpi_color),
-]
-_cc = st.columns(len(_cards))
-for _col, (t, v, s, c) in zip(_cc, _cards):
-    _col.markdown(
-        f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
-             padding:14px 16px 12px;background:rgba(127,127,127,0.03);">
-        <div style="font-size:.72rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
-             color:#667085;">{t}</div>
-        <div style="font-size:2rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
-        <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""",
-        unsafe_allow_html=True)
-st.markdown("")
+])
 
 if tpi is not None:
     if tpi <= 0.5:
@@ -325,7 +335,9 @@ st.markdown("### 1 · Volume — interactions vs tickets")
 st.markdown("##### Incoming interactions by source")
 bytype = cvf["_source"].value_counts().rename_axis("Source").reset_index(name="Interactions")
 bytype["%"] = (bytype["Interactions"] / len(cvf) * 100).round(1) if len(cvf) else 0
-st.dataframe(bytype, use_container_width=True, hide_index=True)
+st.dataframe(bytype, use_container_width=True, hide_index=True,
+             column_config={"Interactions": _bar("Interactions", bytype["Interactions"].max()),
+                            "%": _bar("% of total", 100, fmt="%.1f%%")})
 
 # ── reconciliation: daily / weekly / monthly ────────────────────────────────────
 st.markdown("##### Interactions vs tickets created — over time")
@@ -350,7 +362,10 @@ daily = pd.concat([di, dc], axis=1).fillna(0).astype(int).reset_index().rename(c
 daily = daily.sort_values("Period")
 daily["Tickets per interaction"] = daily.apply(
     lambda r: round(r["Tickets created"] / r["Interactions"], 1) if r["Interactions"] else 0, axis=1)
-st.dataframe(daily, use_container_width=True, hide_index=True)
+_mx = int(max(daily["Interactions"].max(), daily["Tickets created"].max())) if not daily.empty else 1
+st.dataframe(daily, use_container_width=True, hide_index=True,
+             column_config={"Interactions": _bar("Interactions", _mx),
+                            "Tickets created": _bar("Tickets created", _mx)})
 st.bar_chart(daily.set_index("Period")[["Interactions", "Tickets created"]], height=260)
 st.caption("Weekly = week starting Monday · Monthly = calendar month.")
 with st.expander("ℹ️ What does 'Tickets per interaction' mean?"):
@@ -518,7 +533,10 @@ else:
     perday["% catch-up"] = (perday["Catch-up"] / perday["Total handled"] * 100).round(1)
     perday["Day"] = perday["Day"].astype(str)
     st.dataframe(perday[["Day", "Total handled", "New", "Catch-up", "% catch-up"]],
-                 use_container_width=True, hide_index=True)
+                 use_container_width=True, hide_index=True,
+                 column_config={
+                     "Total handled": _bar("Total handled", perday["Total handled"].max()),
+                     "% catch-up": _bar("% catch-up", 100, fmt="%.1f%%")})
     st.bar_chart(perday.set_index("Day")[["New", "Catch-up"]], height=240)
     _tot = int(perday["Total handled"].sum())
     _cu = int(perday["Catch-up"].sum())
@@ -589,11 +607,12 @@ if "ivt_open_df" in st.session_state:
     n_open = len(odf)
     n_handled = int((odf["State"] == "Handled in window").sum())
     n_pending = n_open - n_handled
-    ok = st.columns(3)
-    ok[0].metric("🎫 Open tickets (now)", f"{n_open:,}")
-    ok[1].metric("✅ Handled in window", f"{n_handled:,}")
-    ok[2].metric("🔔 Pending / reminder", f"{n_pending:,}",
-                 help="Open tickets not touched in the selected window.")
+    _pct_pend = f"{(n_pending/n_open*100):.0f}% of open" if n_open else "—"
+    _metric_cards([
+        ("🎫 Open tickets (now)", f"{n_open:,}", "T1 · T2 · VRS Reg", "#4C8DFF"),
+        ("✅ Handled in window", f"{n_handled:,}", "worked in range", "#2DB84B"),
+        ("🔔 Pending / reminder", f"{n_pending:,}", _pct_pend, "#E8952A"),
+    ])
     st.markdown("**Pending (reminder) by pipeline**")
     pend = odf[odf["State"] == "Pending (reminder)"]
     pv = pend["Pipeline"].value_counts().rename_axis("Pipeline").reset_index(name="Pending")
