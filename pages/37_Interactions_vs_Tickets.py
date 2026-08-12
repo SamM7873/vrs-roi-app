@@ -132,9 +132,16 @@ if ratio is not None:
                    "(multiple contacts roll into fewer tickets).")
     elif ratio >= 1.3:
         st.warning(f"🟡 ~{ratio:.1f} interactions per ticket — moderate consolidation.")
+    elif ratio >= 1.0:
+        st.warning(f"🟡 ~{ratio:.1f} interactions per ticket — roughly one ticket per contact "
+                   "(little consolidation).")
     else:
-        st.error(f"🔴 ~{ratio:.1f} interactions per ticket — close to one ticket per contact "
-                 "(possible over-ticketing).")
+        st.error(f"🔴 ~{ratio:.1f} interactions per ticket — **more tickets than incoming "
+                 f"interactions** ({n_created:,} tickets vs {n_int:,} interactions). Either agents "
+                 "open multiple tickets per contact, or many tickets come from **other channels** "
+                 "(email, chat, proactive outreach) not in the Convo360 export.")
+st.caption("⚠️ Tickets can originate from channels beyond Convo360 (email, manual, follow-ups), "
+           "so a ratio below 1 isn't proof of over-ticketing on its own — it's a flag to investigate.")
 
 # ── interaction type breakdown ──────────────────────────────────────────────────
 st.markdown("##### Incoming interactions by type")
