@@ -210,12 +210,42 @@ pick = st.multiselect("Sources to count (Videophone / Videochat / Chat / …)", 
                       help="Choose which Convo360 sources count as an 'incoming interaction'.")
 cvf = cv[cv["_source"].isin(pick)] if pick else cv
 
-# align to the overlapping date window
-d_lo = max(cvf["_day"].min(), tk["_day"].min())
-d_hi = min(cvf["_day"].max(), tk["_day"].max())
-st.caption(f"Overlapping window: **{d_lo:%b %d}–{d_hi:%b %d, %Y}**.")
+# the overlapping window of the two files
+ov_lo = max(cvf["_day"].min(), tk["_day"].min())
+ov_hi = min(cvf["_day"].max(), tk["_day"].max())
+
+# ── date-range preset ───────────────────────────────────────────────────────────
+from datetime import date as _date, timedelta as _td
+today = _date.today()
+preset = st.selectbox("Date range", ["All (overlap)", "Today", "Yesterday", "This week",
+                                     "Last week", "This month", "Last month", "Custom"],
+                      key="ivt_preset")
+if preset == "Today":
+    d_lo = d_hi = today
+elif preset == "Yesterday":
+    d_lo = d_hi = today - _td(days=1)
+elif preset == "This week":
+    d_lo, d_hi = today - _td(days=today.weekday()), today
+elif preset == "Last week":
+    _ws = today - _td(days=today.weekday() + 7); d_lo, d_hi = _ws, _ws + _td(days=6)
+elif preset == "This month":
+    d_lo, d_hi = today.replace(day=1), today
+elif preset == "Last month":
+    _fm = today.replace(day=1); _lm = _fm - _td(days=1); d_lo, d_hi = _lm.replace(day=1), _lm
+elif preset == "Custom":
+    _r = st.date_input("Custom range", value=(ov_lo, ov_hi), min_value=ov_lo, max_value=ov_hi,
+                       key="ivt_custom")
+    d_lo, d_hi = (_r if isinstance(_r, tuple) and len(_r) == 2 else (ov_lo, ov_hi))
+else:
+    d_lo, d_hi = ov_lo, ov_hi
+# clamp to where data actually exists
+d_lo, d_hi = max(d_lo, ov_lo), min(d_hi, ov_hi)
+st.caption(f"Window: **{d_lo:%b %d}–{d_hi:%b %d, %Y}** (data overlap {ov_lo:%b %d}–{ov_hi:%b %d, %Y}).")
 cvf = cvf[(cvf["_day"] >= d_lo) & (cvf["_day"] <= d_hi)]
 tkf = tk[(tk["_day"] >= d_lo) & (tk["_day"] <= d_hi)]
+if cvf.empty and tkf.empty:
+    st.warning("No data in the selected date range.")
+    report_header_close(); st.stop()
 
 n_int = len(cvf)
 n_created = int(tkf["_created"].sum())
