@@ -51,12 +51,21 @@ with st.expander("📖 Definitions & how the formulas work"):
   contact, **or** tickets come from channels not in the Convo360 export (email, manual, follow-ups).
 
 **Work hours & time per ticket (from ticket-event timestamps)**
-| Metric | Formula |
-|---|---|
-| Work hours (per agent/day) | last ticket-event time − first ticket-event time that day |
-| Time/ticket (min & sec) | work time ÷ unique tickets touched |
-| Time/event (min & sec) | work time ÷ ticket events |
-| Tickets/hour | unique tickets touched ÷ work hours |
+
+*Example:* an agent works 9:00–12:00 (3h), makes **60** changes across **20** tickets, **5** of them new.
+
+| Metric | Plain meaning | Formula | Example |
+|---|---|---|---|
+| **Ticket events** | Every action on a ticket — each create, edit, status change, note, merge. One ticket = many events. | count of ticket rows | 60 |
+| **Tickets created** | Brand-new tickets opened. | rows where `Action = Create` | 5 |
+| **Tickets touched** | Distinct tickets worked on (created or edited), counted once each. | unique `Target object id` | 20 |
+| **Work hours** | Span from first to last ticket action that day. | last − first event time | 3h |
+| **Time/ticket** | Avg time per distinct ticket — "how long does a ticket take?" | work time ÷ tickets touched | 9m 00s |
+| **Time/event** | Avg time per single action. | work time ÷ ticket events | 3m 00s |
+| **Tickets/hour** | Throughput. | tickets touched ÷ work hours | 6.7 |
+
+*Events count busy-ness (actions); tickets touched count workload breadth (distinct tickets).
+One ticket taking 8 edits = 8 events but 1 ticket touched.*
 
 Work hours is a **span proxy** — breaks inside the window count, and work outside HubSpot
 (calls, email) isn't included.
