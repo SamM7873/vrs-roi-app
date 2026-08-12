@@ -281,6 +281,53 @@ st.bar_chart(daily.set_index("Period")[["Interactions", "Tickets created"]], hei
 st.caption("Weekly = week starting Monday · Monthly = calendar month. "
            "Interactions/ticket = interactions ÷ tickets created that period.")
 
+# ── tickets created — pipeline & detail (live HubSpot) ──────────────────────────
+st.markdown("##### 🎟️ Tickets created — pipeline & detail (live)")
+st.caption("The audit CSV has ticket IDs but no pipeline/subject — click to enrich them from "
+           "HubSpot and see which pipeline (T1 / T2 / VRS Registration) each created ticket is in.")
+if st.button("🔗 Load ticket pipelines & subjects", key="ivt_pipe_btn"):
+    ids = sorted(tkf[tkf["_created"]]["Target object id"].replace("", pd.NA).dropna().unique().tolist())
+    pipe_map = _pipeline_map()
+    trows = []
+    with dash_spinner(f"Fetching {len(ids):,} created tickets…"):
+        for i in range(0, len(ids), 100):
+            chunk = ids[i:i + 100]
+            for rec in fetch_all("tickets",
+                                 ["hs_object_id", "subject", "hs_pipeline", "hs_pipeline_stage",
+                                  "hs_ticket_priority", "createdate"],
+                                 filter_groups=[{"filters": [
+                                     {"propertyName": "hs_object_id", "operator": "IN", "values": chunk}]}]):
+                p = rec.get("properties", {})
+                cd = str(p.get("createdate") or "")
+                try:
+                    cd = (pd.to_datetime(int(cd), unit="ms") if cd.isdigit()
+                          else pd.to_datetime(cd)).strftime("%b %d, %Y")
+                except Exception:
+                    cd = cd[:10]
+                trows.append({
+                    "Ticket ID": str(p.get("hs_object_id") or ""),
+                    "Pipeline": pipe_map.get(p.get("hs_pipeline"), "Other"),
+                    "Subject": (p.get("subject") or "").strip() or "—",
+                    "Priority": (p.get("hs_ticket_priority") or "").strip() or "—",
+                    "Created": cd,
+                })
+    if not trows:
+        st.info("No created tickets could be enriched.")
+    else:
+        tdf = pd.DataFrame(trows)
+        st.session_state["ivt_tickets_df"] = tdf
+if "ivt_tickets_df" in st.session_state:
+    tdf = st.session_state["ivt_tickets_df"]
+    pv = tdf["Pipeline"].value_counts().rename_axis("Pipeline").reset_index(name="Tickets created")
+    pv["%"] = (pv["Tickets created"] / len(tdf) * 100).round(1)
+    st.markdown("**Tickets created by pipeline**")
+    st.dataframe(pv, use_container_width=True, hide_index=True)
+    _pp = st.selectbox("Filter tickets by pipeline", ["All"] + pv["Pipeline"].tolist(), key="ivt_pp")
+    _tv = tdf if _pp == "All" else tdf[tdf["Pipeline"] == _pp]
+    st.dataframe(_tv.sort_values("Pipeline"), use_container_width=True, hide_index=True, height=380)
+    st.download_button("📥 Export tickets (CSV)", tdf.to_csv(index=False),
+                       "created_tickets_by_pipeline.csv", "text/csv", key="ivt_pipe_csv")
+
 # ── per-agent (best effort — names differ between systems) ──────────────────────
 st.markdown("##### By agent (best-effort — Convo360 names vs HubSpot usernames differ)")
 ai = cvf.groupby("_agent").size().rename("Interactions").reset_index()
