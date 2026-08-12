@@ -1,9 +1,32 @@
 import streamlit as st
 import pandas as pd
 import time
+import requests
 from utils import (require_auth, is_app_admin, COMMON_CSS, report_header,
                    report_header_close, log_report_view, save_report, load_report,
-                   saved_at_label, fetch_all, dash_spinner)
+                   saved_at_label, fetch_all, dash_spinner,
+                   headers as _H, BASE_URL as _B)
+
+# match ticket pipelines by label token
+PIPE_TOKENS = {"T1": ["t1", "tier 1", "tier1"], "T2": ["t2", "tier 2", "tier2"],
+               "VRS Registration": ["vrs registration", "vrs reg"]}
+
+
+def _pipeline_map():
+    """{hubspot_pipeline_id: friendly label} for T1/T2/VRS Reg (others -> real label)."""
+    out = {}
+    try:
+        r = requests.get(f"{_B}/crm/v3/pipelines/tickets", headers=_H, timeout=15)
+        if r.status_code == 200:
+            for pl in r.json().get("results", []):
+                label = (pl.get("label") or "").strip()
+                low = label.lower()
+                friendly = next((k for k, toks in PIPE_TOKENS.items() if any(t in low for t in toks)),
+                                label or pl["id"])
+                out[pl["id"]] = friendly
+    except Exception:
+        pass
+    return out
 
 st.set_page_config(page_title="Interactions vs Tickets", layout="wide", page_icon="🔀")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -316,18 +339,27 @@ if "_customer" not in cvf.columns or cvf["_customer"].str.strip().eq("").all():
     st.info("The Convo360 export has no Customer Name column — can't match per consumer.")
 elif st.button("🔗 Run per-consumer match (queries HubSpot)"):
     ids = sorted(tkf[tkf["_created"]]["Target object id"].replace("", pd.NA).dropna().unique().tolist())
-    subjmap = {}
+    pipe_map = _pipeline_map()
+    subjmap, pipe_of = {}, {}
     with dash_spinner(f"Fetching {len(ids):,} created tickets from HubSpot…"):
         for i in range(0, len(ids), 100):
             chunk = ids[i:i + 100]
-            for rec in fetch_all("tickets", ["hs_object_id", "subject", "content", "createdate"],
+            for rec in fetch_all("tickets",
+                                 ["hs_object_id", "subject", "content", "createdate", "hs_pipeline"],
                                  filter_groups=[{"filters": [
                                      {"propertyName": "hs_object_id", "operator": "IN", "values": chunk}]}]):
                 p = rec.get("properties", {})
                 hid = str(p.get("hs_object_id") or "").strip()
                 if hid:
                     subjmap[hid] = f"{p.get('subject') or ''} {p.get('content') or ''}".lower()
+                    pipe_of[hid] = pipe_map.get(p.get("hs_pipeline"), "Other")
     tickets_text = list(subjmap.values())
+
+    # tickets created by pipeline (T1 / T2 / VRS Registration / Other)
+    st.markdown("##### Tickets created by pipeline")
+    pv = pd.Series(list(pipe_of.values())).value_counts().rename_axis("Pipeline").reset_index(name="Tickets")
+    pv["%"] = (pv["Tickets"] / len(pipe_of) * 100).round(1) if pipe_of else 0
+    st.dataframe(pv, use_container_width=True, hide_index=True)
 
     def _match_count(name):
         name = name.strip().lower()
