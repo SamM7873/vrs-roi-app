@@ -338,10 +338,26 @@ daily["Tickets per interaction"] = daily.apply(
     lambda r: round(r["Tickets created"] / r["Interactions"], 1) if r["Interactions"] else 0, axis=1)
 st.dataframe(daily, use_container_width=True, hide_index=True)
 st.bar_chart(daily.set_index("Period")[["Interactions", "Tickets created"]], height=260)
-st.caption("Weekly = week starting Monday · Monthly = calendar month. "
-           "**Tickets per interaction** = tickets created ÷ interactions that period. "
-           "1.0 = one ticket per call · above 1 = more tickets than calls (extra tickets come "
-           "from email / forms / manual) · below 1 = calls consolidate into fewer tickets.")
+st.caption("Weekly = week starting Monday · Monthly = calendar month.")
+with st.expander("ℹ️ What does 'Tickets per interaction' mean?"):
+    st.markdown("""
+Two things are counted each period:
+- **Interactions** = customer contacts on Convo360 (video calls, chats).
+- **Tickets created** = new tickets your team opened in HubSpot.
+
+**Tickets per interaction = tickets created ÷ interactions** — *how many tickets were opened
+for each incoming call/chat.*
+
+| Value | Means | Example |
+|---|---|---|
+| **0.5** | Half a ticket per call — many calls roll into fewer tickets ✅ | 100 calls → 50 tickets |
+| **1.0** | One ticket per call | 100 calls → 100 tickets |
+| **2.0** | Twice as many tickets as calls 🔴 | 50 calls → 100 tickets |
+
+**Above 1** means more tickets than calls — the extra tickets can't come from calls, so they
+come from **email, web forms, manual creation, or follow-ups** (channels not in the Convo360
+export). It's a flag to look into, not proof of over-ticketing.
+""")
 
 # ── tickets created — pipeline & detail (live HubSpot) ──────────────────────────
 st.markdown("##### 🎟️ Tickets created — pipeline & detail (live)")
