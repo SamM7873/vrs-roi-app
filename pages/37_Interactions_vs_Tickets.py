@@ -510,9 +510,9 @@ else:
 
 # ── open tickets: handled vs pending (reminder) ─────────────────────────────────
 st.markdown("##### 🔔 Open tickets — handled vs pending (reminder)")
-st.caption("Compares **currently-open tickets** (live HubSpot) against what was **touched** in the "
-           "selected window. Pending / reminder = open tickets **not worked** in the window "
-           "(carry-over / follow-up).")
+st.caption("Compares **currently-open tickets** in **T1 / T2 / VRS Registration** (live HubSpot) "
+           "against what was **touched** in the selected window. Pending / reminder = open tickets "
+           "**not worked** in the window (carry-over / follow-up).")
 if st.button("🔗 Load open tickets (live)", key="ivt_open_btn"):
     pipe_map = _pipeline_map()
     open_rows = []
@@ -524,6 +524,9 @@ if st.button("🔗 Load open tickets (live)", key="ivt_open_btn"):
                              {"propertyName": "closed_date", "operator": "NOT_HAS_PROPERTY"}]}])
     for r in recs:
         p = r.get("properties", {})
+        friendly = pipe_map.get(p.get("hs_pipeline"), "Other")
+        if friendly not in ("T1", "T2", "VRS Registration"):
+            continue  # only the three pipelines we care about
         lm = str(p.get("hs_lastmodifieddate") or "")
         try:
             lm = (pd.to_datetime(int(lm), unit="ms") if lm.isdigit()
@@ -531,7 +534,7 @@ if st.button("🔗 Load open tickets (live)", key="ivt_open_btn"):
         except Exception:
             lm = lm[:10]
         open_rows.append({"Ticket ID": str(p.get("hs_object_id") or ""),
-                          "Pipeline": pipe_map.get(p.get("hs_pipeline"), "Other"),
+                          "Pipeline": friendly,
                           "Subject": (p.get("subject") or "").strip() or "—",
                           "Last modified": lm})
     st.session_state["ivt_open_df"] = pd.DataFrame(open_rows)
