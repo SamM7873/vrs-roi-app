@@ -54,8 +54,8 @@ with st.expander("📖 Definitions & how the formulas work"):
 | Metric | Formula |
 |---|---|
 | Work hours (per agent/day) | last ticket-event time − first ticket-event time that day |
-| Min/ticket | work minutes ÷ unique tickets touched |
-| Min/event | work minutes ÷ ticket events |
+| Time/ticket (min & sec) | work time ÷ unique tickets touched |
+| Time/event (min & sec) | work time ÷ ticket events |
 | Tickets/hour | unique tickets touched ÷ work hours |
 
 Work hours is a **span proxy** — breaks inside the window count, and work outside HubSpot
@@ -247,7 +247,7 @@ st.download_button("📥 Download daily reconciliation (CSV)", daily.to_csv(inde
 # ── work hours & avg time per ticket ────────────────────────────────────────────
 st.markdown("##### ⏱️ Work hours & average time per ticket (by agent)")
 st.caption("Work hours = first-to-last ticket-event span per day (proxy). "
-           "Min/ticket = work minutes ÷ unique tickets touched.")
+           "Time/ticket = work time ÷ unique tickets touched (shown as min & sec).")
 MIN_DAY = st.slider("Ignore days shorter than (hours)", 0.0, 3.0, 1.0, 0.5, key="ivt_min")
 gspan = (tkf.groupby(["_agent", "_day"])
          .agg(start=("_t", "min"), end=("_t", "max"), events=("_t", "size")).reset_index())
@@ -257,6 +257,15 @@ gspan = gspan[gspan["span_h"] >= MIN_DAY]
 
 def _hm(h):
     return f"{int(h)}h {int(round((h - int(h)) * 60)):02d}m"
+
+
+def _ms(minutes):
+    """Decimal minutes → 'Xm Ys' (or 'Ys' when under a minute)."""
+    if not minutes or minutes <= 0:
+        return "—"
+    total = int(round(minutes * 60))
+    m, s = divmod(total, 60)
+    return f"{m}m {s:02d}s" if m else f"{s}s"
 
 
 if gspan.empty:
@@ -273,15 +282,16 @@ else:
         touched = int(tt_by.get(a, 0))
         wrows.append({
             "Agent": a,
-            "Work hours": round(h, 1),
+            "Work hours": _hm(h),
             "Ticket events": events,
             "Tickets created": created,
             "Tickets touched": touched,
-            "Min/ticket": round(h * 60 / touched, 1) if touched else 0,
-            "Min/event": round(h * 60 / events, 1) if events else 0,
+            "Time/ticket": _ms(h * 60 / touched) if touched else "—",
+            "Time/event": _ms(h * 60 / events) if events else "—",
             "Tickets/hour": round(touched / h, 1) if h else 0,
+            "_sort": h,
         })
-    weff = pd.DataFrame(wrows).sort_values("Work hours", ascending=False)
+    weff = pd.DataFrame(wrows).sort_values("_sort", ascending=False).drop(columns="_sort")
     st.dataframe(weff, use_container_width=True, hide_index=True)
     st.download_button("📥 Download work-hours efficiency (CSV)", weff.to_csv(index=False),
                        "ticket_work_hours.csv", "text/csv", key="ivt_wh_csv")
