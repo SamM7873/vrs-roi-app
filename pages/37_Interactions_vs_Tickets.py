@@ -324,7 +324,8 @@ if st.button("🔗 Load ticket pipelines & subjects", key="ivt_pipe_btn"):
             chunk = ids[i:i + 100]
             for rec in fetch_all("tickets",
                                  ["hs_object_id", "subject", "hs_pipeline", "hs_pipeline_stage",
-                                  "hs_ticket_priority", "createdate"],
+                                  "hs_ticket_priority", "createdate", "hs_object_source_label",
+                                  "hs_object_source", "hs_created_by_user_id"],
                                  filter_groups=[{"filters": [
                                      {"propertyName": "hs_object_id", "operator": "IN", "values": chunk}]}]):
                 p = rec.get("properties", {})
@@ -334,9 +335,23 @@ if st.button("🔗 Load ticket pipelines & subjects", key="ivt_pipe_btn"):
                           else pd.to_datetime(cd)).strftime("%b %d, %Y")
                 except Exception:
                     cd = cd[:10]
+                # Manual = a real user created it (has hs_created_by_user_id and a UI-ish source).
+                src = (p.get("hs_object_source_label") or p.get("hs_object_source") or "").strip()
+                src_u = src.upper()
+                has_user = bool(str(p.get("hs_created_by_user_id") or "").strip())
+                auto_srcs = ("FORM", "WORKFLOW", "AUTOMATION", "INTEGRATION", "API",
+                             "IMPORT", "EMAIL", "BOT", "MOBILE_MESSAGING", "CONVERSATIONS")
+                if any(a in src_u for a in auto_srcs):
+                    origin = "Automatic"
+                elif has_user or "CRM_UI" in src_u or "SALES_UI" in src_u or "UI" in src_u:
+                    origin = "Manual"
+                else:
+                    origin = "Automatic"
                 trows.append({
                     "Ticket ID": str(p.get("hs_object_id") or ""),
                     "Pipeline": pipe_map.get(p.get("hs_pipeline"), "Other"),
+                    "Origin": origin,
+                    "Source": src or "—",
                     "Subject": (p.get("subject") or "").strip() or "—",
                     "Priority": (p.get("hs_ticket_priority") or "").strip() or "—",
                     "Created": cd,
@@ -348,13 +363,30 @@ if st.button("🔗 Load ticket pipelines & subjects", key="ivt_pipe_btn"):
         st.session_state["ivt_tickets_df"] = tdf
 if "ivt_tickets_df" in st.session_state:
     tdf = st.session_state["ivt_tickets_df"]
-    pv = tdf["Pipeline"].value_counts().rename_axis("Pipeline").reset_index(name="Tickets created")
-    pv["%"] = (pv["Tickets created"] / len(tdf) * 100).round(1)
-    st.markdown("**Tickets created by pipeline**")
-    st.dataframe(pv, use_container_width=True, hide_index=True)
-    _pp = st.selectbox("Filter tickets by pipeline", ["All"] + pv["Pipeline"].tolist(), key="ivt_pp")
-    _tv = tdf if _pp == "All" else tdf[tdf["Pipeline"] == _pp]
-    st.dataframe(_tv.sort_values("Pipeline"), use_container_width=True, hide_index=True, height=380)
+    cca, ccb = st.columns(2)
+    with cca:
+        st.markdown("**By pipeline**")
+        pv = tdf["Pipeline"].value_counts().rename_axis("Pipeline").reset_index(name="Tickets")
+        pv["%"] = (pv["Tickets"] / len(tdf) * 100).round(1)
+        st.dataframe(pv, use_container_width=True, hide_index=True)
+    with ccb:
+        st.markdown("**Manual vs Automatic**")
+        ov = tdf["Origin"].value_counts().rename_axis("Origin").reset_index(name="Tickets")
+        ov["%"] = (ov["Tickets"] / len(tdf) * 100).round(1)
+        st.dataframe(ov, use_container_width=True, hide_index=True)
+    st.caption("**Manual** = created by a person in HubSpot. **Automatic** = created by a form, "
+               "workflow, integration, API, email, or bot (from the ticket's source field).")
+    fc1, fc2 = st.columns(2)
+    _pp = fc1.selectbox("Filter by pipeline", ["All"] + pv["Pipeline"].tolist(), key="ivt_pp")
+    _oo = fc2.selectbox("Filter by origin", ["All", "Manual", "Automatic"], key="ivt_oo")
+    _tv = tdf.copy()
+    if _pp != "All":
+        _tv = _tv[_tv["Pipeline"] == _pp]
+    if _oo != "All":
+        _tv = _tv[_tv["Origin"] == _oo]
+    st.dataframe(_tv[["Ticket ID", "Pipeline", "Origin", "Source", "Subject", "Priority", "Created"]]
+                 .sort_values(["Origin", "Pipeline"]),
+                 use_container_width=True, hide_index=True, height=380)
     st.download_button("📥 Export tickets (CSV)", tdf.to_csv(index=False),
                        "created_tickets_by_pipeline.csv", "text/csv", key="ivt_pipe_csv")
 
