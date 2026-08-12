@@ -116,13 +116,14 @@ consumer_health_page = st.Page("pages/33_Consumer_Health.py",            title="
 ticket_audit_page = st.Page("pages/34_Ticket_Audit_Report.py",           title="Ticket Audit Report",          icon="🎫")
 school_page = st.Page("pages/35_School_Report.py",                       title="School Report",                icon="🎓")
 email_bounce_page = st.Page("pages/36_Email_Bounce_Report.py",           title="Email Bounce Report",          icon="📧")
+ivt_page = st.Page("pages/37_Interactions_vs_Tickets.py",                title="Interactions vs Tickets",      icon="🔀")
 
 # Grouped sidebar navigation (sections keep the 24 pages organized).
 pg = st.navigation({
     "Home": [overview_page, this_month_page, weekly_page, daily_page, lookup_page],
     "Numbers": [numbers_page, numfunnel_page, funnel_page, registrations_page, portin_page, winback_page, geo_page, yoy_page],
     "Customers": [consumer_health_page, ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, vrs_react_page, retention_page, org_ret_page, school_page],
-    "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page],
+    "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page, ivt_page],
     "Tools": [bulk_page, explorer_page, pendo_page, dq_page, convo360_page, data_health_page, email_bounce_page],
     "Admin": [ticket_audit_page, work_hours_page, audit_page],
 })
