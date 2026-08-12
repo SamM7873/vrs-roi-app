@@ -685,7 +685,7 @@ st.caption("Compares **currently-open tickets** in **T1 / T2 / VRS Registration*
            "**not worked** in the window (carry-over / follow-up).")
 if st.button("🔗 Load open tickets (live)", key="ivt_open_btn"):
     pipe_map, stage_map = _pipeline_map(with_stages=True)
-    open_rows = []
+    open_rows, closed_rows = [], []
     with dash_spinner("Pulling open tickets from HubSpot…"):
         recs = fetch_all("tickets",
                          ["hs_object_id", "subject", "hs_pipeline", "hs_pipeline_stage",
@@ -709,7 +709,34 @@ if st.button("🔗 Load open tickets (live)", key="ivt_open_btn"):
                                                  (p.get("hs_pipeline_stage") or "—")),
                           "Subject": (p.get("subject") or "").strip() or "—",
                           "Last modified": lm})
+    # closed / completed tickets closed within the selected window
+    _lo_ms = str(int(pd.Timestamp(d_lo).timestamp() * 1000))
+    _hi_ms = str(int((pd.Timestamp(d_hi) + pd.Timedelta(days=1)).timestamp() * 1000))
+    with dash_spinner("Pulling closed tickets from HubSpot…"):
+        crecs = fetch_all("tickets",
+                          ["hs_object_id", "subject", "hs_pipeline", "hs_pipeline_stage", "closed_date"],
+                          filter_groups=[{"filters": [
+                              {"propertyName": "closed_date", "operator": "GTE", "value": _lo_ms},
+                              {"propertyName": "closed_date", "operator": "LT", "value": _hi_ms}]}])
+    for r in crecs:
+        p = r.get("properties", {})
+        friendly = pipe_map.get(p.get("hs_pipeline"), "Other")
+        if friendly not in ("T1", "T2", "VRS Registration"):
+            continue
+        cdt = str(p.get("closed_date") or "")
+        try:
+            cdt = (pd.to_datetime(int(cdt), unit="ms") if cdt.isdigit()
+                   else pd.to_datetime(cdt)).strftime("%b %d, %Y")
+        except Exception:
+            cdt = cdt[:10]
+        closed_rows.append({"Ticket ID": str(p.get("hs_object_id") or ""),
+                            "Pipeline": friendly,
+                            "Stage": stage_map.get(p.get("hs_pipeline_stage"),
+                                                   (p.get("hs_pipeline_stage") or "—")),
+                            "Subject": (p.get("subject") or "").strip() or "—",
+                            "Closed": cdt})
     st.session_state["ivt_open_df"] = pd.DataFrame(open_rows)
+    st.session_state["ivt_closed_df"] = pd.DataFrame(closed_rows)
 
 if "ivt_open_df" in st.session_state:
     odf = st.session_state["ivt_open_df"]
@@ -721,10 +748,13 @@ if "ivt_open_df" in st.session_state:
     n_handled = int((odf["State"] == "Handled in window").sum())
     n_pending = n_open - n_handled
     _pct_pend = f"{(n_pending/n_open*100):.0f}% of open" if n_open else "—"
+    cdf = st.session_state.get("ivt_closed_df", pd.DataFrame())
+    n_closed = len(cdf)
     _metric_cards([
         ("🎫 Open tickets (now)", f"{n_open:,}", "T1 · T2 · VRS Reg", "#4C8DFF"),
         ("✅ Handled in window", f"{n_handled:,}", "worked in range", "#2DB84B"),
         ("🔔 Pending / reminder", f"{n_pending:,}", _pct_pend, "#E8952A"),
+        ("🏁 Closed in window", f"{n_closed:,}", "completed in range", "#0FB5AE"),
     ])
     pend = odf[odf["State"] == "Pending (reminder)"]
     obp, obs = st.columns(2)
@@ -752,6 +782,27 @@ if "ivt_open_df" in st.session_state:
                        "pending_reminder_tickets.csv", "text/csv", key="ivt_pending_csv")
     st.caption("Example: 200 open · 150 handled in window · **50 pending (reminder)** — those 50 "
                "need follow-up. Open = no close date on the ticket.")
+
+    # closed / completed tickets in the window
+    st.markdown("**🏁 Closed / completed tickets (in window)**")
+    if cdf.empty:
+        st.caption("No tickets closed in the selected date range (T1 / T2 / VRS Registration).")
+    else:
+        cbp, cbs = st.columns(2)
+        with cbp:
+            st.markdown("By pipeline")
+            cpp = cdf["Pipeline"].value_counts().rename_axis("Pipeline").reset_index(name="Closed")
+            st.dataframe(cpp, use_container_width=True, hide_index=True,
+                         column_config={"Closed": _bar("Closed", cpp["Closed"].max() if not cpp.empty else 1)})
+        with cbs:
+            st.markdown("By stage / status")
+            cps = cdf["Stage"].value_counts().rename_axis("Stage").reset_index(name="Closed")
+            st.dataframe(cps, use_container_width=True, hide_index=True,
+                         column_config={"Closed": _bar("Closed", cps["Closed"].max() if not cps.empty else 1)})
+        st.dataframe(cdf[["Ticket ID", "Pipeline", "Stage", "Subject", "Closed"]].sort_values("Closed"),
+                     use_container_width=True, hide_index=True, height=300)
+        st.download_button("📥 Export closed tickets (CSV)", cdf.to_csv(index=False),
+                           "closed_tickets.csv", "text/csv", key="ivt_closed_csv")
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
