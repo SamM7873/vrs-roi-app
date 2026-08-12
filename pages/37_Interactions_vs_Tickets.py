@@ -3,7 +3,7 @@ import pandas as pd
 import time
 from utils import (require_auth, is_app_admin, COMMON_CSS, report_header,
                    report_header_close, log_report_view, save_report, load_report,
-                   saved_at_label)
+                   saved_at_label, fetch_all, dash_spinner)
 
 st.set_page_config(page_title="Interactions vs Tickets", layout="wide", page_icon="🔀")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -55,11 +55,13 @@ def _parse_conv(file):
     acol = _find(df.columns, "agent", "rep")
     if not dcol:
         return "Convo360: no date column found."
+    ccol = _find(df.columns, "customer name", "customer", "name")
     df["_day"] = pd.to_datetime(df[dcol], errors="coerce").dt.date
     df = df[df["_day"].notna()].copy()
     df["_type"] = df[tcol].str.strip() if tcol else "—"
     df["_agent"] = df[acol].str.strip() if acol else "—"
-    return df[["_day", "_type", "_agent"]]
+    df["_customer"] = df[ccol].str.strip() if ccol else ""
+    return df[["_day", "_type", "_agent", "_customer"]]
 
 
 def _parse_tick(file):
@@ -178,5 +180,64 @@ with cB:
 
 st.download_button("📥 Download daily reconciliation (CSV)", daily.to_csv(index=False),
                    "interactions_vs_tickets.csv", "text/csv")
+
+# ── per-consumer match (live HubSpot) ───────────────────────────────────────────
+st.markdown("---")
+st.markdown("### 🧩 Per-consumer match (live)")
+st.caption("Match each Convo360 **Customer Name** to the tickets **created in the window** by "
+           "pulling ticket subjects/descriptions live from HubSpot. Answers: for a consumer who "
+           "contacted N times, how many tickets were opened?")
+
+if "_customer" not in cvf.columns or cvf["_customer"].str.strip().eq("").all():
+    st.info("The Convo360 export has no Customer Name column — can't match per consumer.")
+elif st.button("🔗 Run per-consumer match (queries HubSpot)"):
+    ids = sorted(tkf[tkf["_created"]]["Target object id"].replace("", pd.NA).dropna().unique().tolist())
+    subjmap = {}
+    with dash_spinner(f"Fetching {len(ids):,} created tickets from HubSpot…"):
+        for i in range(0, len(ids), 100):
+            chunk = ids[i:i + 100]
+            for rec in fetch_all("tickets", ["hs_object_id", "subject", "content", "createdate"],
+                                 filter_groups=[{"filters": [
+                                     {"propertyName": "hs_object_id", "operator": "IN", "values": chunk}]}]):
+                p = rec.get("properties", {})
+                hid = str(p.get("hs_object_id") or "").strip()
+                if hid:
+                    subjmap[hid] = f"{p.get('subject') or ''} {p.get('content') or ''}".lower()
+    tickets_text = list(subjmap.values())
+
+    def _match_count(name):
+        name = name.strip().lower()
+        if not name:
+            return 0
+        toks = [t for t in name.split() if len(t) > 1]
+        c = 0
+        for txt in tickets_text:
+            if name in txt or (len(toks) >= 2 and all(t in txt for t in toks)):
+                c += 1
+        return c
+
+    cust = (cvf.groupby("_customer")
+            .agg(Interactions=("_customer", "size"),
+                 Types=("_type", lambda s: ", ".join(sorted(set(s)))))
+            .reset_index().rename(columns={"_customer": "Customer"}))
+    cust = cust[cust["Customer"].str.strip() != ""]
+    with dash_spinner("Matching customers to tickets…"):
+        cust["Tickets"] = cust["Customer"].map(_match_count)
+    cust["Int/ticket"] = cust.apply(
+        lambda r: round(r["Interactions"] / r["Tickets"], 1) if r["Tickets"] else 0, axis=1)
+    cust["Flag"] = cust.apply(
+        lambda r: "🔴 more tickets than contacts" if r["Tickets"] > r["Interactions"]
+        else ("⚠️ no ticket found" if r["Tickets"] == 0 else "✅"), axis=1)
+    cust = cust.sort_values(["Interactions", "Tickets"], ascending=False)
+
+    matched = int((cust["Tickets"] > 0).sum())
+    st.caption(f"{len(cust):,} consumers · {matched:,} matched to ≥1 ticket · "
+               f"{int((cust['Tickets'] > cust['Interactions']).sum()):,} have more tickets than contacts.")
+    st.dataframe(cust[["Customer", "Interactions", "Types", "Tickets", "Int/ticket", "Flag"]],
+                 use_container_width=True, hide_index=True, height=460)
+    st.download_button("📥 Download per-consumer match (CSV)", cust.to_csv(index=False),
+                       "per_consumer_match.csv", "text/csv", key="ivt_cust_csv")
+    st.caption("Matching is name-substring on ticket subject/description — a common name may "
+               "over-match, and a ticket that doesn't name the consumer won't match. Treat as a guide.")
 
 report_header_close()
