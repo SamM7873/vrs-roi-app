@@ -395,6 +395,26 @@ if "ivt_tickets_df" in st.session_state:
     st.download_button("📥 Export tickets (CSV)", tdf.to_csv(index=False),
                        "created_tickets_by_pipeline.csv", "text/csv", key="ivt_pipe_csv")
 
+    # who handled manual vs automatic tickets
+    st.markdown("**Who handled Manual vs Automatic tickets**")
+    _id2org = dict(zip(tdf["Ticket ID"].astype(str), tdf["Origin"]))
+    _ev = tkf[tkf["Target object id"] != ""].copy()
+    _ev["Origin"] = _ev["Target object id"].map(lambda i: _id2org.get(str(i), "Older / not in window"))
+    handled = (_ev.groupby(["_agent", "Origin"])["Target object id"].nunique()
+               .unstack(fill_value=0).reset_index().rename(columns={"_agent": "Agent"}))
+    for col in ("Manual", "Automatic", "Older / not in window"):
+        if col not in handled.columns:
+            handled[col] = 0
+    handled["Total handled"] = handled[["Manual", "Automatic", "Older / not in window"]].sum(axis=1)
+    handled = handled.sort_values("Total handled", ascending=False)
+    order = ["Agent", "Total handled", "Manual", "Automatic", "Older / not in window"]
+    st.dataframe(handled[order], use_container_width=True, hide_index=True)
+    st.caption("Distinct tickets each agent **touched**, split by how the ticket was created. "
+               "**Automatic** tickets have no creator in the audit log, so this shows who *works* "
+               "them. 'Older / not in window' = ticket created before the export period.")
+    st.download_button("📥 Export handled-by-origin (CSV)", handled[order].to_csv(index=False),
+                       "handled_by_origin.csv", "text/csv", key="ivt_hbo_csv")
+
 # ── new vs catch-up tickets handled per day ─────────────────────────────────────
 st.markdown("##### 🆕 Tickets handled per day — new vs catch-up")
 st.caption("Of the tickets an agent **touches** in a day: **New** = created that same day · "
