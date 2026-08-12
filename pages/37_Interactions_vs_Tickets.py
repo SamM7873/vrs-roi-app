@@ -508,6 +508,61 @@ else:
     st.download_button("📥 Download by-agent new-vs-catchup (CSV)", byagent.to_csv(index=False),
                        "new_vs_catchup_by_agent.csv", "text/csv", key="ivt_nvc_agent_csv")
 
+# ── open tickets: handled vs pending (reminder) ─────────────────────────────────
+st.markdown("##### 🔔 Open tickets — handled vs pending (reminder)")
+st.caption("Compares **currently-open tickets** (live HubSpot) against what was **touched** in the "
+           "selected window. Pending / reminder = open tickets **not worked** in the window "
+           "(carry-over / follow-up).")
+if st.button("🔗 Load open tickets (live)", key="ivt_open_btn"):
+    pipe_map = _pipeline_map()
+    open_rows = []
+    with dash_spinner("Pulling open tickets from HubSpot…"):
+        recs = fetch_all("tickets",
+                         ["hs_object_id", "subject", "hs_pipeline", "hs_pipeline_stage",
+                          "createdate", "hs_lastmodifieddate"],
+                         filter_groups=[{"filters": [
+                             {"propertyName": "closed_date", "operator": "NOT_HAS_PROPERTY"}]}])
+    for r in recs:
+        p = r.get("properties", {})
+        lm = str(p.get("hs_lastmodifieddate") or "")
+        try:
+            lm = (pd.to_datetime(int(lm), unit="ms") if lm.isdigit()
+                  else pd.to_datetime(lm)).strftime("%b %d, %Y")
+        except Exception:
+            lm = lm[:10]
+        open_rows.append({"Ticket ID": str(p.get("hs_object_id") or ""),
+                          "Pipeline": pipe_map.get(p.get("hs_pipeline"), "Other"),
+                          "Subject": (p.get("subject") or "").strip() or "—",
+                          "Last modified": lm})
+    st.session_state["ivt_open_df"] = pd.DataFrame(open_rows)
+
+if "ivt_open_df" in st.session_state:
+    odf = st.session_state["ivt_open_df"]
+    touched_ids = set(tkf["Target object id"].replace("", pd.NA).dropna().astype(str))
+    odf = odf.copy()
+    odf["State"] = odf["Ticket ID"].map(
+        lambda i: "Handled in window" if str(i) in touched_ids else "Pending (reminder)")
+    n_open = len(odf)
+    n_handled = int((odf["State"] == "Handled in window").sum())
+    n_pending = n_open - n_handled
+    ok = st.columns(3)
+    ok[0].metric("🎫 Open tickets (now)", f"{n_open:,}")
+    ok[1].metric("✅ Handled in window", f"{n_handled:,}")
+    ok[2].metric("🔔 Pending / reminder", f"{n_pending:,}",
+                 help="Open tickets not touched in the selected window.")
+    st.markdown("**Pending (reminder) by pipeline**")
+    pend = odf[odf["State"] == "Pending (reminder)"]
+    pv = pend["Pipeline"].value_counts().rename_axis("Pipeline").reset_index(name="Pending")
+    st.dataframe(pv, use_container_width=True, hide_index=True)
+    st.markdown("**Pending (reminder) tickets**")
+    st.dataframe(pend[["Ticket ID", "Pipeline", "Subject", "Last modified"]]
+                 .sort_values("Last modified"),
+                 use_container_width=True, hide_index=True, height=360)
+    st.download_button("📥 Export pending tickets (CSV)", pend.to_csv(index=False),
+                       "pending_reminder_tickets.csv", "text/csv", key="ivt_pending_csv")
+    st.caption("Example: 200 open · 150 handled in window · **50 pending (reminder)** — those 50 "
+               "need follow-up. Open = no close date on the ticket.")
+
 # ── per-agent (best effort — names differ between systems) ──────────────────────
 st.markdown("##### By agent (best-effort — Convo360 names vs HubSpot usernames differ)")
 ai = cvf.groupby("_agent").size().rename("Interactions").reset_index()
