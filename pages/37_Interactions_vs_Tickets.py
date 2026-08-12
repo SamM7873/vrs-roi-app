@@ -282,14 +282,25 @@ n_touched = tkf["Target object id"].replace("", pd.NA).nunique()
 # tickets per interaction — how many tickets were opened for each incoming call/chat
 tpi = (n_created / n_int) if n_int else None
 
-# ── KPIs ────────────────────────────────────────────────────────────────────────
-k = st.columns(4)
-k[0].metric("📞 Incoming interactions", f"{n_int:,}")
-k[1].metric("🎫 Tickets created", f"{n_created:,}")
-k[2].metric("Unique tickets touched", f"{n_touched:,}")
-k[3].metric("Tickets per interaction", f"{tpi:.1f}" if tpi else "—",
-            help="Tickets created ÷ interactions. 1 = one ticket per call; above 1 = more tickets "
-                 "than calls (extra come from email/forms/manual); below 1 = calls consolidate.")
+# ── KPI cards (visual summary) ──────────────────────────────────────────────────
+_tpi_color = "#8792A2" if tpi is None else ("#2DB84B" if tpi <= 0.8 else ("#E8952A" if tpi <= 1.2 else "#E5484D"))
+_cards = [
+    ("📞 Incoming interactions", f"{n_int:,}", "calls · chats · video", "#4C8DFF"),
+    ("🎫 Tickets created", f"{n_created:,}", "new tickets opened", "#7A5CFF"),
+    ("🗂️ Tickets touched", f"{n_touched:,}", "distinct tickets worked", "#0FB5AE"),
+    ("⚖️ Tickets per interaction", f"{tpi:.1f}" if tpi else "—", "tickets ÷ calls", _tpi_color),
+]
+_cc = st.columns(len(_cards))
+for _col, (t, v, s, c) in zip(_cc, _cards):
+    _col.markdown(
+        f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
+             padding:14px 16px 12px;background:rgba(127,127,127,0.03);">
+        <div style="font-size:.72rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+             color:#667085;">{t}</div>
+        <div style="font-size:2rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
+        <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""",
+        unsafe_allow_html=True)
+st.markdown("")
 
 if tpi is not None:
     if tpi <= 0.5:
@@ -307,7 +318,10 @@ st.caption("**Tickets per interaction** = tickets created ÷ incoming calls/chat
            "Above 1 just means many tickets aren't from Convo360 calls — a flag to look into, "
            "not proof of over-ticketing.")
 
-# ── interaction source breakdown ────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════════
+st.divider()
+st.markdown("### 1 · Volume — interactions vs tickets")
+# ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### Incoming interactions by source")
 bytype = cvf["_source"].value_counts().rename_axis("Source").reset_index(name="Interactions")
 bytype["%"] = (bytype["Interactions"] / len(cvf) * 100).round(1) if len(cvf) else 0
@@ -359,7 +373,10 @@ come from **email, web forms, manual creation, or follow-ups** (channels not in 
 export). It's a flag to look into, not proof of over-ticketing.
 """)
 
-# ── tickets created — pipeline & detail (live HubSpot) ──────────────────────────
+# ════════════════════════════════════════════════════════════════════════════════
+st.divider()
+st.markdown("### 2 · Ticket detail — pipeline & source")
+# ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### 🎟️ Tickets created — pipeline & detail (live)")
 st.caption("The audit CSV has ticket IDs but no pipeline/subject — click to enrich them from "
            "HubSpot and see which pipeline (T1 / T2 / VRS Registration) each created ticket is in.")
@@ -458,7 +475,10 @@ if "ivt_tickets_df" in st.session_state:
     st.download_button("📥 Export handled-by-origin (CSV)", handled[order].to_csv(index=False),
                        "handled_by_origin.csv", "text/csv", key="ivt_hbo_csv")
 
-# ── new vs catch-up tickets handled per day ─────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════════
+st.divider()
+st.markdown("### 3 · Workload — new vs catch-up & pending")
+# ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### 🆕 Tickets handled per day — new vs catch-up")
 st.caption("Of the tickets an agent **touches** in a day: **New** = created that same day · "
            "**Catch-up** = created earlier (a reminder / follow-up / older ticket worked today).")
@@ -587,7 +607,10 @@ if "ivt_open_df" in st.session_state:
     st.caption("Example: 200 open · 150 handled in window · **50 pending (reminder)** — those 50 "
                "need follow-up. Open = no close date on the ticket.")
 
-# ── per-agent (best effort — names differ between systems) ──────────────────────
+# ════════════════════════════════════════════════════════════════════════════════
+st.divider()
+st.markdown("### 4 · Productivity — by agent & work hours")
+# ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### By agent (best-effort — Convo360 names vs HubSpot usernames differ)")
 ai = cvf.groupby("_agent").size().rename("Interactions").reset_index()
 ac = tkf[tkf["_created"]].groupby("_agent").size().rename("Tickets created").reset_index()
@@ -676,9 +699,9 @@ else:
     st.download_button("📥 Download work-hours efficiency (CSV)", weff.to_csv(index=False),
                        "ticket_work_hours.csv", "text/csv", key="ivt_wh_csv")
 
-# ── per-consumer match (live HubSpot) ───────────────────────────────────────────
-st.markdown("---")
-st.markdown("### 🧩 Per-consumer match (live)")
+# ════════════════════════════════════════════════════════════════════════════════
+st.divider()
+st.markdown("### 5 · Per-consumer match (live)")
 st.caption("Match each Convo360 **Customer Name** to the tickets **created in the window** by "
            "pulling ticket subjects/descriptions live from HubSpot. Answers: for a consumer who "
            "contacted N times, how many tickets were opened?")
