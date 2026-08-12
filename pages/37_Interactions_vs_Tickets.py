@@ -99,11 +99,12 @@ def _parse_tick(file):
     for c in ("Subcategory", "Action", "Target object id"):
         if c not in df.columns:
             df[c] = ""
-    df["_day"] = pd.to_datetime(df[dcol], errors="coerce").dt.date
+    df["_t"] = pd.to_datetime(df[dcol], errors="coerce")
+    df["_day"] = df["_t"].dt.date
     df = df[(df["Subcategory"] == "Ticket") & df["_day"].notna()].copy()
     df["_agent"] = df[ucol].str.split("@").str[0].str.strip() if ucol else "—"
     df["_created"] = df["Action"] == "Create"
-    return df[["_day", "_agent", "Action", "_created", "Target object id"]]
+    return df[["_t", "_day", "_agent", "Action", "_created", "Target object id"]]
 
 
 if run and up_conv is not None and up_tick is not None:
@@ -206,6 +207,48 @@ with cB:
 
 st.download_button("📥 Download daily reconciliation (CSV)", daily.to_csv(index=False),
                    "interactions_vs_tickets.csv", "text/csv")
+
+# ── work hours & avg time per ticket ────────────────────────────────────────────
+st.markdown("##### ⏱️ Work hours & average time per ticket (by agent)")
+st.caption("Work hours = first-to-last ticket-event span per day (proxy). "
+           "Min/ticket = work minutes ÷ unique tickets touched.")
+MIN_DAY = st.slider("Ignore days shorter than (hours)", 0.0, 3.0, 1.0, 0.5, key="ivt_min")
+gspan = (tkf.groupby(["_agent", "_day"])
+         .agg(start=("_t", "min"), end=("_t", "max"), events=("_t", "size")).reset_index())
+gspan["span_h"] = (gspan["end"] - gspan["start"]).dt.total_seconds() / 3600.0
+gspan = gspan[gspan["span_h"] >= MIN_DAY]
+
+
+def _hm(h):
+    return f"{int(h)}h {int(round((h - int(h)) * 60)):02d}m"
+
+
+if gspan.empty:
+    st.info("No qualifying working days for the ticket events.")
+else:
+    hrs = gspan.groupby("_agent")["span_h"].sum()
+    ev_by = tkf.groupby("_agent").size()
+    cr_by = tkf[tkf["_created"]].groupby("_agent").size()
+    tt_by = tkf.groupby("_agent")["Target object id"].apply(lambda s: s.replace("", pd.NA).nunique())
+    wrows = []
+    for a, h in hrs.items():
+        events = int(ev_by.get(a, 0))
+        created = int(cr_by.get(a, 0))
+        touched = int(tt_by.get(a, 0))
+        wrows.append({
+            "Agent": a,
+            "Work hours": round(h, 1),
+            "Ticket events": events,
+            "Tickets created": created,
+            "Tickets touched": touched,
+            "Min/ticket": round(h * 60 / touched, 1) if touched else 0,
+            "Min/event": round(h * 60 / events, 1) if events else 0,
+            "Tickets/hour": round(touched / h, 1) if h else 0,
+        })
+    weff = pd.DataFrame(wrows).sort_values("Work hours", ascending=False)
+    st.dataframe(weff, use_container_width=True, hide_index=True)
+    st.download_button("📥 Download work-hours efficiency (CSV)", weff.to_csv(index=False),
+                       "ticket_work_hours.csv", "text/csv", key="ivt_wh_csv")
 
 # ── per-consumer match (live HubSpot) ───────────────────────────────────────────
 st.markdown("---")
