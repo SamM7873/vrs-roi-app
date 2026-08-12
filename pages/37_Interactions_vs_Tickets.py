@@ -42,7 +42,7 @@ if not is_app_admin():
     report_header_close(); st.stop()
 
 SAVE_KEY = "interactions_vs_tickets"
-TTL = 48 * 3600
+RETENTION_OPTS = {"24 hours": 24, "48 hours": 48, "72 hours": 72, "7 days": 168}
 
 st.markdown(
     "Upload **both** exports to compare **incoming interactions** (Convo360 — videophone, "
@@ -98,11 +98,15 @@ matches the Convo360 **Customer Name** by text — a guide, not an exact audit (
 over-match; tickets that don't name the consumer won't match).
 """)
 
-c1, c2 = st.columns(2)
+c1, c2, c3 = st.columns([2, 2, 1])
 with c1:
     up_conv = st.file_uploader("Convo360 interaction CSV", type=["csv"], key="ivt_conv")
 with c2:
     up_tick = st.file_uploader("HubSpot ticket audit CSV", type=["csv"], key="ivt_tick")
+with c3:
+    _ret_label = st.selectbox("Keep report for", list(RETENTION_OPTS.keys()), index=1, key="ivt_ret",
+                              help="How long the uploaded comparison stays saved before it expires.")
+TTL = RETENTION_OPTS[_ret_label] * 3600
 run = st.button("▶ Run comparison", type="primary", disabled=(up_conv is None or up_tick is None))
 
 
@@ -189,12 +193,15 @@ else:
         st.info("Upload both CSVs, then click **▶ Run comparison**.")
         report_header_close(); st.stop()
     if time.time() - (saved.get("saved_at") or 0) > TTL:
-        st.warning("Saved comparison is older than 48h — re-upload and Run.")
+        st.warning(f"Saved comparison is older than {_ret_label} — re-upload and Run.")
         report_header_close(); st.stop()
     cv, tk = saved["cv"], saved["tk"]
 
 if saved and saved.get("saved_at"):
-    st.caption(f"📌 Saved {saved_at_label(saved)} · upload new CSVs + Run to refresh.")
+    _rem = max(0, TTL - (time.time() - saved["saved_at"]))
+    _left = f"~{int(_rem // 3600)}h left" if _rem >= 3600 else f"~{int(_rem // 60)}m left"
+    st.caption(f"📌 Saved {saved_at_label(saved)} · kept for {_ret_label} ({_left}) · "
+               f"upload new CSVs + Run to refresh.")
 
 # ── interaction source filter ───────────────────────────────────────────────────
 sources = sorted(cv["_source"].unique())
