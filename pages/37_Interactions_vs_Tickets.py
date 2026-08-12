@@ -328,6 +328,55 @@ st.caption("**Tickets per interaction** = tickets created ÷ incoming calls/chat
            "Above 1 just means many tickets aren't from Convo360 calls — a flag to look into, "
            "not proof of over-ticketing.")
 
+# ── 🚩 automated flags & concerns ───────────────────────────────────────────────
+_flags = []   # (severity, message)  severity: "red" | "amber" | "green"
+
+# 1) tickets vs calls
+if tpi is not None and tpi > 1.2:
+    _flags.append(("red", f"**More tickets than calls** — {tpi:.1f} tickets per interaction "
+                          f"({n_created:,} tickets vs {n_int:,} calls). Check where the extra "
+                          "tickets originate (email / forms / manual)."))
+
+# 2) missed interactions
+_missed = int((cvf["_agent"] == "Missed (no agent)").sum())
+if n_int and _missed / n_int > 0.15:
+    _flags.append(("red", f"**High missed rate** — {_missed:,} of {n_int:,} interactions "
+                          f"({_missed/n_int*100:.0f}%) never connected to an agent."))
+elif _missed:
+    _flags.append(("amber", f"{_missed:,} interactions ({_missed/n_int*100:.0f}%) were missed "
+                            "(no agent connected)."))
+
+# 3) catch-up load (backlog) — quick overall calc
+_tt0 = tkf[tkf["Target object id"] != ""]
+if not _tt0.empty:
+    _cre0 = _tt0[_tt0["_created"]].groupby("Target object id")["_day"].min()
+    _tch0 = _tt0.groupby(["_day", "Target object id"]).size().reset_index(name="_n")
+    _tch0["_cd"] = _tch0["Target object id"].map(_cre0)
+    _cu = int(((_tch0["_cd"].isna()) | (_tch0["_cd"] != _tch0["_day"])).sum())
+    _th = len(_tch0)
+    if _th and _cu / _th > 0.6:
+        _flags.append(("amber", f"**Backlog-heavy** — {_cu/_th*100:.0f}% of tickets handled are "
+                                "**catch-up** (created earlier), not new work."))
+
+# 4) agent concentration — one person carries most created tickets
+_cr_agent = tkf[tkf["_created"]].groupby("_agent").size()
+if not _cr_agent.empty and _cr_agent.sum() > 0:
+    _top_share = _cr_agent.max() / _cr_agent.sum()
+    if _top_share > 0.5:
+        _flags.append(("amber", f"**Load concentration** — one agent "
+                                f"({_cr_agent.idxmax().split('@')[0]}) created "
+                                f"{_top_share*100:.0f}% of all tickets. Check workload balance."))
+
+st.markdown("##### 🚩 Flags & concerns")
+if not _flags:
+    st.success("✅ No red flags detected for this window.")
+else:
+    _sev = {"red": st.error, "amber": st.warning, "green": st.success}
+    for sev, msg in sorted(_flags, key=lambda x: {"red": 0, "amber": 1, "green": 2}[x[0]]):
+        _sev[sev](("🔴 " if sev == "red" else "🟡 ") + msg)
+    st.caption("Flags are heuristics from this window's data — a prompt to investigate, not a verdict. "
+               "More flags appear in each section (pending reminders, manual/automatic, per-agent).")
+
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
 st.markdown("### 1 · Volume — interactions vs tickets")
@@ -639,6 +688,23 @@ if "ivt_open_df" in st.session_state:
 st.divider()
 st.markdown("### 4 · Productivity — by agent & work hours")
 # ────────────────────────────────────────────────────────────────────────────────
+# agent performance KPIs (from ticket touches — the real handling agents)
+_touch_agent = (tkf[tkf["Target object id"] != ""].groupby("_agent")["Target object id"]
+                .nunique().sort_values(ascending=False))
+_created_agent = tkf[tkf["_created"]].groupby("_agent").size().sort_values(ascending=False)
+_n_agents = int(_touch_agent[_touch_agent.index != "—"].shape[0])
+_top_handler = _touch_agent.index[0].split("@")[0] if not _touch_agent.empty else "—"
+_top_handler_n = int(_touch_agent.iloc[0]) if not _touch_agent.empty else 0
+_avg_per_agent = (int(_touch_agent.sum() / _n_agents) if _n_agents else 0)
+_top_creator = _created_agent.index[0].split("@")[0] if not _created_agent.empty else "—"
+_top_creator_n = int(_created_agent.iloc[0]) if not _created_agent.empty else 0
+_metric_cards([
+    ("👥 Active agents", f"{_n_agents:,}", "handled ≥1 ticket", "#4C8DFF"),
+    ("🏆 Top handler", _top_handler, f"{_top_handler_n:,} tickets touched", "#2DB84B"),
+    ("✍️ Top creator", _top_creator, f"{_top_creator_n:,} tickets created", "#7A5CFF"),
+    ("📊 Avg / agent", f"{_avg_per_agent:,}", "tickets touched each", "#0FB5AE"),
+])
+
 st.markdown("##### By agent (best-effort — Convo360 names vs HubSpot usernames differ)")
 ai = cvf.groupby("_agent").size().rename("Interactions").reset_index().sort_values("Interactions", ascending=False)
 ac = tkf[tkf["_created"]].groupby("_agent").size().rename("Tickets created").reset_index().sort_values("Tickets created", ascending=False)
