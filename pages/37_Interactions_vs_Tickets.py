@@ -30,6 +30,42 @@ st.markdown(
 st.info("These two exports share no consumer key, so matching is at the **day** level "
         "(and agent, best-effort) — not per individual consumer.", icon="ℹ️")
 
+with st.expander("📖 Definitions & how the formulas work"):
+    st.markdown("""
+**Sources (Convo360 interaction types → friendly labels)**
+- **Videophone** = `SIP_VIDEO_CALL` · **Videochat** = `VIDEO_CHAT` · **Chat** = `CHAT`
+  · **Call** = audio/voice · **Text query** = `QUERY`. Pick which count as an interaction above.
+
+**Core counts (over the overlapping date window of the two files)**
+| Metric | Formula |
+|---|---|
+| Incoming interactions | count of Convo360 rows in the selected sources |
+| Tickets created | count of audit rows where `Subcategory = Ticket` **and** `Action = Create` |
+| Unique tickets touched | distinct `Target object id` on any ticket audit row |
+| **Interactions per ticket** | incoming interactions ÷ tickets created |
+
+**Reading interactions-per-ticket**
+- **≥ 2** ✅ good consolidation — several contacts roll into one ticket.
+- **1.3–2** 🟡 moderate · **1.0–1.3** 🟡 ~one ticket per contact.
+- **< 1** 🔴 *more tickets than interactions* — either agents open multiple tickets per
+  contact, **or** tickets come from channels not in the Convo360 export (email, manual, follow-ups).
+
+**Work hours & time per ticket (from ticket-event timestamps)**
+| Metric | Formula |
+|---|---|
+| Work hours (per agent/day) | last ticket-event time − first ticket-event time that day |
+| Min/ticket | work minutes ÷ unique tickets touched |
+| Min/event | work minutes ÷ ticket events |
+| Tickets/hour | unique tickets touched ÷ work hours |
+
+Work hours is a **span proxy** — breaks inside the window count, and work outside HubSpot
+(calls, email) isn't included.
+
+**Per-consumer match (live)** pulls each created ticket's subject/description from HubSpot and
+matches the Convo360 **Customer Name** by text — a guide, not an exact audit (common names can
+over-match; tickets that don't name the consumer won't match).
+""")
+
 c1, c2 = st.columns(2)
 with c1:
     up_conv = st.file_uploader("Convo360 interaction CSV", type=["csv"], key="ivt_conv")
