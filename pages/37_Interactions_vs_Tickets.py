@@ -483,7 +483,11 @@ if "ivt_tickets_df" in st.session_state:
     handled["Total handled"] = handled[["Manual", "Automatic", "Older / not in window"]].sum(axis=1)
     handled = handled.sort_values("Total handled", ascending=False)
     order = ["Agent", "Total handled", "Manual", "Automatic", "Older / not in window"]
-    st.dataframe(handled[order], use_container_width=True, hide_index=True)
+    _hmx = int(handled["Total handled"].max()) if not handled.empty else 1
+    st.dataframe(handled[order], use_container_width=True, hide_index=True,
+                 column_config={"Total handled": _bar("Total handled", _hmx),
+                                "Manual": _bar("Manual", _hmx),
+                                "Automatic": _bar("Automatic", _hmx)})
     st.caption("Distinct tickets each agent **touched**, split by how the ticket was created. "
                "**Automatic** tickets have no creator in the audit log, so this shows who *works* "
                "them. 'Older / not in window' = ticket created before the export period.")
@@ -561,7 +565,12 @@ else:
     byagent["% catch-up"] = (byagent["Catch-up"] / byagent["Total handled"] * 100).round(1)
     byagent = byagent.sort_values("Total handled", ascending=False)
     st.dataframe(byagent[["Agent", "Total handled", "New", "Catch-up", "% catch-up"]],
-                 use_container_width=True, hide_index=True)
+                 use_container_width=True, hide_index=True,
+                 column_config={
+                     "Total handled": _bar("Total handled", byagent["Total handled"].max()),
+                     "New": _bar("New", byagent["Total handled"].max()),
+                     "Catch-up": _bar("Catch-up", byagent["Total handled"].max()),
+                     "% catch-up": _bar("% catch-up", 100, fmt="%.1f%%")})
     st.caption("Per agent, counts each (day × ticket) they touched — New if the ticket was created "
                "that day, else Catch-up. The same ticket touched by two agents counts for both.")
     st.download_button("📥 Download by-agent new-vs-catchup (CSV)", byagent.to_csv(index=False),
@@ -631,18 +640,17 @@ st.divider()
 st.markdown("### 4 · Productivity — by agent & work hours")
 # ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### By agent (best-effort — Convo360 names vs HubSpot usernames differ)")
-ai = cvf.groupby("_agent").size().rename("Interactions").reset_index()
-ac = tkf[tkf["_created"]].groupby("_agent").size().rename("Tickets created").reset_index()
-st.columns(2)[0].caption("Convo360 handled")
+ai = cvf.groupby("_agent").size().rename("Interactions").reset_index().sort_values("Interactions", ascending=False)
+ac = tkf[tkf["_created"]].groupby("_agent").size().rename("Tickets created").reset_index().sort_values("Tickets created", ascending=False)
 cA, cB = st.columns(2)
 with cA:
     st.markdown("**Convo360 — interactions by agent**")
-    st.dataframe(ai.sort_values("Interactions", ascending=False),
-                 use_container_width=True, hide_index=True, height=300)
+    st.dataframe(ai, use_container_width=True, hide_index=True, height=300,
+                 column_config={"Interactions": _bar("Interactions", ai["Interactions"].max() if not ai.empty else 1)})
 with cB:
     st.markdown("**HubSpot — tickets created by agent**")
-    st.dataframe(ac.sort_values("Tickets created", ascending=False),
-                 use_container_width=True, hide_index=True, height=300)
+    st.dataframe(ac, use_container_width=True, hide_index=True, height=300,
+                 column_config={"Tickets created": _bar("Tickets created", ac["Tickets created"].max() if not ac.empty else 1)})
 
 st.download_button("📥 Download daily reconciliation (CSV)", daily.to_csv(index=False),
                    "interactions_vs_tickets.csv", "text/csv")
@@ -711,7 +719,13 @@ else:
         })
         wrows.append(row)
     weff = pd.DataFrame(wrows).sort_values("_sort", ascending=False).drop(columns="_sort")
-    st.dataframe(weff, use_container_width=True, hide_index=True)
+    _wcfg = {"Tickets touched": _bar("Tickets touched", weff["Tickets touched"].max() if not weff.empty else 1),
+             "Ticket events": _bar("Ticket events", weff["Ticket events"].max() if not weff.empty else 1)}
+    if "Manual" in weff.columns:
+        _mmx = int(max(weff["Manual"].max(), weff["Automatic"].max())) or 1
+        _wcfg["Manual"] = _bar("Manual", _mmx)
+        _wcfg["Automatic"] = _bar("Automatic", _mmx)
+    st.dataframe(weff, use_container_width=True, hide_index=True, column_config=_wcfg)
     if not _id2org_wh:
         st.caption("💡 Run **🔗 Load ticket pipelines & subjects** above to add **Manual / Automatic** "
                    "ticket columns here.")
