@@ -309,6 +309,15 @@ else:
         st.warning(f"Saved comparison is older than {_ret_label} — re-upload and Run.")
         report_header_close(); st.stop()
     cv, tk = saved["cv"], saved["tk"]
+    # backfill columns added after an old report was saved (avoids KeyError on stale cache)
+    if "_missed" not in cv.columns:
+        st.info("This saved report predates the queue-performance metrics — "
+                "**re-upload the Convo360 CSV and click Run** to see AHT / wait / agent flags.")
+        cv = cv.copy()
+        for _c, _d in (("_dur_min", pd.NA), ("_missed", False), ("_wait_sec", pd.NA),
+                       ("_source", "—"), ("_customer", "")):
+            if _c not in cv.columns:
+                cv[_c] = _d
 
 if saved and saved.get("saved_at"):
     _rem = max(0, TTL - (time.time() - saved["saved_at"]))
