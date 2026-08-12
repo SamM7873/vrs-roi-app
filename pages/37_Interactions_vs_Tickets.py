@@ -390,6 +390,39 @@ if "ivt_tickets_df" in st.session_state:
     st.download_button("📥 Export tickets (CSV)", tdf.to_csv(index=False),
                        "created_tickets_by_pipeline.csv", "text/csv", key="ivt_pipe_csv")
 
+# ── new vs catch-up tickets handled per day ─────────────────────────────────────
+st.markdown("##### 🆕 Tickets handled per day — new vs catch-up")
+st.caption("Of the tickets an agent **touches** in a day: **New** = created that same day · "
+           "**Catch-up** = created earlier (a reminder / follow-up / older ticket worked today).")
+_tt = tkf[tkf["Target object id"] != ""].copy()
+if _tt.empty:
+    st.info("No ticket activity in range.")
+else:
+    # earliest create day per ticket (within the loaded data); missing = created before the window
+    _cre = _tt[_tt["_created"]].groupby("Target object id")["_day"].min()
+    _touch = _tt.groupby(["_day", "Target object id"]).size().reset_index(name="_n")
+    _touch["_create_day"] = _touch["Target object id"].map(_cre)
+    _touch["Kind"] = _touch.apply(
+        lambda r: "New" if (pd.notna(r["_create_day"]) and r["_create_day"] == r["_day"])
+        else "Catch-up", axis=1)
+    perday = (_touch.groupby(["_day", "Kind"]).size().unstack(fill_value=0)
+              .reset_index().rename(columns={"_day": "Day"}))
+    for col in ("New", "Catch-up"):
+        if col not in perday.columns:
+            perday[col] = 0
+    perday["Total handled"] = perday["New"] + perday["Catch-up"]
+    perday["% catch-up"] = (perday["Catch-up"] / perday["Total handled"] * 100).round(1)
+    perday["Day"] = perday["Day"].astype(str)
+    st.dataframe(perday[["Day", "Total handled", "New", "Catch-up", "% catch-up"]],
+                 use_container_width=True, hide_index=True)
+    st.bar_chart(perday.set_index("Day")[["New", "Catch-up"]], height=240)
+    _tot = int(perday["Total handled"].sum())
+    _cu = int(perday["Catch-up"].sum())
+    st.caption(f"Across the range: **{_tot:,}** tickets handled · **{_tot - _cu:,} new** · "
+               f"**{_cu:,} catch-up** ({(_cu/_tot*100):.0f}% catch-up)." if _tot else "")
+    st.download_button("📥 Download new-vs-catchup (CSV)", perday.to_csv(index=False),
+                       "new_vs_catchup.csv", "text/csv", key="ivt_nvc_csv")
+
 # ── per-agent (best effort — names differ between systems) ──────────────────────
 st.markdown("##### By agent (best-effort — Convo360 names vs HubSpot usernames differ)")
 ai = cvf.groupby("_agent").size().rename("Interactions").reset_index()
