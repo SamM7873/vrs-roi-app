@@ -253,7 +253,9 @@ def _parse_conv(file):
     if not dcol:
         return "Convo360: no date column found."
     ccol = _find(df.columns, "customer name", "customer", "name")
-    df["_day"] = pd.to_datetime(df[dcol], errors="coerce").dt.date
+    _dt = pd.to_datetime(df[dcol], errors="coerce")
+    df["_day"] = _dt.dt.date
+    df["_hour"] = _dt.dt.hour
     df = df[df["_day"].notna()].copy()
     df["_type"] = df[tcol].str.strip() if tcol else "—"
     df["_source"] = df["_type"].map(_source)
@@ -270,7 +272,7 @@ def _parse_conv(file):
     df["_dur_min"] = pd.to_numeric(df[dur_col], errors="coerce") if dur_col else pd.NA
     df["_missed"] = df[wcol].map(_is_missed) if wcol else False
     df["_wait_sec"] = df[wcol].map(_wait_secs) if wcol else pd.NA
-    return df[["_day", "_type", "_source", "_agent", "_customer",
+    return df[["_day", "_hour", "_type", "_source", "_agent", "_customer",
                "_dur_min", "_missed", "_wait_sec"]]
 
 
@@ -315,7 +317,7 @@ else:
                 "**re-upload the Convo360 CSV and click Run** to see AHT / wait / agent flags.")
         cv = cv.copy()
         for _c, _d in (("_dur_min", pd.NA), ("_missed", False), ("_wait_sec", pd.NA),
-                       ("_source", "—"), ("_customer", "")):
+                       ("_source", "—"), ("_customer", ""), ("_hour", pd.NA)):
             if _c not in cv.columns:
                 cv[_c] = _d
 
@@ -530,6 +532,43 @@ else:
                        "queue_agent_performance.csv", "text/csv", key="ivt_q_csv")
     st.caption("🔴 AHT = handle time > 1.5× the team average · 🟠 wait = callers waited longer than "
                f"{_ms_lbl(_lwt_hi)}. (Agents with < 5 handled are not flagged.)")
+
+# ── missed calls — when are they dropped? ───────────────────────────────────────
+st.markdown("##### 📵 Missed calls — when are they dropped?")
+_miss = cvf[cvf["_missed"].fillna(False) | (cvf["_agent"] == "Missed (no agent)")].copy()
+if _miss.empty:
+    st.success("No missed interactions in range. 🎉")
+else:
+    md1, md2 = st.columns(2)
+    with md1:
+        st.markdown("**Missed vs answered by day**")
+        _by_day = cvf.assign(_m=cvf["_missed"].fillna(False) | (cvf["_agent"] == "Missed (no agent)"))
+        _dtab = (_by_day.groupby("_day")
+                 .agg(Total=("_m", "size"), Missed=("_m", "sum")).reset_index())
+        _dtab["Answered"] = _dtab["Total"] - _dtab["Missed"]
+        _dtab["Miss %"] = (_dtab["Missed"] / _dtab["Total"] * 100).round(0)
+        _dtab["Day"] = _dtab["_day"].astype(str)
+        st.dataframe(_dtab[["Day", "Total", "Answered", "Missed", "Miss %"]],
+                     use_container_width=True, hide_index=True,
+                     column_config={"Missed": _bar("Missed", int(_dtab["Missed"].max())),
+                                    "Miss %": _bar("Miss %", 100, fmt="%d%%")})
+    with md2:
+        st.markdown("**Missed by hour of day (Central)**")
+        if _miss["_hour"].notna().any():
+            _htab = (_miss.groupby("_hour").size().rename("Missed").reindex(range(24), fill_value=0)
+                     .reset_index().rename(columns={"_hour": "Hour"}))
+            _htab["Hour"] = _htab["Hour"].map(lambda h: f"{int(h):02d}:00")
+            st.bar_chart(_htab.set_index("Hour")["Missed"], height=300)
+        else:
+            st.caption("No hour data (the export's date column had no time).")
+    _worst_h = (_miss.groupby("_hour").size().idxmax() if _miss["_hour"].notna().any() else None)
+    _worst_d = _dtab.loc[_dtab["Missed"].idxmax(), "Day"] if not _dtab.empty else "—"
+    st.caption(f"Peak missed **hour**: {int(_worst_h):02d}:00" if _worst_h is not None else ""
+               + f" · Worst **day**: {_worst_d}. High misses clustered at a time usually points to "
+                 "a **staffing gap** — not enough agents on the queue then.")
+    st.download_button("📥 Export missed calls (CSV)",
+                       _miss[["_day", "_hour", "_type", "_source", "_customer"]].to_csv(index=False),
+                       "missed_calls.csv", "text/csv", key="ivt_miss_csv")
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
