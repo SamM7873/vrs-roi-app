@@ -212,6 +212,38 @@ def _find(cols, *names):
     return None
 
 
+def _wait_secs(v):
+    """Seconds from a Convo360 Wait value. Handles 'HH:MM:SS' and 'Missed · Wait: HH:MM:SS'."""
+    s = str(v).strip()
+    if not s or s.lower() in ("nan", "n/a", "none"):
+        return None
+    low = s.lower()
+    if "wait:" in low:
+        s = s[low.index("wait:") + 5:].strip()
+    elif low.startswith("missed"):
+        return None
+    try:
+        parts = [int(x) for x in s.split(":")]
+        while len(parts) < 3:
+            parts.insert(0, 0)
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    except Exception:
+        return None
+
+
+def _is_missed(v):
+    return str(v).strip().lower().startswith("missed")
+
+
+def _ms_lbl(sec):
+    """Seconds → 'Xm Ys' label."""
+    if sec is None or (isinstance(sec, float) and pd.isna(sec)):
+        return "—"
+    sec = int(round(sec))
+    m, s = divmod(sec, 60)
+    return f"{m}m {s:02d}s" if m else f"{s}s"
+
+
 def _parse_conv(file):
     df = pd.read_csv(file, dtype=str).fillna("")
     df.columns = [c.strip() for c in df.columns]
@@ -232,7 +264,14 @@ def _parse_conv(file):
                                        ("nan", "none", "null", "-", "—", "unassigned", "n/a", "na")) else s
     df["_agent"] = df[acol].map(_agent_lbl) if acol else "—"
     df["_customer"] = df[ccol].str.strip() if ccol else ""
-    return df[["_day", "_type", "_source", "_agent", "_customer"]]
+    # handle time + wait time for AHT / LWT
+    dur_col = _find(df.columns, "duration")
+    wcol = _find(df.columns, "wait")
+    df["_dur_min"] = pd.to_numeric(df[dur_col], errors="coerce") if dur_col else pd.NA
+    df["_missed"] = df[wcol].map(_is_missed) if wcol else False
+    df["_wait_sec"] = df[wcol].map(_wait_secs) if wcol else pd.NA
+    return df[["_day", "_type", "_source", "_agent", "_customer",
+               "_dur_min", "_missed", "_wait_sec"]]
 
 
 def _parse_tick(file):
@@ -391,6 +430,32 @@ if not _cr_agent.empty and _cr_agent.sum() > 0:
                                 f"({_cr_agent.idxmax().split('@')[0]}) created "
                                 f"{_top_share*100:.0f}% of all tickets. Check workload balance."))
 
+# ── queue performance (AHT / wait) — computed here so agent flags can feed above ─
+_conn = cvf[(~cvf["_missed"].fillna(False)) & (cvf["_agent"] != "Missed (no agent)")].copy()
+_aht_sec = float(pd.to_numeric(_conn["_dur_min"], errors="coerce").mean() * 60) if len(_conn) else 0.0
+_asa_sec = float(pd.to_numeric(_conn["_wait_sec"], errors="coerce").mean()) if len(_conn) else 0.0
+_lwt_sec = float(pd.to_numeric(_conn["_wait_sec"], errors="coerce").max()) if len(_conn) else 0.0
+if _conn.empty:
+    queue = pd.DataFrame()
+else:
+    queue = (_conn.groupby("_agent").agg(
+        Handled=("_agent", "size"),
+        _aht=("_dur_min", lambda s: pd.to_numeric(s, errors="coerce").mean() * 60),
+        _avgwait=("_wait_sec", lambda s: pd.to_numeric(s, errors="coerce").mean()),
+        _lwt=("_wait_sec", lambda s: pd.to_numeric(s, errors="coerce").max()),
+    ).reset_index().rename(columns={"_agent": "Agent"}))
+    queue = queue.sort_values("Handled", ascending=False)
+    # per-agent AHT / LWT red flags (vs the team)
+    _aht_hi = _aht_sec * 1.5 if _aht_sec else 0
+    _lwt_hi = max(60, _asa_sec * 2)   # long wait: over a minute or 2x the team's avg speed-of-answer
+    for _, rr in queue.iterrows():
+        if _aht_sec and rr["_aht"] and rr["_aht"] > _aht_hi and rr["Handled"] >= 5:
+            _flags.append(("amber", f"**High AHT** — {rr['Agent'].split('@')[0]} averages "
+                                    f"{_ms_lbl(rr['_aht'])} per interaction (team {_ms_lbl(_aht_sec)})."))
+        if rr["_lwt"] and rr["_lwt"] > _lwt_hi and rr["Handled"] >= 5:
+            _flags.append(("amber", f"**Long wait** — callers to {rr['Agent'].split('@')[0]} waited "
+                                    f"up to {_ms_lbl(rr['_lwt'])} (LWT)."))
+
 st.markdown("##### 🚩 Flags & concerns")
 if not _flags:
     st.success("✅ No red flags detected for this window.")
@@ -403,7 +468,60 @@ else:
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### 1 · Volume — interactions vs tickets")
+st.markdown("### 1 · Queue performance (Convo360) — AHT · wait · agents")
+# ────────────────────────────────────────────────────────────────────────────────
+_n_missed = int((cvf["_missed"].fillna(False) | (cvf["_agent"] == "Missed (no agent)")).sum())
+_n_handled = len(_conn)
+_answer_rate = (_n_handled / (_n_handled + _n_missed) * 100) if (_n_handled + _n_missed) else None
+_metric_cards([
+    ("✅ Handled (connected)", f"{_n_handled:,}", "answered calls · chats", "#2DB84B"),
+    ("📵 Missed", f"{_n_missed:,}",
+     f"{100 - _answer_rate:.0f}% of calls" if _answer_rate is not None else "—", "#E5484D"),
+    ("⏱️ AHT", _ms_lbl(_aht_sec), "avg handle time", "#4C8DFF"),
+    ("⏳ LWT", _ms_lbl(_lwt_sec), "longest wait (ASA " + _ms_lbl(_asa_sec) + ")", "#E8952A"),
+])
+st.caption("**AHT** = average handle time (talk/handle duration) · **ASA** = average speed of "
+           "answer (wait before connect) · **LWT** = longest a caller waited · **Answer rate** = "
+           "handled ÷ (handled + missed). Computed on **connected** interactions only.")
+
+if queue.empty:
+    st.info("No connected interactions with duration/wait data in range "
+            "(check the Convo360 export has Duration and Wait Time columns).")
+else:
+    st.markdown("##### 🏅 Agent performance — top to lowest")
+    _sort_by = st.radio("Rank by", ["Handled", "AHT (fastest)", "AHT (slowest)", "Longest wait"],
+                        horizontal=True, key="ivt_q_sort")
+    ql = queue.copy()
+    ql["AHT"] = ql["_aht"].map(_ms_lbl)
+    ql["Avg wait (ASA)"] = ql["_avgwait"].map(_ms_lbl)
+    ql["Longest wait (LWT)"] = ql["_lwt"].map(_ms_lbl)
+    ql["Agent"] = ql["Agent"].map(lambda a: a.split("@")[0])
+    # per-agent flag
+    _aht_hi = _aht_sec * 1.5 if _aht_sec else 0
+    _lwt_hi = max(60, _asa_sec * 2)
+    ql["Flag"] = ql.apply(lambda r: " ".join(
+        (["🔴 AHT"] if (_aht_sec and r["_aht"] > _aht_hi and r["Handled"] >= 5) else [])
+        + (["🟠 wait"] if (r["_lwt"] > _lwt_hi and r["Handled"] >= 5) else [])) or "✅", axis=1)
+    if _sort_by == "AHT (fastest)":
+        ql = ql.sort_values("_aht")
+    elif _sort_by == "AHT (slowest)":
+        ql = ql.sort_values("_aht", ascending=False)
+    elif _sort_by == "Longest wait":
+        ql = ql.sort_values("_lwt", ascending=False)
+    else:
+        ql = ql.sort_values("Handled", ascending=False)
+    st.dataframe(ql[["Agent", "Handled", "AHT", "Avg wait (ASA)", "Longest wait (LWT)", "Flag"]],
+                 use_container_width=True, hide_index=True, height=380,
+                 column_config={"Handled": _bar("Handled", int(ql["Handled"].max()))})
+    st.download_button("📥 Export agent performance (CSV)",
+                       ql[["Agent", "Handled", "AHT", "Avg wait (ASA)", "Longest wait (LWT)", "Flag"]].to_csv(index=False),
+                       "queue_agent_performance.csv", "text/csv", key="ivt_q_csv")
+    st.caption("🔴 AHT = handle time > 1.5× the team average · 🟠 wait = callers waited longer than "
+               f"{_ms_lbl(_lwt_hi)}. (Agents with < 5 handled are not flagged.)")
+
+# ════════════════════════════════════════════════════════════════════════════════
+st.divider()
+st.markdown("### 2 · Volume — interactions vs tickets")
 # ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### Incoming interactions by source")
 bytype = cvf["_source"].value_counts().rename_axis("Source").reset_index(name="Interactions")
@@ -463,7 +581,7 @@ export). It's a flag to look into, not proof of over-ticketing.
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### 2 · Ticket detail — pipeline & source")
+st.markdown("### 3 · Ticket detail — pipeline & source")
 # ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### 🎟️ Tickets created — pipeline & detail (live)")
 st.caption("The audit CSV has ticket IDs but no pipeline/subject — click to enrich them from "
@@ -598,7 +716,7 @@ if "ivt_tickets_df" in st.session_state:
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### 3 · Workload — new vs catch-up & pending")
+st.markdown("### 4 · Workload — new vs catch-up & pending")
 # ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### 🆕 Tickets handled per day — new vs catch-up")
 st.caption("Of the tickets an agent **touches** in a day: **New** = created that same day · "
@@ -806,7 +924,7 @@ if "ivt_open_df" in st.session_state:
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### 4 · Productivity — by agent & work hours")
+st.markdown("### 5 · Productivity — by agent & work hours")
 # ────────────────────────────────────────────────────────────────────────────────
 # agent performance KPIs (from ticket touches — the real handling agents)
 _touch_agent = (tkf[tkf["Target object id"] != ""].groupby("_agent")["Target object id"]
@@ -920,7 +1038,7 @@ else:
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### 5 · Per-consumer match (live)")
+st.markdown("### 6 · Per-consumer match (live)")
 st.caption("Match each Convo360 **Customer Name** to the tickets **created in the window** by "
            "pulling ticket subjects/descriptions live from HubSpot. Answers: for a consumer who "
            "contacted N times, how many tickets were opened?")
