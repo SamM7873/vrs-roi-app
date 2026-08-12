@@ -38,6 +38,30 @@ with c2:
 run = st.button("▶ Run comparison", type="primary", disabled=(up_conv is None or up_tick is None))
 
 
+# friendly channel labels from Convo360 raw type values
+SOURCE_LABEL = {
+    "SIP_VIDEO_CALL": "Videophone",
+    "SIP_VIDEO": "Videophone",
+    "VIDEO_CHAT": "Videochat",
+    "SIP_AUDIO_CALL": "Call",
+    "SIP_VOICE_CALL": "Call",
+    "CALL": "Call",
+    "CHAT": "Chat",
+    "QUERY": "Text query",
+}
+
+
+def _source(v):
+    key = str(v).strip().upper()
+    if key in SOURCE_LABEL:
+        return SOURCE_LABEL[key]
+    if "VIDEO" in key:
+        return "Videophone"
+    if "CHAT" in key:
+        return "Chat"
+    return str(v).strip() or "—"
+
+
 def _find(cols, *names):
     low = {c.lower(): c for c in cols}
     for n in names:
@@ -59,9 +83,10 @@ def _parse_conv(file):
     df["_day"] = pd.to_datetime(df[dcol], errors="coerce").dt.date
     df = df[df["_day"].notna()].copy()
     df["_type"] = df[tcol].str.strip() if tcol else "—"
+    df["_source"] = df["_type"].map(_source)
     df["_agent"] = df[acol].str.strip() if acol else "—"
     df["_customer"] = df[ccol].str.strip() if ccol else ""
-    return df[["_day", "_type", "_agent", "_customer"]]
+    return df[["_day", "_type", "_source", "_agent", "_customer"]]
 
 
 def _parse_tick(file):
@@ -102,11 +127,12 @@ else:
 if saved and saved.get("saved_at"):
     st.caption(f"📌 Saved {saved_at_label(saved)} · upload new CSVs + Run to refresh.")
 
-# ── interaction-type filter ─────────────────────────────────────────────────────
-types = sorted(cv["_type"].unique())
-pick = st.multiselect("Interaction types to count", types, default=types,
-                      help="Choose which Convo360 types count as an 'incoming interaction'.")
-cvf = cv[cv["_type"].isin(pick)] if pick else cv
+# ── interaction source filter ───────────────────────────────────────────────────
+sources = sorted(cv["_source"].unique())
+pick = st.multiselect("Sources to count (Videophone / Videochat / Chat / …)", sources,
+                      default=sources,
+                      help="Choose which Convo360 sources count as an 'incoming interaction'.")
+cvf = cv[cv["_source"].isin(pick)] if pick else cv
 
 # align to the overlapping date window
 d_lo = max(cvf["_day"].min(), tk["_day"].min())
@@ -145,9 +171,9 @@ if ratio is not None:
 st.caption("⚠️ Tickets can originate from channels beyond Convo360 (email, manual, follow-ups), "
            "so a ratio below 1 isn't proof of over-ticketing on its own — it's a flag to investigate.")
 
-# ── interaction type breakdown ──────────────────────────────────────────────────
-st.markdown("##### Incoming interactions by type")
-bytype = cvf["_type"].value_counts().rename_axis("Type").reset_index(name="Interactions")
+# ── interaction source breakdown ────────────────────────────────────────────────
+st.markdown("##### Incoming interactions by source")
+bytype = cvf["_source"].value_counts().rename_axis("Source").reset_index(name="Interactions")
 bytype["%"] = (bytype["Interactions"] / len(cvf) * 100).round(1) if len(cvf) else 0
 st.dataframe(bytype, use_container_width=True, hide_index=True)
 
@@ -218,7 +244,7 @@ elif st.button("🔗 Run per-consumer match (queries HubSpot)"):
 
     cust = (cvf.groupby("_customer")
             .agg(Interactions=("_customer", "size"),
-                 Types=("_type", lambda s: ", ".join(sorted(set(s)))))
+                 Source=("_source", lambda s: ", ".join(sorted(set(s)))))
             .reset_index().rename(columns={"_customer": "Customer"}))
     cust = cust[cust["Customer"].str.strip() != ""]
     with dash_spinner("Matching customers to tickets…"):
@@ -233,7 +259,7 @@ elif st.button("🔗 Run per-consumer match (queries HubSpot)"):
     matched = int((cust["Tickets"] > 0).sum())
     st.caption(f"{len(cust):,} consumers · {matched:,} matched to ≥1 ticket · "
                f"{int((cust['Tickets'] > cust['Interactions']).sum()):,} have more tickets than contacts.")
-    st.dataframe(cust[["Customer", "Interactions", "Types", "Tickets", "Int/ticket", "Flag"]],
+    st.dataframe(cust[["Customer", "Interactions", "Source", "Tickets", "Int/ticket", "Flag"]],
                  use_container_width=True, hide_index=True, height=460)
     st.download_button("📥 Download per-consumer match (CSV)", cust.to_csv(index=False),
                        "per_consumer_match.csv", "text/csv", key="ivt_cust_csv")
