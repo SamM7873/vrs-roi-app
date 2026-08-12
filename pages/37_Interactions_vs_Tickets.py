@@ -615,24 +615,43 @@ else:
     ev_by = tkf.groupby("_agent").size()
     cr_by = tkf[tkf["_created"]].groupby("_agent").size()
     tt_by = tkf.groupby("_agent")["Target object id"].apply(lambda s: s.replace("", pd.NA).nunique())
+    # origin map from the live enrichment (if run) → Manual / Automatic per ticket
+    _enr_wh = st.session_state.get("ivt_tickets_df")
+    _id2org_wh = (dict(zip(_enr_wh["Ticket ID"].astype(str), _enr_wh["Origin"]))
+                  if _enr_wh is not None else {})
+    man_by, auto_by = {}, {}
+    if _id2org_wh:
+        _tw = tkf[tkf["Target object id"] != ""].copy()
+        _tw["_org"] = _tw["Target object id"].map(lambda i: _id2org_wh.get(str(i)))
+        man_by = _tw[_tw["_org"] == "Manual"].groupby("_agent")["Target object id"].nunique().to_dict()
+        auto_by = _tw[_tw["_org"] == "Automatic"].groupby("_agent")["Target object id"].nunique().to_dict()
     wrows = []
     for a, h in hrs.items():
         events = int(ev_by.get(a, 0))
         created = int(cr_by.get(a, 0))
         touched = int(tt_by.get(a, 0))
-        wrows.append({
+        row = {
             "Agent": a,
             "Work hours": _hm(h),
             "Ticket events": events,
             "Tickets created": created,
             "Tickets touched": touched,
+        }
+        if _id2org_wh:
+            row["Manual"] = int(man_by.get(a, 0))
+            row["Automatic"] = int(auto_by.get(a, 0))
+        row.update({
             "Time/ticket": _ms(h * 60 / touched) if touched else "—",
             "Time/event": _ms(h * 60 / events) if events else "—",
             "Tickets/hour": round(touched / h, 1) if h else 0,
             "_sort": h,
         })
+        wrows.append(row)
     weff = pd.DataFrame(wrows).sort_values("_sort", ascending=False).drop(columns="_sort")
     st.dataframe(weff, use_container_width=True, hide_index=True)
+    if not _id2org_wh:
+        st.caption("💡 Run **🔗 Load ticket pipelines & subjects** above to add **Manual / Automatic** "
+                   "ticket columns here.")
     st.download_button("📥 Download work-hours efficiency (CSV)", weff.to_csv(index=False),
                        "ticket_work_hours.csv", "text/csv", key="ivt_wh_csv")
 
