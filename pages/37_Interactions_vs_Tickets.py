@@ -34,9 +34,9 @@ def _owner_map():
     return out
 
 
-def _pipeline_map():
-    """{hubspot_pipeline_id: friendly label} for T1/T2/VRS Reg (others -> real label)."""
-    out = {}
+def _pipeline_map(with_stages=False):
+    """{pipeline_id: friendly label}. If with_stages, also returns {stage_id: stage_label}."""
+    out, stages = {}, {}
     try:
         r = requests.get(f"{_B}/crm/v3/pipelines/tickets", headers=_H, timeout=15)
         if r.status_code == 200:
@@ -46,9 +46,11 @@ def _pipeline_map():
                 friendly = next((k for k, toks in PIPE_TOKENS.items() if any(t in low for t in toks)),
                                 label or pl["id"])
                 out[pl["id"]] = friendly
+                for s in pl.get("stages", []):
+                    stages[s["id"]] = s.get("label", s["id"])
     except Exception:
         pass
-    return out
+    return (out, stages) if with_stages else out
 
 def _metric_cards(items):
     """items = list of (title, value, subtitle, hex_color). Renders a row of styled cards."""
@@ -682,7 +684,7 @@ st.caption("Compares **currently-open tickets** in **T1 / T2 / VRS Registration*
            "against what was **touched** in the selected window. Pending / reminder = open tickets "
            "**not worked** in the window (carry-over / follow-up).")
 if st.button("🔗 Load open tickets (live)", key="ivt_open_btn"):
-    pipe_map = _pipeline_map()
+    pipe_map, stage_map = _pipeline_map(with_stages=True)
     open_rows = []
     with dash_spinner("Pulling open tickets from HubSpot…"):
         recs = fetch_all("tickets",
@@ -703,6 +705,8 @@ if st.button("🔗 Load open tickets (live)", key="ivt_open_btn"):
             lm = lm[:10]
         open_rows.append({"Ticket ID": str(p.get("hs_object_id") or ""),
                           "Pipeline": friendly,
+                          "Stage": stage_map.get(p.get("hs_pipeline_stage"),
+                                                 (p.get("hs_pipeline_stage") or "—")),
                           "Subject": (p.get("subject") or "").strip() or "—",
                           "Last modified": lm})
     st.session_state["ivt_open_df"] = pd.DataFrame(open_rows)
@@ -722,13 +726,27 @@ if "ivt_open_df" in st.session_state:
         ("✅ Handled in window", f"{n_handled:,}", "worked in range", "#2DB84B"),
         ("🔔 Pending / reminder", f"{n_pending:,}", _pct_pend, "#E8952A"),
     ])
-    st.markdown("**Pending (reminder) by pipeline**")
     pend = odf[odf["State"] == "Pending (reminder)"]
-    pv = pend["Pipeline"].value_counts().rename_axis("Pipeline").reset_index(name="Pending")
-    st.dataframe(pv, use_container_width=True, hide_index=True)
+    obp, obs = st.columns(2)
+    with obp:
+        st.markdown("**Open tickets by pipeline**")
+        pvp = odf["Pipeline"].value_counts().rename_axis("Pipeline").reset_index(name="Open")
+        st.dataframe(pvp, use_container_width=True, hide_index=True,
+                     column_config={"Open": _bar("Open", pvp["Open"].max() if not pvp.empty else 1)})
+    with obs:
+        st.markdown("**Open tickets by stage / status**")
+        if "Stage" in odf.columns:
+            pvs = (odf.groupby("Stage")
+                   .agg(Open=("Ticket ID", "size"),
+                        Pending=("State", lambda s: int((s == "Pending (reminder)").sum())))
+                   .reset_index().sort_values("Open", ascending=False))
+            st.dataframe(pvs, use_container_width=True, hide_index=True,
+                         column_config={"Open": _bar("Open", pvs["Open"].max() if not pvs.empty else 1),
+                                        "Pending": _bar("Pending", pvs["Open"].max() if not pvs.empty else 1)})
     st.markdown("**Pending (reminder) tickets**")
-    st.dataframe(pend[["Ticket ID", "Pipeline", "Subject", "Last modified"]]
-                 .sort_values("Last modified"),
+    _pend_cols = [c for c in ["Ticket ID", "Pipeline", "Stage", "Subject", "Last modified"]
+                  if c in pend.columns]
+    st.dataframe(pend[_pend_cols].sort_values("Last modified"),
                  use_container_width=True, hide_index=True, height=360)
     st.download_button("📥 Export pending tickets (CSV)", pend.to_csv(index=False),
                        "pending_reminder_tickets.csv", "text/csv", key="ivt_pending_csv")
