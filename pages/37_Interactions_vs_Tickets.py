@@ -246,17 +246,33 @@ bytype = cvf["_source"].value_counts().rename_axis("Source").reset_index(name="I
 bytype["%"] = (bytype["Interactions"] / len(cvf) * 100).round(1) if len(cvf) else 0
 st.dataframe(bytype, use_container_width=True, hide_index=True)
 
-# ── day-by-day reconciliation ───────────────────────────────────────────────────
-st.markdown("##### Day-by-day — interactions vs tickets created")
-di = cvf.groupby("_day").size().rename("Interactions")
-dc = tkf[tkf["_created"]].groupby("_day").size().rename("Tickets created")
-daily = pd.concat([di, dc], axis=1).fillna(0).astype(int).reset_index()
-daily = daily.rename(columns={"_day": "Day"})
+# ── reconciliation: daily / weekly / monthly ────────────────────────────────────
+st.markdown("##### Interactions vs tickets created — over time")
+grain = st.radio("Grain", ["Daily", "Weekly", "Monthly"], horizontal=True, key="ivt_grain")
+
+
+def _period(series_day, g):
+    d = pd.to_datetime(series_day)
+    if g == "Weekly":
+        # week starting Monday
+        return d.dt.to_period("W-SUN").apply(lambda p: p.start_time.date().isoformat())
+    if g == "Monthly":
+        return d.dt.to_period("M").astype(str)
+    return d.dt.date.astype(str)
+
+
+cvf = cvf.copy(); cvf["_p"] = _period(cvf["_day"], grain)
+tkc = tkf[tkf["_created"]].copy(); tkc["_p"] = _period(tkc["_day"], grain)
+di = cvf.groupby("_p").size().rename("Interactions")
+dc = tkc.groupby("_p").size().rename("Tickets created")
+daily = pd.concat([di, dc], axis=1).fillna(0).astype(int).reset_index().rename(columns={"_p": "Period"})
+daily = daily.sort_values("Period")
 daily["Interactions/ticket"] = daily.apply(
     lambda r: round(r["Interactions"] / r["Tickets created"], 1) if r["Tickets created"] else 0, axis=1)
-daily["Day"] = daily["Day"].astype(str)
 st.dataframe(daily, use_container_width=True, hide_index=True)
-st.bar_chart(daily.set_index("Day")[["Interactions", "Tickets created"]], height=260)
+st.bar_chart(daily.set_index("Period")[["Interactions", "Tickets created"]], height=260)
+st.caption("Weekly = week starting Monday · Monthly = calendar month. "
+           "Interactions/ticket = interactions ÷ tickets created that period.")
 
 # ── per-agent (best effort — names differ between systems) ──────────────────────
 st.markdown("##### By agent (best-effort — Convo360 names vs HubSpot usernames differ)")
