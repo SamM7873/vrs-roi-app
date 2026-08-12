@@ -443,6 +443,7 @@ if not _cr_agent.empty and _cr_agent.sum() > 0:
 _conn = cvf[(~cvf["_missed"].fillna(False)) & (cvf["_agent"] != "Missed (no agent)")].copy()
 _aht_sec = float(pd.to_numeric(_conn["_dur_min"], errors="coerce").mean() * 60) if len(_conn) else 0.0
 _asa_sec = float(pd.to_numeric(_conn["_wait_sec"], errors="coerce").mean()) if len(_conn) else 0.0
+_med_sec = float(pd.to_numeric(_conn["_wait_sec"], errors="coerce").median()) if len(_conn) else 0.0
 _lwt_sec = float(pd.to_numeric(_conn["_wait_sec"], errors="coerce").max()) if len(_conn) else 0.0
 if _conn.empty:
     queue = pd.DataFrame()
@@ -451,6 +452,7 @@ else:
         Handled=("_agent", "size"),
         _aht=("_dur_min", lambda s: pd.to_numeric(s, errors="coerce").mean() * 60),
         _avgwait=("_wait_sec", lambda s: pd.to_numeric(s, errors="coerce").mean()),
+        _medwait=("_wait_sec", lambda s: pd.to_numeric(s, errors="coerce").median()),
         _lwt=("_wait_sec", lambda s: pd.to_numeric(s, errors="coerce").max()),
     ).reset_index().rename(columns={"_agent": "Agent"}))
     queue = queue.sort_values("Handled", ascending=False)
@@ -487,7 +489,8 @@ _metric_cards([
     ("📵 Missed", f"{_n_missed:,}",
      f"{100 - _answer_rate:.0f}% of calls" if _answer_rate is not None else "—", "#E5484D"),
     ("⏱️ AHT", _ms_lbl(_aht_sec), "avg handle time", "#4C8DFF"),
-    ("⏳ LWT", _ms_lbl(_lwt_sec), "longest wait (ASA " + _ms_lbl(_asa_sec) + ")", "#E8952A"),
+    ("⏳ LWT", _ms_lbl(_lwt_sec),
+     f"longest · median wait {_ms_lbl(_med_sec)}", "#E8952A"),
 ])
 st.caption("**AHT** = average handle time (talk/handle duration) · **ASA** = average speed of "
            "answer (wait before connect) · **LWT** = longest a caller waited · **Answer rate** = "
@@ -503,6 +506,7 @@ else:
     ql = queue.copy()
     ql["AHT"] = ql["_aht"].map(_ms_lbl)
     ql["Avg wait (ASA)"] = ql["_avgwait"].map(_ms_lbl)
+    ql["Median wait"] = ql["_medwait"].map(_ms_lbl)
     ql["Longest wait (LWT)"] = ql["_lwt"].map(_ms_lbl)
     ql["Agent"] = ql["Agent"].map(lambda a: a.split("@")[0])
     # per-agent flag
@@ -519,11 +523,10 @@ else:
         ql = ql.sort_values("_lwt", ascending=False)
     else:
         ql = ql.sort_values("Handled", ascending=False)
-    st.dataframe(ql[["Agent", "Handled", "AHT", "Avg wait (ASA)", "Longest wait (LWT)", "Flag"]],
-                 use_container_width=True, hide_index=True, height=380,
+    _qcols = ["Agent", "Handled", "AHT", "Avg wait (ASA)", "Median wait", "Longest wait (LWT)", "Flag"]
+    st.dataframe(ql[_qcols], use_container_width=True, hide_index=True, height=380,
                  column_config={"Handled": _bar("Handled", int(ql["Handled"].max()))})
-    st.download_button("📥 Export agent performance (CSV)",
-                       ql[["Agent", "Handled", "AHT", "Avg wait (ASA)", "Longest wait (LWT)", "Flag"]].to_csv(index=False),
+    st.download_button("📥 Export agent performance (CSV)", ql[_qcols].to_csv(index=False),
                        "queue_agent_performance.csv", "text/csv", key="ivt_q_csv")
     st.caption("🔴 AHT = handle time > 1.5× the team average · 🟠 wait = callers waited longer than "
                f"{_ms_lbl(_lwt_hi)}. (Agents with < 5 handled are not flagged.)")
