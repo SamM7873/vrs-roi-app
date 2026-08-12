@@ -156,7 +156,12 @@ def _parse_conv(file):
     df = df[df["_day"].notna()].copy()
     df["_type"] = df[tcol].str.strip() if tcol else "—"
     df["_source"] = df["_type"].map(_source)
-    df["_agent"] = df[acol].str.strip() if acol else "—"
+
+    def _agent_lbl(v):
+        s = str(v).strip()
+        return "Missed (no agent)" if (not s or s.lower() in
+                                       ("nan", "none", "null", "-", "—", "unassigned", "n/a", "na")) else s
+    df["_agent"] = df[acol].map(_agent_lbl) if acol else "—"
     df["_customer"] = df[ccol].str.strip() if ccol else ""
     return df[["_day", "_type", "_source", "_agent", "_customer"]]
 
