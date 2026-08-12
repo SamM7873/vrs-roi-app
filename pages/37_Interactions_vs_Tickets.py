@@ -423,6 +423,28 @@ else:
     st.download_button("📥 Download new-vs-catchup (CSV)", perday.to_csv(index=False),
                        "new_vs_catchup.csv", "text/csv", key="ivt_nvc_csv")
 
+    # by agent — who handled new vs catch-up
+    st.markdown("###### By agent")
+    _ta = _tt.groupby(["_agent", "_day", "Target object id"]).size().reset_index(name="_n")
+    _ta["_create_day"] = _ta["Target object id"].map(_cre)
+    _ta["Kind"] = _ta.apply(
+        lambda r: "New" if (pd.notna(r["_create_day"]) and r["_create_day"] == r["_day"])
+        else "Catch-up", axis=1)
+    byagent = (_ta.groupby(["_agent", "Kind"]).size().unstack(fill_value=0)
+               .reset_index().rename(columns={"_agent": "Agent"}))
+    for col in ("New", "Catch-up"):
+        if col not in byagent.columns:
+            byagent[col] = 0
+    byagent["Total handled"] = byagent["New"] + byagent["Catch-up"]
+    byagent["% catch-up"] = (byagent["Catch-up"] / byagent["Total handled"] * 100).round(1)
+    byagent = byagent.sort_values("Total handled", ascending=False)
+    st.dataframe(byagent[["Agent", "Total handled", "New", "Catch-up", "% catch-up"]],
+                 use_container_width=True, hide_index=True)
+    st.caption("Per agent, counts each (day × ticket) they touched — New if the ticket was created "
+               "that day, else Catch-up. The same ticket touched by two agents counts for both.")
+    st.download_button("📥 Download by-agent new-vs-catchup (CSV)", byagent.to_csv(index=False),
+                       "new_vs_catchup_by_agent.csv", "text/csv", key="ivt_nvc_agent_csv")
+
 # ── per-agent (best effort — names differ between systems) ──────────────────────
 st.markdown("##### By agent (best-effort — Convo360 names vs HubSpot usernames differ)")
 ai = cvf.groupby("_agent").size().rename("Interactions").reset_index()
