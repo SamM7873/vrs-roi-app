@@ -65,13 +65,15 @@ with st.expander("📖 Definitions & how the formulas work"):
 | Incoming interactions | count of Convo360 rows in the selected sources |
 | Tickets created | count of audit rows where `Subcategory = Ticket` **and** `Action = Create` |
 | Unique tickets touched | distinct `Target object id` on any ticket audit row |
-| **Interactions per ticket** | incoming interactions ÷ tickets created |
+| **Tickets per interaction** | tickets created ÷ incoming interactions |
 
-**Reading interactions-per-ticket**
-- **≥ 2** ✅ good consolidation — several contacts roll into one ticket.
-- **1.3–2** 🟡 moderate · **1.0–1.3** 🟡 ~one ticket per contact.
-- **< 1** 🔴 *more tickets than interactions* — either agents open multiple tickets per
-  contact, **or** tickets come from channels not in the Convo360 export (email, manual, follow-ups).
+**Reading tickets-per-interaction** (how many tickets opened for each incoming call/chat)
+- **≤ 0.5** ✅ strong consolidation — many calls roll into few tickets.
+- **0.5–0.8** 🟡 moderate · **0.8–1.2** 🟡 ~one ticket per call.
+- **> 1.2** 🔴 *more tickets than calls* — the extra tickets come from channels not in the
+  Convo360 export (email, forms, manual, follow-ups), or agents open several tickets per call.
+
+*Example: 50 calls + 100 tickets = 2.0 tickets per interaction (twice as many tickets as calls).*
 
 **Work hours & time per ticket (from ticket-event timestamps)**
 
@@ -277,32 +279,33 @@ if cvf.empty and tkf.empty:
 n_int = len(cvf)
 n_created = int(tkf["_created"].sum())
 n_touched = tkf["Target object id"].replace("", pd.NA).nunique()
-ratio = (n_int / n_created) if n_created else None
+# tickets per interaction — how many tickets were opened for each incoming call/chat
+tpi = (n_created / n_int) if n_int else None
 
 # ── KPIs ────────────────────────────────────────────────────────────────────────
 k = st.columns(4)
 k[0].metric("📞 Incoming interactions", f"{n_int:,}")
 k[1].metric("🎫 Tickets created", f"{n_created:,}")
 k[2].metric("Unique tickets touched", f"{n_touched:,}")
-k[3].metric("Interactions per ticket", f"{ratio:.1f}" if ratio else "—",
-            help="Interactions ÷ tickets created. Higher = better consolidation; ~1 = one ticket per contact.")
+k[3].metric("Tickets per interaction", f"{tpi:.1f}" if tpi else "—",
+            help="Tickets created ÷ interactions. 1 = one ticket per call; above 1 = more tickets "
+                 "than calls (extra come from email/forms/manual); below 1 = calls consolidate.")
 
-if ratio is not None:
-    if ratio >= 2:
-        st.success(f"✅ ~{ratio:.1f} interactions per ticket — good consolidation "
-                   "(multiple contacts roll into fewer tickets).")
-    elif ratio >= 1.3:
-        st.warning(f"🟡 ~{ratio:.1f} interactions per ticket — moderate consolidation.")
-    elif ratio >= 1.0:
-        st.warning(f"🟡 ~{ratio:.1f} interactions per ticket — roughly one ticket per contact "
-                   "(little consolidation).")
+if tpi is not None:
+    if tpi <= 0.5:
+        st.success(f"✅ ~{tpi:.1f} tickets per interaction — strong consolidation "
+                   "(many calls roll into few tickets).")
+    elif tpi <= 0.8:
+        st.warning(f"🟡 ~{tpi:.1f} tickets per interaction — moderate consolidation.")
+    elif tpi <= 1.2:
+        st.warning(f"🟡 ~{tpi:.1f} tickets per interaction — roughly one ticket per call.")
     else:
-        st.error(f"🔴 ~{ratio:.1f} interactions per ticket — **more tickets than incoming "
-                 f"interactions** ({n_created:,} tickets vs {n_int:,} interactions). Either agents "
-                 "open multiple tickets per contact, or many tickets come from **other channels** "
-                 "(email, chat, proactive outreach) not in the Convo360 export.")
-st.caption("⚠️ Tickets can originate from channels beyond Convo360 (email, manual, follow-ups), "
-           "so a ratio below 1 isn't proof of over-ticketing on its own — it's a flag to investigate.")
+        st.error(f"🔴 ~{tpi:.1f} tickets per interaction — **more tickets than calls** "
+                 f"({n_created:,} tickets vs {n_int:,} interactions). The extra tickets come from "
+                 "**other channels** (email, forms, manual, follow-ups) not in the Convo360 export.")
+st.caption("**Tickets per interaction** = tickets created ÷ incoming calls/chats. "
+           "Above 1 just means many tickets aren't from Convo360 calls — a flag to look into, "
+           "not proof of over-ticketing.")
 
 # ── interaction source breakdown ────────────────────────────────────────────────
 st.markdown("##### Incoming interactions by source")
@@ -331,12 +334,14 @@ di = cvf.groupby("_p").size().rename("Interactions")
 dc = tkc.groupby("_p").size().rename("Tickets created")
 daily = pd.concat([di, dc], axis=1).fillna(0).astype(int).reset_index().rename(columns={"_p": "Period"})
 daily = daily.sort_values("Period")
-daily["Interactions/ticket"] = daily.apply(
-    lambda r: round(r["Interactions"] / r["Tickets created"], 1) if r["Tickets created"] else 0, axis=1)
+daily["Tickets per interaction"] = daily.apply(
+    lambda r: round(r["Tickets created"] / r["Interactions"], 1) if r["Interactions"] else 0, axis=1)
 st.dataframe(daily, use_container_width=True, hide_index=True)
 st.bar_chart(daily.set_index("Period")[["Interactions", "Tickets created"]], height=260)
 st.caption("Weekly = week starting Monday · Monthly = calendar month. "
-           "Interactions/ticket = interactions ÷ tickets created that period.")
+           "**Tickets per interaction** = tickets created ÷ interactions that period. "
+           "1.0 = one ticket per call · above 1 = more tickets than calls (extra tickets come "
+           "from email / forms / manual) · below 1 = calls consolidate into fewer tickets.")
 
 # ── tickets created — pipeline & detail (live HubSpot) ──────────────────────────
 st.markdown("##### 🎟️ Tickets created — pipeline & detail (live)")
