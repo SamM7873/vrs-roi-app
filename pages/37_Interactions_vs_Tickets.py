@@ -93,6 +93,28 @@ One ticket taking 8 edits = 8 events but 1 ticket touched.*
 Work hours is a **span proxy** — breaks inside the window count, and work outside HubSpot
 (calls, email) isn't included.
 
+**New vs Catch-up (tickets handled per day)**
+| Term | Meaning |
+|---|---|
+| **Handled** | Distinct tickets an agent **touched** that day (any action). |
+| **New** | The ticket was **created that same day**. |
+| **Catch-up** | The ticket was **created earlier** — a reminder / follow-up / older ticket worked today. |
+| **% catch-up** | Catch-up ÷ handled. High % = the team spends most of its day on the backlog, not new work. |
+
+A ticket created *before* the export window counts as **Catch-up** (its create date isn't visible).
+
+**Ticket source — Manual vs Automatic** (needs the live enrichment button)
+| Term | Meaning |
+|---|---|
+| **Manual** | A person created the ticket in HubSpot (`hs_created_by_user_id` set, or a UI source). |
+| **Automatic** | Created by a **form, workflow, integration, API, email, or bot** — no human creator. |
+| **Who handled** | Distinct tickets each agent **touched**, split by Manual / Automatic. Automatic tickets have no creator, so this shows who *works* them. |
+| **Older / not in window** | Ticket created before the export period — origin unknown. |
+
+*Note: HubSpot's **audit log only records user actions**, so automatically-created tickets don't
+appear as "Create" rows there — the Manual/Automatic split comes from each ticket's live
+**source** field, which is why it needs the enrichment button.*
+
 **Per-consumer match (live)** pulls each created ticket's subject/description from HubSpot and
 matches the Convo360 **Customer Name** by text — a guide, not an exact audit (common names can
 over-match; tickets that don't name the consumer won't match).
