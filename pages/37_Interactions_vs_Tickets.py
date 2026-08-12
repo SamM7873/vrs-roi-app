@@ -529,12 +529,28 @@ if "ivt_tickets_df" in st.session_state:
         st.dataframe(ov, use_container_width=True, hide_index=True)
     st.caption("**Manual** = created by a person in HubSpot. **Automatic** = created by a form, "
                "workflow, integration, API, email, or bot (from the ticket's source field).")
-    # tickets by owner
+    # tickets by owner — full summary table
     if "Owner" in tdf.columns:
-        st.markdown("**Tickets created by owner**")
-        ov2 = tdf["Owner"].value_counts().rename_axis("Owner").reset_index(name="Tickets")
-        st.dataframe(ov2, use_container_width=True, hide_index=True,
-                     column_config={"Tickets": _bar("Tickets", ov2["Tickets"].max() if not ov2.empty else 1)})
+        st.markdown("##### 👤 Tickets created by owner")
+        own = (tdf.groupby("Owner")
+               .agg(Tickets=("Ticket ID", "size"),
+                    Manual=("Origin", lambda s: int((s == "Manual").sum())),
+                    Automatic=("Origin", lambda s: int((s == "Automatic").sum())))
+               .reset_index())
+        # add a column per pipeline (T1 / T2 / VRS Registration / Other)
+        _px = pd.crosstab(tdf["Owner"], tdf["Pipeline"])
+        own = own.merge(_px, on="Owner", how="left").fillna(0)
+        for c in own.columns:
+            if c != "Owner":
+                own[c] = own[c].astype(int)
+        own = own.sort_values("Tickets", ascending=False)
+        _omx = int(own["Tickets"].max()) if not own.empty else 1
+        st.dataframe(own, use_container_width=True, hide_index=True,
+                     column_config={"Tickets": _bar("Tickets", _omx),
+                                    "Manual": _bar("Manual", _omx),
+                                    "Automatic": _bar("Automatic", _omx)})
+        st.download_button("📥 Export by-owner (CSV)", own.to_csv(index=False),
+                           "tickets_by_owner.csv", "text/csv", key="ivt_owner_csv")
     fc1, fc2, fc3 = st.columns(3)
     _pp = fc1.selectbox("Filter by pipeline", ["All"] + pv["Pipeline"].tolist(), key="ivt_pp")
     _oo = fc2.selectbox("Filter by origin", ["All", "Manual", "Automatic"], key="ivt_oo")
