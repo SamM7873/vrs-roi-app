@@ -395,6 +395,22 @@ st.markdown("##### 🆕 Tickets handled per day — new vs catch-up")
 st.caption("Of the tickets an agent **touches** in a day: **New** = created that same day · "
            "**Catch-up** = created earlier (a reminder / follow-up / older ticket worked today).")
 _tt = tkf[tkf["Target object id"] != ""].copy()
+# optional source filter — needs the live ticket enrichment (Pipeline / Origin) run above
+_enr = st.session_state.get("ivt_tickets_df")
+if _enr is not None and not _tt.empty:
+    id2pipe = dict(zip(_enr["Ticket ID"].astype(str), _enr["Pipeline"]))
+    id2org = dict(zip(_enr["Ticket ID"].astype(str), _enr["Origin"]))
+    sf1, sf2 = st.columns(2)
+    _pipes = sorted(set(id2pipe.values()))
+    _sp = sf1.multiselect("Pipeline (source)", _pipes, default=_pipes, key="ivt_nvc_pipe")
+    _so = sf2.multiselect("Origin", ["Manual", "Automatic"], default=["Manual", "Automatic"],
+                          key="ivt_nvc_org")
+    _tt = _tt[_tt["Target object id"].map(
+        lambda i: id2pipe.get(str(i), "Other") in _sp and id2org.get(str(i), "Automatic") in _so)]
+    st.caption(f"Filtered by ticket source · {_tt['Target object id'].nunique():,} tickets match.")
+else:
+    st.caption("💡 Run **🔗 Load ticket pipelines & subjects** above to enable a "
+               "Pipeline / Manual-vs-Automatic source filter here.")
 if _tt.empty:
     st.info("No ticket activity in range.")
 else:
