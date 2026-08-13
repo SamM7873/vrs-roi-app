@@ -90,9 +90,9 @@ with st.expander("🔍 Look up one number directly (ignores all filters)", expan
 
 c1, c2, c3 = st.columns([1.3, 1.3, 2])
 with c1:
-    scope = st.selectbox("Service type", ["All service types", "VRS only", "Convo Now only"])
+    scope = st.selectbox("Service type", ["VRS only", "All service types", "Convo Now only"])
 with c2:
-    live_only = st.checkbox("Live only", value=False)
+    live_only = st.checkbox("Live only", value=True)
 run = st.button("Run URSA login audit", type="primary")
 
 if run:
