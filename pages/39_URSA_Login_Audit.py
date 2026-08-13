@@ -15,7 +15,7 @@ report_header("URSA Login Audit",
               section="Data Quality")
 
 NUM_OBJECT = "2-40974683"
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 _key = f"ursa_login_audit_v{CACHE_VERSION}"
 
 # activity signals that prove the number WAS used (so a blank first login = missing/error)
@@ -124,10 +124,16 @@ if run:
         act_dates = [_dt(p.get(k)) for k in ACTIVITY if _dt(p.get(k)) is not None]
         earliest_act = min(act_dates) if act_dates else None
         fl_date = _dt(first_login)
+        # platform last-login presence (iOS / Android / Web)
+        _plat_keys = ["last_login_ursa_convo_ios_date", "last_login_ursa_convo_android_date",
+                      "last_login_ursa_convo_web_date"]
+        has_plat = any(_dt(p.get(k)) is not None for k in _plat_keys)
         if not has_first and evidence:
             flag = "🔴 Missing first login (but active)"
         elif has_first and earliest_act and fl_date > earliest_act:
             flag = "🟠 First login after activity"
+        elif has_first and not has_plat:
+            flag = "🟡 First login, no platform last login"
         elif not has_first and not evidence:
             flag = "⚪ No login, no activity"
         else:
@@ -167,6 +173,7 @@ if df.empty:
 n_total = len(df)
 n_missing = int((df["Flag"] == "🔴 Missing first login (but active)").sum())
 n_after = int((df["Flag"] == "🟠 First login after activity").sum())
+n_noplat = int((df["Flag"] == "🟡 First login, no platform last login").sum())
 n_ok = int((df["Flag"] == "✅ OK").sum())
 n_noact = int((df["Flag"] == "⚪ No login, no activity").sum())
 
@@ -180,15 +187,19 @@ def _card(col, title, val, sub, color):
         <div style="font-size:.72rem;color:#8792A2;">{sub}</div></div>""", unsafe_allow_html=True)
 
 
-k = st.columns(5)
+k = st.columns(6)
 _card(k[0], "🔢 Numbers audited", n_total, "VRS records", "#4C8DFF")
 _card(k[1], "🔴 Missing first login", n_missing,
       f"{(n_missing/n_total*100):.1f}% — active but blank", "#E5484D")
-_card(k[2], "🟠 Login after activity", n_after, "first login too late", "#E8952A")
-_card(k[3], "⚪ No login / no activity", n_noact, "never used", "#8792A2")
-_card(k[4], "✅ OK", n_ok, "first login present", "#2DB84B")
+_card(k[2], "🟡 No platform last login", n_noplat, "has first login, no iOS/Android/Web", "#D9A400")
+_card(k[3], "🟠 Login after activity", n_after, "first login too late", "#E8952A")
+_card(k[4], "⚪ No login / no activity", n_noact, "never used", "#8792A2")
+_card(k[5], "✅ OK", n_ok, "first login + platform login", "#2DB84B")
 st.markdown("")
 
+if n_noplat:
+    st.warning(f"🟡 **{n_noplat:,} numbers have a first login but NO iOS/Android/Web last-login date** "
+               "— the per-platform last-login fields may be missing or not syncing.")
 if n_missing:
     st.error(f"🔴 **{n_missing:,} numbers have activity but no first login** — these are missing or "
              "broken `ursa_first_login` values that need backfilling / investigation.")
@@ -209,10 +220,12 @@ st.dataframe(_plat, use_container_width=True, hide_index=True,
 # ── flagged records ─────────────────────────────────────────────────────────────
 st.markdown("##### Records")
 f1, f2 = st.columns([2, 2])
-flag_opts = ["🔴 Missing first login (but active)", "🟠 First login after activity",
-             "⚪ No login, no activity", "✅ OK"]
+flag_opts = ["🔴 Missing first login (but active)", "🟡 First login, no platform last login",
+             "🟠 First login after activity", "⚪ No login, no activity", "✅ OK"]
 pick = f1.multiselect("Flag", flag_opts,
-                      default=["🔴 Missing first login (but active)", "🟠 First login after activity"])
+                      default=["🔴 Missing first login (but active)",
+                               "🟡 First login, no platform last login",
+                               "🟠 First login after activity"])
 search = f2.text_input("Search number / email / name").strip().lower()
 
 view = df.copy()
