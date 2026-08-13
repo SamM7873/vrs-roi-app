@@ -15,7 +15,7 @@ report_header("URSA Login Audit",
               section="Data Quality")
 
 NUM_OBJECT = "2-40974683"
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 _key = f"ursa_login_audit_v{CACHE_VERSION}"
 
 # activity signals that prove the number WAS used (so a blank first login = missing/error)
@@ -223,10 +223,10 @@ if search:
                 | view["Email"].str.contains(search, case=False, na=False)
                 | view["Name"].str.contains(search, case=False, na=False)]
 st.caption(f"{len(view):,} records")
-st.dataframe(
-    view[["Number", "Email", "Name", "Service", "Status", "First Login", "iOS", "Android", "Web",
-          "First Outbound", "Last Outbound", "Last Inbound", "Evidence", "Flag"]],
-    use_container_width=True, hide_index=True, height=460)
+_show_cols = [c for c in ["Number", "Email", "Name", "Service", "Status", "First Login", "iOS",
+                          "Android", "Web", "First Outbound", "Last Outbound", "Last Inbound",
+                          "Evidence", "Flag"] if c in view.columns]
+st.dataframe(view[_show_cols], use_container_width=True, hide_index=True, height=460)
 st.download_button("📥 Export CSV", view.to_csv(index=False), "ursa_login_audit.csv", "text/csv")
 
 st.caption("**🔴 Missing first login (but active)** = `ursa_first_login` blank yet an outbound/inbound "
