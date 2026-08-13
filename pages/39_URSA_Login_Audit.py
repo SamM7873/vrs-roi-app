@@ -216,12 +216,14 @@ pick = f1.multiselect("Flag", flag_opts,
 search = f2.text_input("Search number / email / name").strip().lower()
 
 view = df.copy()
-if pick:
-    view = view[view["Flag"].isin(pick)]
 if search:
+    # a direct search overrides the flag filter — always find the number
     view = view[view["Number"].str.contains(search, case=False, na=False)
                 | view["Email"].str.contains(search, case=False, na=False)
                 | view["Name"].str.contains(search, case=False, na=False)]
+    st.caption("🔎 Showing search matches across **all** flags (flag filter ignored while searching).")
+elif pick:
+    view = view[view["Flag"].isin(pick)]
 st.caption(f"{len(view):,} records")
 _show_cols = [c for c in ["Number", "Email", "Name", "Service", "Status", "First Login", "iOS",
                           "Android", "Web", "First Outbound", "Last Outbound", "Last Inbound",
