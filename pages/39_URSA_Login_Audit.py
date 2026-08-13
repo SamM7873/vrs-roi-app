@@ -56,14 +56,26 @@ st.markdown("Audits the **Number custom object** for URSA login integrity. We fl
 with st.expander("🔍 Look up one number directly (ignores all filters)", expanded=False):
     _q = st.text_input("Phone number", placeholder="7326389021", key="ursa_lookup").strip()
     if _q:
-        recs1 = fetch_all(
-            NUM_OBJECT,
-            ["number", "email", "first_name", "last_name", "service_type", "account_status",
-             "number_status", "number_created_at", "ursa_first_login"] + list(ACTIVITY.keys()),
-            filter_groups=[{"filters": [{"propertyName": "number", "operator": "EQ", "value": _q}]}])
+        _digits = "".join(ch for ch in _q if ch.isdigit())
+        _last10 = _digits[-10:] if len(_digits) >= 10 else _digits
+        _props = ["number", "email", "first_name", "last_name", "service_type", "account_status",
+                  "number_status", "number_created_at", "ursa_first_login"] + list(ACTIVITY.keys())
+        # try several stored formats: as typed, digits only, +1 prefix, then a contains-search
+        _variants = list(dict.fromkeys([_q, _digits, _last10, f"+1{_last10}", f"1{_last10}"]))
+        recs1 = []
+        for v in _variants:
+            recs1 = fetch_all(NUM_OBJECT, _props, filter_groups=[{"filters": [
+                {"propertyName": "number", "operator": "EQ", "value": v}]}])
+            if recs1:
+                break
+        if not recs1 and _last10:
+            # last resort: token/contains search on the 10-digit core
+            recs1 = fetch_all(NUM_OBJECT, _props, filter_groups=[{"filters": [
+                {"propertyName": "number", "operator": "CONTAINS_TOKEN", "value": f"*{_last10}*"}]}])
         if not recs1:
-            st.error(f"No Number record at all with number = {_q}. "
-                     "Check the exact value/format stored in HubSpot (e.g. +1 prefix).")
+            st.error(f"No Number record found for {_q} (tried {', '.join(_variants)} and a contains "
+                     "search). The number may not exist in HubSpot, or is stored in a format none "
+                     "of these matched.")
         for r in recs1:
             p = r.get("properties", {})
             st.markdown(f"**{p.get('number')}** · service_type: **{p.get('service_type') or '(blank)'}** "
@@ -73,22 +85,26 @@ with st.expander("🔍 Look up one number directly (ignores all filters)", expan
             for k, lbl in ACTIVITY.items():
                 det["Field"].append(f"{k}  ({lbl})"); det["Value"].append(_fmt(p.get(k)) or "(empty)")
             st.dataframe(pd.DataFrame(det), use_container_width=True, hide_index=True)
-            if (p.get("service_type") or "").strip() != "VRS":
-                st.info("This number's service_type is not **VRS**, so it won't appear in the audit "
-                        "below (the audit is VRS-only).")
-            elif (p.get("account_status") or "").strip().lower() != "live":
-                st.info("This number isn't **Live** — uncheck 'Live VRS only' below to include it.")
+            if (p.get("account_status") or p.get("number_status") or "").strip().lower() != "live":
+                st.caption("Note: this number isn't **Live** — keep 'Live only' unchecked to include it.")
 
-c1, c2 = st.columns([1, 3])
+c1, c2, c3 = st.columns([1.3, 1.3, 2])
 with c1:
-    live_only = st.checkbox("Live VRS only", value=True)
+    scope = st.selectbox("Service type", ["All service types", "VRS only", "Convo Now only"])
+with c2:
+    live_only = st.checkbox("Live only", value=False)
 run = st.button("Run URSA login audit", type="primary")
 
 if run:
     props = ["number", "email", "first_name", "last_name", "service_type", "account_status",
              "number_status", "number_created_at", "ursa_first_login"] + list(ACTIVITY.keys())
-    fg = [{"filters": [{"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}]
-    with dash_spinner("Reading URSA number records…"):
+    # pull ALL numbers by default; optionally restrict to a service type
+    fg = None
+    if scope == "VRS only":
+        fg = [{"filters": [{"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}]
+    elif scope == "Convo Now only":
+        fg = [{"filters": [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}]}]
+    with dash_spinner("Reading number records…"):
         recs = fetch_all(NUM_OBJECT, props, filter_groups=fg)
 
     rows = []
@@ -120,6 +136,7 @@ if run:
             "Number": n,
             "Email": (p.get("email") or "").strip(),
             "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—",
+            "Service": (p.get("service_type") or "").strip() or "—",
             "Status": status or "—",
             "First Login": _fmt(first_login),
             "iOS": _fmt(p.get("last_login_ursa_convo_ios_date")),
@@ -207,7 +224,7 @@ if search:
                 | view["Name"].str.contains(search, case=False, na=False)]
 st.caption(f"{len(view):,} records")
 st.dataframe(
-    view[["Number", "Email", "Name", "Status", "First Login", "iOS", "Android", "Web",
+    view[["Number", "Email", "Name", "Service", "Status", "First Login", "iOS", "Android", "Web",
           "First Outbound", "Last Outbound", "Last Inbound", "Evidence", "Flag"]],
     use_container_width=True, hide_index=True, height=460)
 st.download_button("📥 Export CSV", view.to_csv(index=False), "ursa_login_audit.csv", "text/csv")
