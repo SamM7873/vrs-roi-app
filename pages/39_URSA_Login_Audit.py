@@ -52,6 +52,33 @@ st.markdown("Audits the **Number custom object** for URSA login integrity. We fl
             "inbound call, or an iOS / Android / Web login. That means first login is **missing or "
             "erroneous** (a first login should always exist before any activity).")
 
+# ── direct single-number lookup (any service type / status) ─────────────────────
+with st.expander("🔍 Look up one number directly (ignores all filters)", expanded=False):
+    _q = st.text_input("Phone number", placeholder="7326389021", key="ursa_lookup").strip()
+    if _q:
+        recs1 = fetch_all(
+            NUM_OBJECT,
+            ["number", "email", "first_name", "last_name", "service_type", "account_status",
+             "number_status", "number_created_at", "ursa_first_login"] + list(ACTIVITY.keys()),
+            filter_groups=[{"filters": [{"propertyName": "number", "operator": "EQ", "value": _q}]}])
+        if not recs1:
+            st.error(f"No Number record at all with number = {_q}. "
+                     "Check the exact value/format stored in HubSpot (e.g. +1 prefix).")
+        for r in recs1:
+            p = r.get("properties", {})
+            st.markdown(f"**{p.get('number')}** · service_type: **{p.get('service_type') or '(blank)'}** "
+                        f"· status: **{p.get('account_status') or p.get('number_status') or '(blank)'}**")
+            det = {"Field": [], "Value": []}
+            det["Field"].append("ursa_first_login"); det["Value"].append(_fmt(p.get("ursa_first_login")) or "(empty)")
+            for k, lbl in ACTIVITY.items():
+                det["Field"].append(f"{k}  ({lbl})"); det["Value"].append(_fmt(p.get(k)) or "(empty)")
+            st.dataframe(pd.DataFrame(det), use_container_width=True, hide_index=True)
+            if (p.get("service_type") or "").strip() != "VRS":
+                st.info("This number's service_type is not **VRS**, so it won't appear in the audit "
+                        "below (the audit is VRS-only).")
+            elif (p.get("account_status") or "").strip().lower() != "live":
+                st.info("This number isn't **Live** — uncheck 'Live VRS only' below to include it.")
+
 c1, c2 = st.columns([1, 3])
 with c1:
     live_only = st.checkbox("Live VRS only", value=True)
