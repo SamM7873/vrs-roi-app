@@ -24,9 +24,9 @@ ACTIVITY = {
     "ursa_second_outbound_call": "Second Outbound",
     "ursa_last_outbound_call": "Last Outbound",
     "ursa_last_inbound_call": "Last Inbound",
-    "ursa_ios": "iOS login",
-    "ursa_android": "Android login",
-    "ursa_web": "Web login",
+    "last_login_ursa_convo_ios_date": "iOS login",
+    "last_login_ursa_convo_android_date": "Android login",
+    "last_login_ursa_convo_web_date": "Web login",
 }
 
 
@@ -95,9 +95,9 @@ if run:
             "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—",
             "Status": status or "—",
             "First Login": _fmt(first_login),
-            "iOS": _fmt(p.get("ursa_ios")),
-            "Android": _fmt(p.get("ursa_android")),
-            "Web": _fmt(p.get("ursa_web")),
+            "iOS": _fmt(p.get("last_login_ursa_convo_ios_date")),
+            "Android": _fmt(p.get("last_login_ursa_convo_android_date")),
+            "Web": _fmt(p.get("last_login_ursa_convo_web_date")),
             "First Outbound": _fmt(p.get("ursa_first_outbound_call")),
             "Last Outbound": _fmt(p.get("ursa_last_outbound_call")),
             "Last Inbound": _fmt(p.get("ursa_last_inbound_call")),
