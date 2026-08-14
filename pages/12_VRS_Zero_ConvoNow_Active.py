@@ -42,7 +42,7 @@ report_header_close()
 
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
-_CACHE_VERSION = 10  # bump when columns/fetch logic change
+_CACHE_VERSION = 11  # bump when columns/fetch logic change
 _range_sig = range_label
 if range_label == "Custom" and _custom_start and _custom_end:
     _range_sig = f"Custom_{_custom_start:%Y%m}_{_custom_end:%Y%m}"
@@ -110,11 +110,14 @@ if run or not cached:
     with dash_spinner("Fetching Convo Now monthly values with usage > 0…"):
         cn_mvs = fetch_all(
             "2-46246179",
-            ["number", "month_date", "usage_minutes", "service_type"],
+            ["number", "month_date", "usage_minutes", "service_type", "credit_plan_name"],
             filter_groups=[{"filters": [
                 *DATE_FILTERS,
                 {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
                 {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
+                # credit_plan_name lives on the Monthly Values object (not the Number object)
+                {"propertyName": "credit_plan_name", "operator": "EQ",
+                 "value": "Convo Now: Access Complimentary"},
             ]}]
         )
 
@@ -141,12 +144,12 @@ if run or not cached:
             cn_obj_records.extend(fetch_all(
                 "2-40974683",
                 ["number", "email", "first_name", "last_name", "service_type",
-                 "number_status", "usage_type", "credit_plan_name", "age_bucket", "state",
+                 "number_status", "usage_type", "age_bucket", "state",
                  "number_created_at"],
                 filter_groups=[{"filters": [
-                    {"propertyName": "number",           "operator": "IN", "values": chunk},
-                    {"propertyName": "usage_type",       "operator": "EQ", "value": "Personal"},
-                    {"propertyName": "credit_plan_name", "operator": "EQ", "value": "Convo Now: Access Complimentary"},
+                    {"propertyName": "number",     "operator": "IN", "values": chunk},
+                    # usage_type = Personal lives on the Number object
+                    {"propertyName": "usage_type", "operator": "EQ", "value": "Personal"},
                 ]}]
             ))
 
