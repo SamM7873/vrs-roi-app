@@ -20,7 +20,7 @@ report_header("Convo Now Only — No VRS Number",
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
 CONVO_RATE = 2.60
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 _key = f"cn_only_v{CACHE_VERSION}"
 
 
@@ -93,14 +93,17 @@ if run:
         cn = fetch_all(NUM_OBJECT,
                        ["number", "email", "first_name", "last_name", "account_status",
                         "number_status", "usage_type", "state", "number_created_at",
-                        "convo_now_account_id"],
+                        "convo_now_account_id", "credit_type"],
                        filter_groups=[{"filters": [
                            {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}]}])
 
-    # keep only Convo Now with NO VRS on the email (or no email)
-    only = []
+    # keep only Convo Now with NO VRS on the email (or no email); exclude Guest credit type
+    only, n_guest = [], 0
     for r in cn:
         p = r.get("properties", {})
+        if (p.get("credit_type") or "").strip().lower() == "guest":
+            n_guest += 1
+            continue  # exclude Guest (blank credit types are kept)
         e = (p.get("email") or "").strip().lower()
         if e and e in vrs_emails:
             continue  # has a VRS number → not "Convo Now only"
@@ -132,6 +135,7 @@ if run:
             "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—",
             "Status": status or "—",
             "Usage Type": (p.get("usage_type") or "").strip() or "—",
+            "Credit Type": (p.get("credit_type") or "").strip() or "—",
             "State": (p.get("state") or "").strip() or "—",
             "Created": _iso(p.get("number_created_at")),
             "Pendo ID": (p.get("convo_now_account_id") or "").strip() or "—",
@@ -141,7 +145,8 @@ if run:
             row["CN Min (since)"] = round(num_usage.get(n, 0.0), 1)
         rows.append(row)
     df = pd.DataFrame(rows)
-    save_report(_key, {"df": df, "with_usage": with_usage, "since": str(usage_since)})
+    save_report(_key, {"df": df, "with_usage": with_usage, "since": str(usage_since),
+                       "n_guest": n_guest})
 
 saved = load_report(_key)
 if saved is None:
@@ -151,7 +156,9 @@ if saved is None:
 df = saved["df"]
 with_usage = saved.get("with_usage", False)
 if saved.get("saved_at"):
-    st.caption(f"📌 Saved {saved_at_label(saved)} · click Run to refresh")
+    _ng = saved.get("n_guest", 0)
+    st.caption(f"📌 Saved {saved_at_label(saved)} · click Run to refresh · "
+               f"**{_ng:,} Guest credit-type numbers excluded** (blanks kept)")
 if df.empty:
     st.warning("No Convo Now numbers without VRS found.")
     report_header_close(); st.stop()
