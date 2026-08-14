@@ -79,10 +79,12 @@ def _seek_mv(props, filters, label=""):
 st.markdown("Works off the **Number object**. Reads **Convo Now** numbers, checks each number's "
             "**email** against the VRS numbers, and pulls **CN and VRS minutes** from Monthly Values "
             "so each number lands in one of these buckets. Guest credit type excluded.")
-c1, c2 = st.columns([1.2, 1.4])
+c1, c2, c3 = st.columns([1.6, 1.1, 1.3])
 with c1:
-    live_only = st.checkbox("Live only", value=True)
+    pick = st.selectbox("Filter (bucket)", ["All buckets"] + BUCKETS, index=1)
 with c2:
+    live_only = st.checkbox("Live only", value=True)
+with c3:
     usage_since = st.date_input("Usage since", value=date(2026, 1, 1))
 run = st.button("▶ Run report", type="primary")
 
@@ -261,10 +263,8 @@ with b2:
                      format="%d")})
 
 # ── records + dropdown ───────────────────────────────────────────────────────────
-st.markdown("##### Records")
-f1, f2 = st.columns([1.7, 2])
-pick = f1.selectbox("Show", ["All buckets"] + BUCKETS, index=1)  # default: No VRS number
-search = f2.text_input("Search number / email / name").strip().lower()
+st.markdown(f"##### Records — {pick}")
+search = st.text_input("Search number / email / name").strip().lower()
 
 view = base.copy()
 if pick != "All buckets":
