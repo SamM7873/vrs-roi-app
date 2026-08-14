@@ -184,6 +184,31 @@ with t3:
     st.download_button("📥 in_both.csv", both_sl_df.to_csv(index=False), "in_both.csv", "text/csv")
 
 st.markdown("---")
+
+# ── written findings (the reconciliation narrative) ──────────────────────────────
+with st.expander("📋 Reconciliation findings & bottom line", expanded=True):
+    st.markdown("""
+**What each “only” bucket looks like**
+
+| Bucket | Count | What we know about them |
+|---|---|---|
+| **Only Streamlit** | 1,507 | All Live, all “no VRS on email”, credit type Credit-Group (1,481) / Credit-Plan (26). Mostly customers (1,307). Created 2023–2025. **Not** newer than Hex’s cutoff. |
+| **Both** | 805 | All Credit-Group. On both lists. |
+| **Only Hex** | 1,369 | Carry usage history (Baseline / Recent / CN20 mins); 641 have CN20 minutes > 0. Not present in our Convo-Now-without-VRS list at all. |
+
+**What we ruled OUT as the cause**
+
+- **It’s not the Guest exclusion.** Every record on our side is Credit-Group / Credit-Plan — none are Guest. And the overlap (805) is all Credit-Group too. So credit type does **not** separate “only-us” from “both.”
+- **It’s not recency/tenure.** The 1,507 only-Streamlit span 2023–2025 (0 created in 2026), so Hex isn’t dropping them for being too new.
+
+**What the difference most likely IS**
+
+- **Hex’s report is a usage/retention segment; ours is a structural list.** The Hex file carries Baseline, Recent, CN20 mins, CN20 convos, Tenure — it’s built from a defined “CN20” segment (probably product/usage-based), computing a baseline per account. Ours is simply *“a Convo Now number whose email has no VRS number, Live, non-Guest.”* Two different definitions → two different populations.
+- **The 1,369 Hex-only accounts are the key clue.** They’re absent from our list entirely. The most likely reason: our page removes a Convo Now number if its **email** has any VRS number (email-based association). If Hex decides “no VRS” a different way (account-level association, or a Pendo/product segment), it keeps accounts we drop on a shared-email collision.
+
+> **Bottom line:** The two reports don’t match because they answer different questions — **Hex = “active CN20 segment”**, **Streamlit = “Convo Now number with no VRS on email.”** Once your coworker confirms the four questions below, I can replicate Hex’s exact definition in Streamlit so the numbers line up.
+""")
+
 st.markdown(
     "##### Questions to align the two reports\n"
     "1. **What defines the CN20 segment?** Every Convo Now account, or only those with usage / a "
