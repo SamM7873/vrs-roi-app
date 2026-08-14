@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import os
 import time
-# app.py is the Streamlit entry point (uses st.navigation). Redeploy marker.
+# app.py is the Streamlit entry point (uses st.navigation). Redeploy marker 2.
 from datetime import datetime, timezone, timedelta
 
 st.set_page_config(page_title="VRS Lookup", layout="wide", page_icon="🔍")
