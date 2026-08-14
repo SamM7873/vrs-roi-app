@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 import re
 from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
-                   log_report_view)
+                   save_report, load_report, saved_at_label, log_report_view)
+
+_key = "cn20_recon_v1"
 
 st.set_page_config(page_title="CN20 Reconciliation", layout="wide", page_icon="🔀")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -45,24 +47,29 @@ with c1:
 with c2:
     f_hex = st.file_uploader("Hex export (CN20 accounts only)", type=["csv"], key="hx")
 
-if not (f_sl and f_hex):
-    st.info("Upload **both** CSVs to run the reconciliation.")
-    report_header_close(); st.stop()
+if f_sl and f_hex:
+    sl = pd.read_csv(f_sl, dtype=str).fillna("")
+    hx = pd.read_csv(f_hex, dtype=str).fillna("")
 
-sl = pd.read_csv(f_sl, dtype=str).fillna("")
-hx = pd.read_csv(f_hex, dtype=str).fillna("")
+    sl_key = _pick_col(sl.columns, "Convo Now #", "number", "Guest number", "phone")
+    hx_key = _pick_col(hx.columns, "Guest number", "Convo Now #", "number", "phone")
+    if not sl_key or not hx_key:
+        st.error(f"Couldn't find a number column. Streamlit cols: {list(sl.columns)} · "
+                 f"Hex cols: {list(hx.columns)}")
+        report_header_close(); st.stop()
 
-sl_key = _pick_col(sl.columns, "Convo Now #", "number", "Guest number", "phone")
-hx_key = _pick_col(hx.columns, "Guest number", "Convo Now #", "number", "phone")
-if not sl_key or not hx_key:
-    st.error(f"Couldn't find a number column. Streamlit cols: {list(sl.columns)} · "
-             f"Hex cols: {list(hx.columns)}")
-    report_header_close(); st.stop()
-
-sl["_k"] = sl[sl_key].map(_digits)
-hx["_k"] = hx[hx_key].map(_digits)
-sl = sl[sl["_k"] != ""].copy()
-hx = hx[hx["_k"] != ""].copy()
+    sl["_k"] = sl[sl_key].map(_digits)
+    hx["_k"] = hx[hx_key].map(_digits)
+    sl = sl[sl["_k"] != ""].copy()
+    hx = hx[hx["_k"] != ""].copy()
+    save_report(_key, {"sl": sl, "hx": hx})
+else:
+    saved = load_report(_key)
+    if saved is None:
+        st.info("Upload **both** CSVs to run the reconciliation.")
+        report_header_close(); st.stop()
+    sl, hx = saved["sl"], saved["hx"]
+    st.caption(f"📌 Saved {saved_at_label(saved)} · re-upload both CSVs to refresh")
 
 sl_keys = set(sl["_k"])
 hx_keys = set(hx["_k"])
