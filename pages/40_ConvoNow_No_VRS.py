@@ -15,7 +15,8 @@ report_header("Convo Now without VRS",
               section="Customers")
 
 NUM_OBJECT = "2-40974683"
-CACHE_VERSION = 1
+MV_OBJECT = "2-46246179"
+CACHE_VERSION = 2
 _key = f"cn_no_vrs_v{CACHE_VERSION}"
 
 
@@ -31,14 +32,15 @@ def _iso(v):
         return str(v)[:10]
 
 
-st.markdown("Finds **Live Convo Now** numbers that are **not linked to any VRS number**. "
-            "The link between a customer's Convo Now and VRS numbers is the shared **email**, so a "
-            "Convo Now number is flagged when its email has **no VRS number** — or when it has "
-            "**no email at all** (nothing to associate on).")
+st.markdown("Follows **Contact → Number → Monthly Values**: matches the Contact's **email** to the "
+            "Number object, then the Number to Monthly Values. Flags a **Live Convo Now** number "
+            "when its email has **no VRS number** (or no email to associate on). "
+            "Live = Number `account_status` is Live.")
+with_usage = st.checkbox("Include Convo Now usage from Monthly Values (slower)", value=False)
 run = st.button("Run report", type="primary")
 
 if run:
-    # 1) all VRS numbers → build the set of emails that HAVE a VRS number
+    # 1) VRS numbers → emails that HAVE a VRS number (and which are Live)
     with dash_spinner("Reading VRS numbers…"):
         vrs = fetch_all(NUM_OBJECT, ["number", "email", "account_status"],
                         filter_groups=[{"filters": [
@@ -52,13 +54,52 @@ if run:
             if (p.get("account_status") or "").strip().lower() == "live":
                 vrs_live_emails.add(e)
 
-    # 2) all Convo Now numbers
+    # 2) Convo Now numbers
     with dash_spinner("Reading Convo Now numbers…"):
         cn = fetch_all(NUM_OBJECT,
                        ["number", "email", "first_name", "last_name", "account_status",
                         "number_status", "usage_type", "number_created_at", "convo_now_account_id"],
                        filter_groups=[{"filters": [
                            {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}]}])
+
+    # 3) Contacts — confirm each Convo Now email maps to a real Contact (Contact→Number link)
+    cn_emails = sorted({(r.get("properties", {}).get("email") or "").strip().lower()
+                        for r in cn if (r.get("properties", {}).get("email") or "").strip()})
+    contact_of = {}
+    with dash_spinner(f"Matching {len(cn_emails):,} emails to Contacts…"):
+        for i in range(0, len(cn_emails), 100):
+            chunk = cn_emails[i:i + 100]
+            for c in fetch_all("contacts", ["email", "firstname", "lastname", "lifecyclestage",
+                                            "convo_now_account_id"],
+                               filter_groups=[{"filters": [
+                                   {"propertyName": "email", "operator": "IN", "values": chunk}]}]):
+                cp = c.get("properties", {})
+                ce = (cp.get("email") or "").strip().lower()
+                if ce and ce not in contact_of:
+                    contact_of[ce] = {
+                        "name": f"{(cp.get('firstname') or '').strip()} {(cp.get('lastname') or '').strip()}".strip(),
+                        "lifecycle": (cp.get("lifecyclestage") or "").strip(),
+                        "pendo": (cp.get("convo_now_account_id") or "").strip()}
+
+    # 4) Monthly Values — Convo Now usage per number (optional; Number→MV link)
+    cn_usage = {}
+    if with_usage:
+        cn_numbers = sorted({str(r.get("properties", {}).get("number") or "").strip()
+                             for r in cn if str(r.get("properties", {}).get("number") or "").strip()})
+        with dash_spinner(f"Pulling Monthly Values for {len(cn_numbers):,} Convo Now numbers…"):
+            for i in range(0, len(cn_numbers), 100):
+                chunk = cn_numbers[i:i + 100]
+                for o in fetch_all(MV_OBJECT, ["number", "usage_minutes", "service_type"],
+                                   filter_groups=[{"filters": [
+                                       {"propertyName": "number", "operator": "IN", "values": chunk},
+                                       {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}]}]):
+                    op = o.get("properties", {})
+                    nn = str(op.get("number") or "").strip()
+                    try:
+                        cn_usage[nn] = cn_usage.get(nn, 0.0) + float(op.get("usage_minutes") or 0)
+                    except (TypeError, ValueError):
+                        pass
+
     rows = []
     for r in cn:
         p = r.get("properties", {})
@@ -74,18 +115,25 @@ if run:
             link = "🟡 VRS number exists but not Live"
         else:
             link = "✅ Has Live VRS"
-        rows.append({
+        c = contact_of.get(el, {})
+        nm = c.get("name") or f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip()
+        row = {
             "Convo Now #": n or "—",
             "Email": e or "(none)",
-            "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—",
+            "Contact": nm or "—",
+            "Contact found": "Yes" if (el and el in contact_of) else "No",
+            "Lifecycle": c.get("lifecycle") or "—",
             "CN Status": status or "—",
             "Usage Type": (p.get("usage_type") or "").strip() or "—",
             "Created": _iso(p.get("number_created_at")),
-            "Pendo ID": (p.get("convo_now_account_id") or "").strip() or "—",
+            "Pendo ID": (p.get("convo_now_account_id") or c.get("pendo") or "").strip() or "—",
             "VRS Link": link,
-        })
+        }
+        if with_usage:
+            row["CN Minutes"] = round(cn_usage.get(n, 0.0), 1)
+        rows.append(row)
     df = pd.DataFrame(rows)
-    save_report(_key, {"df": df})
+    save_report(_key, {"df": df, "with_usage": with_usage})
 
 saved = load_report(_key)
 if saved is None:
