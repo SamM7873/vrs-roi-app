@@ -20,7 +20,7 @@ report_header("Convo Now Only — No VRS Number",
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
 CONVO_RATE = 2.60
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 _key = f"cn_only_v{CACHE_VERSION}"
 
 
@@ -93,17 +93,19 @@ if run:
         cn = fetch_all(NUM_OBJECT,
                        ["number", "email", "first_name", "last_name", "account_status",
                         "number_status", "usage_type", "state", "number_created_at",
-                        "convo_now_account_id", "credit_type"],
+                        "convo_now_account_id", "credit_type", "credit_plan_name"],
                        filter_groups=[{"filters": [
                            {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}]}])
 
-    # keep only Convo Now with NO VRS on the email (or no email); exclude Guest credit type
+    # keep only Convo Now with NO VRS on the email (or no email); exclude anything Guest
     only, n_guest = [], 0
     for r in cn:
         p = r.get("properties", {})
-        if (p.get("credit_type") or "").strip().lower() == "guest":
+        _ct = (p.get("credit_type") or "").strip().lower()
+        _cp = (p.get("credit_plan_name") or "").strip().lower()
+        if "guest" in _ct or "guest" in _cp:
             n_guest += 1
-            continue  # exclude Guest (blank credit types are kept)
+            continue  # exclude Guest (matches credit_type OR credit_plan_name; blanks kept)
         e = (p.get("email") or "").strip().lower()
         if e and e in vrs_emails:
             continue  # has a VRS number → not "Convo Now only"
@@ -136,6 +138,7 @@ if run:
             "Status": status or "—",
             "Usage Type": (p.get("usage_type") or "").strip() or "—",
             "Credit Type": (p.get("credit_type") or "").strip() or "—",
+            "Credit Plan": (p.get("credit_plan_name") or "").strip() or "—",
             "State": (p.get("state") or "").strip() or "—",
             "Created": _iso(p.get("number_created_at")),
             "Pendo ID": (p.get("convo_now_account_id") or "").strip() or "—",
@@ -208,6 +211,18 @@ with b2:
     st.dataframe(uc, use_container_width=True, hide_index=True,
                  column_config={"Count": st.column_config.ProgressColumn(
                      "Count", min_value=0, max_value=int(uc["Count"].max()), format="%d")})
+
+# ── by credit type (verify Guest is excluded) ────────────────────────────────────
+if "Credit Type" in df.columns:
+    st.markdown("##### By credit type (Guest excluded)")
+    cc = df["Credit Type"].value_counts().rename_axis("Credit Type").reset_index(name="Count")
+    cc["%"] = (cc["Count"] / len(df) * 100).round(1)
+    st.dataframe(cc, use_container_width=True, hide_index=True,
+                 column_config={"Count": st.column_config.ProgressColumn(
+                     "Count", min_value=0, max_value=int(cc["Count"].max()) if not cc.empty else 1,
+                     format="%d")})
+    st.caption("Guest is removed before this table — if you still see a 'Guest' row, tell me the "
+               "exact value so I can match it.")
 
 # ── records ──────────────────────────────────────────────────────────────────────
 st.markdown("##### Records")
