@@ -16,6 +16,41 @@ st.set_page_config(page_title="VRS Zero / Convo Now Active", layout="wide", page
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
 
+import requests
+from utils import headers as _H, BASE_URL as _B
+
+
+def _seek_mv(props, filters, label=""):
+    """All Monthly Values matching filters, paged past HubSpot's 10k search cap
+    using an hs_object_id cursor (needed for large/All-Time pulls)."""
+    url = f"{_B}/crm/v3/objects/2-46246179/search"
+    out, last = [], "0"
+    ph = st.empty()
+    while True:
+        body = {"limit": 100, "properties": props,
+                "sorts": [{"propertyName": "hs_object_id", "direction": "ASCENDING"}],
+                "filterGroups": [{"filters": filters + [
+                    {"propertyName": "hs_object_id", "operator": "GT", "value": last}]}]}
+        r = None
+        for attempt in range(6):
+            r = requests.post(url, headers=_H, json=body, timeout=60)
+            if r.status_code == 429:
+                time.sleep(1.0 * (attempt + 1)); continue
+            break
+        if r is None or r.status_code != 200:
+            ph.empty(); st.error(f"HubSpot error {getattr(r,'status_code','?')}"); break
+        batch = r.json().get("results", [])
+        out.extend(batch)
+        if label:
+            ph.caption(f"{label} {len(out):,} rows…")
+        if len(batch) < 100:
+            break
+        last = str(batch[-1]["id"])
+        time.sleep(0.08)
+    ph.empty()
+    return out
+
+
 CONVO_RATE = 2.60
 
 report_header(
@@ -42,7 +77,7 @@ report_header_close()
 
 # Clear cached results if the date range changed since last run
 # (or if the cache is from an older version of this page's pipeline)
-_CACHE_VERSION = 11  # bump when columns/fetch logic change
+_CACHE_VERSION = 12  # bump when columns/fetch logic change
 _range_sig = range_label
 if range_label == "Custom" and _custom_start and _custom_end:
     _range_sig = f"Custom_{_custom_start:%Y%m}_{_custom_end:%Y%m}"
@@ -108,17 +143,18 @@ DATE_FILTER = DATE_FILTERS[0]  # back-compat single-floor reference
 if run or not cached:
     # ── Step 1: Convo Now MV records with usage > 0 ───────────────────────────
     with dash_spinner("Fetching Convo Now monthly values with usage > 0…"):
-        cn_mvs = fetch_all(
-            "2-46246179",
+        # seek pagination (not fetch_all) so All-Time / large ranges aren't truncated at 10k
+        cn_mvs = _seek_mv(
             ["number", "month_date", "usage_minutes", "service_type", "credit_plan_name"],
-            filter_groups=[{"filters": [
+            [
                 *DATE_FILTERS,
                 {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
                 {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
                 # credit_plan_name lives on the Monthly Values object (not the Number object)
                 {"propertyName": "credit_plan_name", "operator": "EQ",
                  "value": "Convo Now: Access Complimentary"},
-            ]}]
+            ],
+            label="Convo Now usage:",
         )
 
     cn_numbers = set()
