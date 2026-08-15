@@ -20,6 +20,7 @@ report_header("Convo Now Only — VRS relationship",
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
 CONVO_RATE = 2.60
+CN_GREEN_MAX = 20  # CN Minutes ≤ this = green, above = red
 CACHE_VERSION = 10
 _key = f"cn_only_v{CACHE_VERSION}"
 
@@ -435,8 +436,21 @@ else:
     st.markdown(f"##### Records — {pick}")
     view = fv.copy()
 view = view.sort_values("CN Minutes", ascending=False)
-st.caption(f"{len(view):,} records")
-st.dataframe(view, use_container_width=True, hide_index=True, height=440)
+st.caption(f"{len(view):,} records · CN Minutes ≤ {CN_GREEN_MAX} is 🟢 green, over {CN_GREEN_MAX} is 🔴 red")
+
+
+def _cn_color(v):
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return ""
+    if x <= CN_GREEN_MAX:
+        return "background-color:#e7f6ee;color:#1f7a44;font-weight:700"
+    return "background-color:#fde8e8;color:#c0392b;font-weight:700"
+
+
+styled = view.style.applymap(_cn_color, subset=["CN Minutes"]) if "CN Minutes" in view.columns else view
+st.dataframe(styled, use_container_width=True, hide_index=True, height=440)
 st.download_button("📥 Export CSV", view.to_csv(index=False), "convo_now_only.csv", "text/csv")
 
 st.caption(f"**{B_NOVRS}** — email has no VRS number at all (includes no-email records). · "
