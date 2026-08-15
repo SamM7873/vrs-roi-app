@@ -46,6 +46,58 @@ def _month_firsts(start=date(2025, 1, 1)):
     return out
 
 
+def _trailing(n, include_current):
+    """List of n month-firsts, ending at current month (include_current) or the month before."""
+    today = date.today()
+    y, m = today.year, today.month
+    if not include_current:
+        m -= 1
+        if m < 1:
+            m, y = 12, y - 1
+    out = []
+    for _ in range(n):
+        out.append(date(y, m, 1))
+        m -= 1
+        if m < 1:
+            m, y = 12, y - 1
+    return list(reversed(out))
+
+
+PERIODS = ["This month", "Last month", "Last 2 months", "Last 3 months", "Last 4 months",
+           "Last 5 months", "Last 6 months", "This quarter", "Last quarter",
+           "This year", "Last year", "All since Jan 2026", "Custom (month picker)"]
+
+
+def _resolve_period(period, custom):
+    """Return a list of first-of-month dates for the chosen period ([] = all-since)."""
+    today = date.today()
+    cy, cm = today.year, today.month
+    if period == "Custom (month picker)":
+        return custom
+    if period == "All since Jan 2026":
+        return []
+    if period == "This month":
+        return [date(cy, cm, 1)]
+    if period == "Last month":
+        return _trailing(1, include_current=False)
+    if period.startswith("Last ") and period.endswith("months"):
+        return _trailing(int(period.split()[1]), include_current=False)
+    if period == "This quarter":
+        qs = ((cm - 1) // 3) * 3 + 1
+        return [date(cy, mm, 1) for mm in range(qs, cm + 1)]
+    if period == "Last quarter":
+        qs = ((cm - 1) // 3) * 3 + 1 - 3
+        y = cy
+        if qs < 1:
+            qs, y = qs + 12, cy - 1
+        return [date(y, qs + i, 1) for i in range(3)]
+    if period == "This year":
+        return [date(cy, mm, 1) for mm in range(1, cm + 1)]
+    if period == "Last year":
+        return [date(cy - 1, mm, 1) for mm in range(1, 13)]
+    return []
+
+
 def _iso(v):
     if not v:
         return ""
@@ -96,11 +148,17 @@ with c1:
 with c2:
     live_only = st.checkbox("Live only", value=True)
 
-_month_opts = list(reversed(_month_firsts()))  # newest first
 _fmt = "%m-%d-%Y"
-months = st.multiselect(
-    "Months (first of month) — leave empty to include all since Jan 2026",
-    _month_opts, default=[], format_func=lambda d: d.strftime(_fmt))
+p1, p2 = st.columns([1.3, 2])
+period = p1.selectbox("Period", PERIODS, index=PERIODS.index("This month"))
+_month_opts = list(reversed(_month_firsts()))  # newest first
+custom_months = p2.multiselect("Custom months (used when Period = Custom)",
+                               _month_opts, default=[], format_func=lambda d: d.strftime(_fmt))
+months = _resolve_period(period, custom_months)
+if months:
+    st.caption("Months included: " + ", ".join(m.strftime(_fmt) for m in months))
+else:
+    st.caption("Months included: all since 01-01-2026")
 usage_since = date(2026, 1, 1)
 run = st.button("▶ Run report", type="primary")
 
@@ -213,7 +271,8 @@ if run:
             "Bucket": bucket,
         })
     df = pd.DataFrame(rows)
-    _mlabel = ", ".join(m.strftime(_fmt) for m in months) if months else f"all since {usage_since}"
+    _mrange = ", ".join(m.strftime(_fmt) for m in months) if months else "all since 01-01-2026"
+    _mlabel = f"{period} · {_mrange}"
     save_report(_key, {"df": df, "since": str(usage_since), "months": _mlabel, "n_guest": n_guest})
 
 saved = load_report(_key)
