@@ -367,9 +367,9 @@ with b2:
 
 # ── records ──────────────────────────────────────────────────────────────────────
 if search:
-    # search ignores the bucket/plan filter so you can always find a record
-    st.markdown("##### Records — search (all buckets)")
-    view = base[base.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
+    # search ignores bucket/plan AND the Live-only filter so any record is findable
+    st.markdown("##### Records — search (all buckets, all statuses)")
+    view = df[df.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
 else:
     st.markdown(f"##### Records — {pick}")
     view = fv.copy()
