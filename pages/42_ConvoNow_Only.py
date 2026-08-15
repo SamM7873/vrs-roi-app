@@ -366,10 +366,13 @@ with b2:
                      format="%d")})
 
 # ── records ──────────────────────────────────────────────────────────────────────
-st.markdown(f"##### Records — {pick}")
-view = fv.copy()
 if search:
-    view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
+    # search ignores the bucket/plan filter so you can always find a record
+    st.markdown("##### Records — search (all buckets)")
+    view = base[base.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
+else:
+    st.markdown(f"##### Records — {pick}")
+    view = fv.copy()
 view = view.sort_values("CN Minutes", ascending=False)
 st.caption(f"{len(view):,} records")
 st.dataframe(view, use_container_width=True, hide_index=True, height=440)
