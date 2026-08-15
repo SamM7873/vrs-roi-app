@@ -20,7 +20,7 @@ report_header("Convo Now Only — VRS relationship",
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
 CONVO_RATE = 2.60
-CACHE_VERSION = 6
+CACHE_VERSION = 7
 _key = f"cn_only_v{CACHE_VERSION}"
 
 # ── usage-based buckets ──────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ if run:
         cn_raw = fetch_all(NUM_OBJECT,
                            ["number", "email", "first_name", "last_name", "account_status",
                             "number_status", "usage_type", "state", "number_created_at",
-                            "convo_now_account_id", "credit_type", "credit_plan_name"],
+                            "account_id", "convo_now_account_id", "credit_type", "credit_plan_name"],
                            filter_groups=[{"filters": [
                                {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}]}])
     cn, n_guest = [], 0
@@ -183,7 +183,7 @@ if run:
 
         rows.append({
             "Convo Now #": n or "—",
-            "Account ID": (p.get("convo_now_account_id") or "").strip() or "—",
+            "Account ID": (p.get("account_id") or "").strip() or "—",
             "Email": e or "(none)",
             "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—",
             "Status": status or "—",
