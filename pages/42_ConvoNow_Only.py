@@ -20,7 +20,7 @@ report_header("Convo Now Only — VRS relationship",
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
 CONVO_RATE = 2.60
-CACHE_VERSION = 8
+CACHE_VERSION = 9
 _key = f"cn_only_v{CACHE_VERSION}"
 
 # ── usage-based buckets ──────────────────────────────────────────────────────────
@@ -236,7 +236,8 @@ if run:
         cn_raw = _seek(NUM_OBJECT,
                        ["number", "email", "first_name", "last_name", "account_status",
                         "number_status", "usage_type", "state", "number_created_at",
-                        "account_id", "convo_now_account_id", "credit_type", "credit_plan_name"],
+                        "number_deleted_at", "account_id", "convo_now_account_id",
+                        "credit_type", "credit_plan_name"],
                        [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}],
                        label="Convo Now numbers:")
     cn, n_guest = [], 0
@@ -315,6 +316,7 @@ if run:
             "VRS Minutes": vrs_min,
             "Has VRS #": "Yes" if has_vrs else "No",
             "Created": _iso(p.get("number_created_at")),
+            "Deleted": _iso(p.get("number_deleted_at")),
             "Bucket": bucket,
         })
     df = pd.DataFrame(rows)
