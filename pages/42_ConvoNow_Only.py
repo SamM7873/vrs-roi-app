@@ -20,7 +20,7 @@ report_header("Convo Now Only — VRS relationship",
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
 CONVO_RATE = 2.60
-CACHE_VERSION = 9
+CACHE_VERSION = 10
 _key = f"cn_only_v{CACHE_VERSION}"
 
 # ── usage-based buckets ──────────────────────────────────────────────────────────
@@ -195,7 +195,7 @@ with c1:
 with c2:
     live_only = st.checkbox("Live only", value=True)
 with c3:
-    hide_deleted = st.checkbox("Hide deleted numbers", value=True)
+    hide_deleted = st.checkbox("Hide deactivated numbers", value=True)
 
 _fmt = "%m-%d-%Y"
 p1, p2 = st.columns([1.3, 2])
@@ -318,7 +318,7 @@ if run:
             "VRS Minutes": vrs_min,
             "Has VRS #": "Yes" if has_vrs else "No",
             "Created": _iso(p.get("number_created_at")),
-            "Deleted": _iso(p.get("number_deleted_at")),
+            "Deactivated": _iso(p.get("number_deleted_at")),
             "Bucket": bucket,
         })
     df = pd.DataFrame(rows)
@@ -340,8 +340,8 @@ if df.empty:
     report_header_close(); st.stop()
 
 base = df[df["Status"].str.lower() == "live"].copy() if live_only else df.copy()
-if hide_deleted and "Deleted" in base.columns:
-    base = base[base["Deleted"].fillna("").astype(str).str.strip() == ""]
+if hide_deleted and "Deactivated" in base.columns:
+    base = base[base["Deactivated"].fillna("").astype(str).str.strip() == ""]
 n_base = len(base)
 
 
