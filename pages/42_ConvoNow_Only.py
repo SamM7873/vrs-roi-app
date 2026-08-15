@@ -349,14 +349,20 @@ def _card(col, t, v, s, c, active=False):
         <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
 
-# ── live filter: credit plan drives the whole dashboard ──────────────────────────
+# ── live filters: credit type + credit plan drive the whole dashboard ────────────
+ctype_opts = sorted([x for x in base["Credit Type"].dropna().unique() if x and x != "—"])
 plan_opts = sorted([x for x in base["Credit Plan"].dropna().unique() if x and x != "—"])
-fc1, fc2 = st.columns([1.6, 2])
-plan_pick = fc1.multiselect("Credit plan (filters everything below)", plan_opts, default=[])
-search = fc2.text_input("Search — number / email / first name / last name / account ID").strip().lower()
+fc1, fc2, fc3 = st.columns([1.4, 1.6, 2])
+ctype_pick = fc1.multiselect("Credit type (filters everything below)", ctype_opts, default=[])
+plan_pick = fc2.multiselect("Credit plan (filters everything below)", plan_opts, default=[])
+search = fc3.text_input("Search — number / email / first name / last name / account ID").strip().lower()
 
-# plan-filtered slice → drives bucket cards & breakdowns; bucket dropdown → focused view
-pv = base[base["Credit Plan"].isin(plan_pick)].copy() if plan_pick else base.copy()
+# credit-type + plan-filtered slice → drives bucket cards & breakdowns
+pv = base.copy()
+if ctype_pick:
+    pv = pv[pv["Credit Type"].isin(ctype_pick)]
+if plan_pick:
+    pv = pv[pv["Credit Plan"].isin(plan_pick)]
 fv = pv if pick == "All buckets" else pv[pv["Bucket"] == pick].copy()
 n_pv, n_fv = len(pv), len(fv)
 
@@ -364,6 +370,8 @@ n_pv, n_fv = len(pv), len(fv)
 sel_bits = []
 if pick != "All buckets":
     sel_bits.append(f"bucket **{pick}**")
+if ctype_pick:
+    sel_bits.append(f"type **{', '.join(ctype_pick)}**")
 if plan_pick:
     sel_bits.append(f"plan **{', '.join(plan_pick)}**")
 sel_txt = " · ".join(sel_bits) if sel_bits else "no filter"
