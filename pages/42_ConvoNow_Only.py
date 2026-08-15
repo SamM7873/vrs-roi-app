@@ -209,65 +209,84 @@ if df.empty:
 
 base = df[df["Status"].str.lower() == "live"].copy() if live_only else df.copy()
 n_base = len(base)
-n_novrs = int((base["Bucket"] == B_NOVRS).sum())
-n_cn_only = int((base["Bucket"] == B_CN_ONLY).sum())
-n_cn_vrs = int((base["Bucket"] == B_CN_VRS).sum())
-n_hasvrs_nocn = int((base["Bucket"] == B_HASVRS_NOCN).sum())
-cn_min_total = float(base["CN Minutes"].sum())
 
 
-def _card(col, t, v, s, c):
+def _card(col, t, v, s, c, active=False):
+    ring = f"box-shadow:0 0 0 2px {c}55;" if active else ""
+    bg = f"{c}12" if active else "rgba(127,127,127,0.03)"
     col.markdown(f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
-        padding:16px 18px 13px;background:rgba(127,127,127,0.03);">
+        padding:16px 18px 13px;background:{bg};{ring}">
         <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#667085;">{t}</div>
         <div style="font-size:2.1rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
         <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
 
-# ── bucket cards ─────────────────────────────────────────────────────────────────
+# ── live filter: credit plan drives the whole dashboard ──────────────────────────
+plan_opts = sorted([x for x in base["Credit Plan"].dropna().unique() if x and x != "—"])
+fc1, fc2 = st.columns([1.6, 2])
+plan_pick = fc1.multiselect("Credit plan (filters everything below)", plan_opts, default=[])
+search = fc2.text_input("Search number / email / name").strip().lower()
+
+# plan-filtered slice → drives bucket cards & breakdowns; bucket dropdown → focused view
+pv = base[base["Credit Plan"].isin(plan_pick)].copy() if plan_pick else base.copy()
+fv = pv if pick == "All buckets" else pv[pv["Bucket"] == pick].copy()
+n_pv, n_fv = len(pv), len(fv)
+
+# context banner — what fraction of total you're viewing
+sel_bits = []
+if pick != "All buckets":
+    sel_bits.append(f"bucket **{pick}**")
+if plan_pick:
+    sel_bits.append(f"plan **{', '.join(plan_pick)}**")
+sel_txt = " · ".join(sel_bits) if sel_bits else "no filter"
+st.markdown(
+    f"""<div style="border:1px solid #E6E9F0;border-radius:10px;padding:10px 14px;margin:2px 0 12px;
+    background:rgba(76,141,255,0.06);font-size:.85rem;">
+    Showing <b>{n_fv:,}</b> of <b>{n_base:,}</b> Convo Now numbers · {sel_txt}</div>""",
+    unsafe_allow_html=True)
+
+# ── bucket cards (reflect the plan-filtered slice; selected bucket highlighted) ───
+n_novrs = int((pv["Bucket"] == B_NOVRS).sum())
+n_cn_only = int((pv["Bucket"] == B_CN_ONLY).sum())
+n_cn_vrs = int((pv["Bucket"] == B_CN_VRS).sum())
+n_hasvrs_nocn = int((pv["Bucket"] == B_HASVRS_NOCN).sum())
 k = st.columns(4)
 _card(k[0], "🟣 No VRS number", f"{n_novrs:,}",
-      f"{(n_novrs/n_base*100):.1f}% of CN" if n_base else "—", "#7A5CFF")
-_card(k[1], "🟠 CN mins, no VRS mins", f"{n_cn_only:,}", "CN active, VRS silent", "#E8952A")
-_card(k[2], "✅ CN + VRS mins", f"{n_cn_vrs:,}", "both generating", "#2DB84B")
-_card(k[3], "⚪ Has VRS, no CN mins", f"{n_hasvrs_nocn:,}", "CN idle this window", "#98A2B3")
+      f"{(n_novrs/n_pv*100):.1f}% of shown" if n_pv else "—", "#7A5CFF", pick == B_NOVRS)
+_card(k[1], "🟠 CN mins, no VRS mins", f"{n_cn_only:,}", "CN active, VRS silent", "#E8952A", pick == B_CN_ONLY)
+_card(k[2], "✅ CN + VRS mins", f"{n_cn_vrs:,}", "both generating", "#2DB84B", pick == B_CN_VRS)
+_card(k[3], "⚪ Has VRS, no CN mins", f"{n_hasvrs_nocn:,}", "CN idle this window", "#98A2B3", pick == B_HASVRS_NOCN)
+
+# ── totals (reflect the fully-filtered view: bucket + plan) ───────────────────────
+cn_min_fv = float(fv["CN Minutes"].sum())
 k2 = st.columns(4)
-_card(k2[0], "📱 Convo Now (total)", f"{n_base:,}", "Live" if live_only else "all statuses", "#4C8DFF")
-_card(k2[1], "⏱️ Convo Now minutes", f"{cn_min_total:,.0f}", f"since {saved.get('since','')}", "#0FB5AE")
-_card(k2[2], "💵 Convo Now cost", f"${cn_min_total * CONVO_RATE:,.0f}", f"@ ${CONVO_RATE}/min", "#3563E9")
-_card(k2[3], "🏢 Usage types", f"{base['Usage Type'].nunique():,}", "distinct types", "#E5484D")
+_card(k2[0], "📱 Convo Now (shown)", f"{n_fv:,}", f"of {n_base:,} total", "#4C8DFF")
+_card(k2[1], "⏱️ Convo Now minutes", f"{cn_min_fv:,.0f}", f"since {saved.get('since','')}", "#0FB5AE")
+_card(k2[2], "💵 Convo Now cost", f"${cn_min_fv * CONVO_RATE:,.0f}", f"@ ${CONVO_RATE}/min", "#3563E9")
+_card(k2[3], "🏢 Usage types", f"{fv['Usage Type'].nunique():,}", "distinct types", "#E5484D")
 st.markdown("")
 
-# ── breakdowns ───────────────────────────────────────────────────────────────────
+# ── breakdowns (reflect the filtered view) ───────────────────────────────────────
 b1, b2 = st.columns(2)
 with b1:
-    st.markdown("##### By bucket")
-    bd = base["Bucket"].value_counts().rename_axis("Bucket").reset_index(name="Count")
-    bd["%"] = (bd["Count"] / n_base * 100).round(1) if n_base else 0
+    st.markdown("##### By bucket (within filter)")
+    bd = pv["Bucket"].value_counts().rename_axis("Bucket").reset_index(name="Count")
+    bd["%"] = (bd["Count"] / n_pv * 100).round(1) if n_pv else 0
     st.dataframe(bd, use_container_width=True, hide_index=True,
                  column_config={"Count": st.column_config.ProgressColumn(
                      "Count", min_value=0, max_value=int(bd["Count"].max()) if not bd.empty else 1,
                      format="%d")})
 with b2:
-    st.markdown("##### By credit type (Guest excluded)")
-    cc = base["Credit Type"].value_counts().rename_axis("Credit Type").reset_index(name="Count")
+    st.markdown("##### By credit plan (within filter)")
+    cc = fv["Credit Plan"].value_counts().rename_axis("Credit Plan").reset_index(name="Count")
     st.dataframe(cc, use_container_width=True, hide_index=True,
                  column_config={"Count": st.column_config.ProgressColumn(
                      "Count", min_value=0, max_value=int(cc["Count"].max()) if not cc.empty else 1,
                      format="%d")})
 
-# ── records + dropdown ───────────────────────────────────────────────────────────
+# ── records ──────────────────────────────────────────────────────────────────────
 st.markdown(f"##### Records — {pick}")
-r1, r2 = st.columns([1.6, 2])
-plan_opts = sorted([x for x in base["Credit Plan"].dropna().unique() if x and x != "—"])
-plan_pick = r1.multiselect("Credit plan", plan_opts, default=[])
-search = r2.text_input("Search number / email / name").strip().lower()
-
-view = base.copy()
-if pick != "All buckets":
-    view = view[view["Bucket"] == pick]
-if plan_pick:
-    view = view[view["Credit Plan"].isin(plan_pick)]
+view = fv.copy()
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
 view = view.sort_values("CN Minutes", ascending=False)
