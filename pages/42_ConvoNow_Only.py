@@ -306,7 +306,7 @@ def _card(col, t, v, s, c, active=False):
 plan_opts = sorted([x for x in base["Credit Plan"].dropna().unique() if x and x != "—"])
 fc1, fc2 = st.columns([1.6, 2])
 plan_pick = fc1.multiselect("Credit plan (filters everything below)", plan_opts, default=[])
-search = fc2.text_input("Search number / email / name").strip().lower()
+search = fc2.text_input("Search — number / email / first name / last name / account ID").strip().lower()
 
 # plan-filtered slice → drives bucket cards & breakdowns; bucket dropdown → focused view
 pv = base[base["Credit Plan"].isin(plan_pick)].copy() if plan_pick else base.copy()
