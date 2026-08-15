@@ -142,6 +142,53 @@ def _seek_mv(props, filters, label=""):
 st.markdown("Works off the **Number object**. Reads **Convo Now** numbers, checks each number's "
             "**email** against the VRS numbers, and pulls **CN and VRS minutes** from Monthly Values "
             "so each number lands in one of these buckets. Guest credit type excluded.")
+
+# ── live quick lookup (bypasses buckets/filters; uses the app's own token) ────────
+with st.expander("🔎 Quick lookup — find a number or email in the Number object (live, no filters)"):
+    q = st.text_input("Enter a phone number or email", key="quicklook").strip()
+    if st.button("Look up", key="quicklook_btn") and q:
+        is_email = "@" in q
+        prop = "email" if is_email else "number"
+        val = q.lower() if is_email else "".join(ch for ch in q if ch.isdigit())
+        with dash_spinner("Searching the Number object…"):
+            hits = fetch_all(NUM_OBJECT,
+                             ["number", "email", "first_name", "last_name", "service_type",
+                              "account_status", "credit_type", "credit_plan_name", "account_id",
+                              "usage_type", "convo_now_account_id"],
+                             filter_groups=[{"filters": [
+                                 {"propertyName": prop, "operator": "EQ", "value": val}]}])
+        if not hits:
+            st.warning(f"No Number-object record where **{prop} = {val}**. "
+                       "If you searched a number, it may be stored with different formatting; "
+                       "try the email instead.")
+        else:
+            qrows = []
+            for h in hits:
+                pp = h.get("properties", {})
+                qrows.append({
+                    "Number": pp.get("number") or "—",
+                    "Service": pp.get("service_type") or "—",
+                    "Email": pp.get("email") or "—",
+                    "Name": f"{(pp.get('first_name') or '').strip()} {(pp.get('last_name') or '').strip()}".strip() or "—",
+                    "Status": pp.get("account_status") or "—",
+                    "Credit Type": pp.get("credit_type") or "—",
+                    "Credit Plan": pp.get("credit_plan_name") or "—",
+                    "Account ID": pp.get("account_id") or "—",
+                })
+            qdf = pd.DataFrame(qrows)
+            st.dataframe(qdf, use_container_width=True, hide_index=True)
+            svc = qdf["Service"].str.lower()
+            has_cn = svc.str.contains("convo now").any()
+            has_vrs = (svc == "vrs").any()
+            is_guest = qdf.apply(lambda r: "guest" in str(r["Credit Type"]).lower()
+                                 or "guest" in str(r["Credit Plan"]).lower(), axis=1).any()
+            msg = []
+            msg.append("✅ Has a **Convo Now** number" if has_cn else "❌ No **Convo Now** number "
+                       "(so it won't appear on this page)")
+            msg.append("✅ Has a **VRS** number on this email" if has_vrs else "🟣 No VRS number on this email")
+            if is_guest:
+                msg.append("⚠️ A matching row is **Guest** credit type → excluded from the report")
+            st.info(" · ".join(msg))
 c1, c2 = st.columns([1.6, 1.1])
 with c1:
     pick = st.selectbox("Filter (bucket)", ["All buckets"] + BUCKETS, index=1)
