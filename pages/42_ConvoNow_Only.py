@@ -127,8 +127,8 @@ if run:
                          if str(p.get("number") or "").strip()})
     cn_usage = defaultdict(float)
     with dash_spinner(f"Pulling Convo Now usage for {len(cn_numbers):,} numbers…"):
-        for i in range(0, len(cn_numbers), 200):
-            chunk = cn_numbers[i:i + 200]
+        for i in range(0, len(cn_numbers), 100):
+            chunk = cn_numbers[i:i + 100]
             for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
                               [{"propertyName": "number", "operator": "IN", "values": chunk},
                                {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
@@ -143,8 +143,8 @@ if run:
     vrs_num_usage = defaultdict(float)
     if vrs_nums_to_pull:
         with dash_spinner(f"Pulling VRS usage for {len(vrs_nums_to_pull):,} numbers…"):
-            for i in range(0, len(vrs_nums_to_pull), 200):
-                chunk = vrs_nums_to_pull[i:i + 200]
+            for i in range(0, len(vrs_nums_to_pull), 100):
+                chunk = vrs_nums_to_pull[i:i + 100]
                 for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
                                    {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
