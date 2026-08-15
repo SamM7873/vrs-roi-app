@@ -20,7 +20,7 @@ report_header("Convo Now Only — VRS relationship",
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
 CONVO_RATE = 2.60
-CACHE_VERSION = 7
+CACHE_VERSION = 8
 _key = f"cn_only_v{CACHE_VERSION}"
 
 # ── usage-based buckets ──────────────────────────────────────────────────────────
@@ -110,9 +110,9 @@ def _iso(v):
         return str(v)[:10]
 
 
-def _seek_mv(props, filters, label=""):
-    """Seek-paginate Monthly Values past the 10k Search cap via hs_object_id cursor."""
-    url = f"{_B}/crm/v3/objects/{MV_OBJECT}/search"
+def _seek(object_id, props, filters, label=""):
+    """Seek-paginate any object past the 10k Search cap via hs_object_id cursor."""
+    url = f"{_B}/crm/v3/objects/{object_id}/search"
     out, last = [], "0"
     ph = st.empty()
     while True:
@@ -217,9 +217,9 @@ if run:
 
     # 1) VRS numbers → emails that have a VRS number, and the VRS numbers per email
     with dash_spinner("Reading VRS numbers…"):
-        vrs = fetch_all(NUM_OBJECT, ["number", "email", "account_status"],
-                        filter_groups=[{"filters": [
-                            {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}])
+        vrs = _seek(NUM_OBJECT, ["number", "email", "account_status"],
+                    [{"propertyName": "service_type", "operator": "EQ", "value": "VRS"}],
+                    label="VRS numbers:")
     vrs_emails = set()
     vrs_nums_by_email = defaultdict(set)
     for r in vrs:
@@ -233,12 +233,12 @@ if run:
 
     # 2) Convo Now numbers (exclude Guest; keep blanks)
     with dash_spinner("Reading Convo Now numbers…"):
-        cn_raw = fetch_all(NUM_OBJECT,
-                           ["number", "email", "first_name", "last_name", "account_status",
-                            "number_status", "usage_type", "state", "number_created_at",
-                            "account_id", "convo_now_account_id", "credit_type", "credit_plan_name"],
-                           filter_groups=[{"filters": [
-                               {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}]}])
+        cn_raw = _seek(NUM_OBJECT,
+                       ["number", "email", "first_name", "last_name", "account_status",
+                        "number_status", "usage_type", "state", "number_created_at",
+                        "account_id", "convo_now_account_id", "credit_type", "credit_plan_name"],
+                       [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}],
+                       label="Convo Now numbers:")
     cn, n_guest = [], 0
     for r in cn_raw:
         p = r.get("properties", {})
@@ -255,7 +255,7 @@ if run:
     with dash_spinner(f"Pulling Convo Now usage for {len(cn_numbers):,} numbers…"):
         for i in range(0, len(cn_numbers), 100):
             chunk = cn_numbers[i:i + 100]
-            for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
+            for o in _seek(MV_OBJECT, ["number", "usage_minutes", "service_type", "month_date"],
                               [{"propertyName": "number", "operator": "IN", "values": chunk},
                                {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
                                {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
@@ -271,7 +271,7 @@ if run:
         with dash_spinner(f"Pulling VRS usage for {len(vrs_nums_to_pull):,} numbers…"):
             for i in range(0, len(vrs_nums_to_pull), 100):
                 chunk = vrs_nums_to_pull[i:i + 100]
-                for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
+                for o in _seek(MV_OBJECT, ["number", "usage_minutes", "service_type", "month_date"],
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
                                    {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                                    _month_filter]):
