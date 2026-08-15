@@ -189,11 +189,13 @@ with st.expander("🔎 Quick lookup — find a number or email in the Number obj
             if is_guest:
                 msg.append("⚠️ A matching row is **Guest** credit type → excluded from the report")
             st.info(" · ".join(msg))
-c1, c2 = st.columns([1.6, 1.1])
+c1, c2, c3 = st.columns([1.6, 1.1, 1.3])
 with c1:
     pick = st.selectbox("Filter (bucket)", ["All buckets"] + BUCKETS, index=1)
 with c2:
     live_only = st.checkbox("Live only", value=True)
+with c3:
+    hide_deleted = st.checkbox("Hide deleted numbers", value=True)
 
 _fmt = "%m-%d-%Y"
 p1, p2 = st.columns([1.3, 2])
@@ -338,6 +340,8 @@ if df.empty:
     report_header_close(); st.stop()
 
 base = df[df["Status"].str.lower() == "live"].copy() if live_only else df.copy()
+if hide_deleted and "Deleted" in base.columns:
+    base = base[base["Deleted"].fillna("").astype(str).str.strip() == ""]
 n_base = len(base)
 
 
