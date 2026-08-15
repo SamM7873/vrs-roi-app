@@ -145,19 +145,13 @@ if run:
         with dash_spinner(f"Pulling VRS usage for {len(vrs_nums_to_pull):,} numbers…"):
             for i in range(0, len(vrs_nums_to_pull), 200):
                 chunk = vrs_nums_to_pull[i:i + 200]
-                for o in _seek_mv(["number", "usage_minutes", "ursa_ios_minutes",
-                                   "ursa_android_minutes", "ursa_web_minutes", "service_type", "month_date"],
+                for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
                                    {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                                    {"propertyName": "month_date", "operator": "GTE", "value": _ms(usage_since)}]):
                     op = o.get("properties", {})
                     nn = str(op.get("number") or "").strip()
-                    mins = (to_float(op.get("ursa_ios_minutes")) or 0.0) \
-                        + (to_float(op.get("ursa_android_minutes")) or 0.0) \
-                        + (to_float(op.get("ursa_web_minutes")) or 0.0)
-                    if mins == 0:
-                        mins = to_float(op.get("usage_minutes")) or 0.0
-                    vrs_num_usage[nn] += mins
+                    vrs_num_usage[nn] += to_float(op.get("usage_minutes")) or 0.0
     vrs_min_by_email = defaultdict(float)
     for e, nums in vrs_nums_by_email.items():
         vrs_min_by_email[e] = sum(vrs_num_usage.get(n, 0.0) for n in nums)
@@ -280,6 +274,6 @@ st.caption(f"**{B_NOVRS}** — email has no VRS number at all (includes no-email
            f"**{B_CN_ONLY}** — a VRS number shares the email but generated 0 VRS minutes while Convo "
            f"Now did. · **{B_CN_VRS}** — both generated minutes. · **{B_HASVRS_NOCN}** — a VRS number "
            f"exists on the email but Convo Now generated no minutes this window. Association inferred "
-           f"by shared email; VRS minutes = URSA iOS+Android+Web (fallback usage_minutes).")
+           f"by shared email; VRS minutes = usage_minutes on the VRS number's Monthly Values rows.")
 
 report_header_close()
