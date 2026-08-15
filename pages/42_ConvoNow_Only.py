@@ -35,6 +35,17 @@ def _ms(d):
     return str(int(datetime(d.year, d.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
 
 
+def _month_firsts(start=date(2025, 1, 1)):
+    """First-of-month dates from `start` through the current month."""
+    out, y, m, today = [], start.year, start.month, date.today()
+    while (y, m) <= (today.year, today.month):
+        out.append(date(y, m, 1))
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return out
+
+
 def _iso(v):
     if not v:
         return ""
@@ -79,16 +90,26 @@ def _seek_mv(props, filters, label=""):
 st.markdown("Works off the **Number object**. Reads **Convo Now** numbers, checks each number's "
             "**email** against the VRS numbers, and pulls **CN and VRS minutes** from Monthly Values "
             "so each number lands in one of these buckets. Guest credit type excluded.")
-c1, c2, c3 = st.columns([1.6, 1.1, 1.3])
+c1, c2 = st.columns([1.6, 1.1])
 with c1:
     pick = st.selectbox("Filter (bucket)", ["All buckets"] + BUCKETS, index=1)
 with c2:
     live_only = st.checkbox("Live only", value=True)
-with c3:
-    usage_since = st.date_input("Usage since", value=date(2026, 1, 1))
+
+_month_opts = list(reversed(_month_firsts()))  # newest first
+_fmt = "%m-%d-%Y"
+months = st.multiselect(
+    "Months (first of month) — leave empty to include all since Jan 2026",
+    _month_opts, default=[], format_func=lambda d: d.strftime(_fmt))
+usage_since = date(2026, 1, 1)
 run = st.button("▶ Run report", type="primary")
 
 if run:
+    # month filter: exact first-of-month values if chosen, else everything since Jan 2026
+    _month_filter = ({"propertyName": "month_date", "operator": "IN",
+                      "values": [_ms(m) for m in months]} if months else
+                     {"propertyName": "month_date", "operator": "GTE", "value": _ms(usage_since)})
+
     # 1) VRS numbers → emails that have a VRS number, and the VRS numbers per email
     with dash_spinner("Reading VRS numbers…"):
         vrs = fetch_all(NUM_OBJECT, ["number", "email", "account_status"],
@@ -133,7 +154,7 @@ if run:
                               [{"propertyName": "number", "operator": "IN", "values": chunk},
                                {"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
                                {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
-                               {"propertyName": "month_date", "operator": "GTE", "value": _ms(usage_since)}]):
+                               _month_filter]):
                 op = o.get("properties", {})
                 cn_usage[str(op.get("number") or "").strip()] += to_float(op.get("usage_minutes")) or 0.0
 
@@ -148,7 +169,7 @@ if run:
                 for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
                                    {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
-                                   {"propertyName": "month_date", "operator": "GTE", "value": _ms(usage_since)}]):
+                                   _month_filter]):
                     op = o.get("properties", {})
                     nn = str(op.get("number") or "").strip()
                     vrs_num_usage[nn] += to_float(op.get("usage_minutes")) or 0.0
@@ -192,7 +213,8 @@ if run:
             "Bucket": bucket,
         })
     df = pd.DataFrame(rows)
-    save_report(_key, {"df": df, "since": str(usage_since), "n_guest": n_guest})
+    _mlabel = ", ".join(m.strftime(_fmt) for m in months) if months else f"all since {usage_since}"
+    save_report(_key, {"df": df, "since": str(usage_since), "months": _mlabel, "n_guest": n_guest})
 
 saved = load_report(_key)
 if saved is None:
@@ -201,7 +223,7 @@ if saved is None:
 
 df = saved["df"]
 if saved.get("saved_at"):
-    st.caption(f"📌 Saved {saved_at_label(saved)} · usage since {saved.get('since','')} · "
+    st.caption(f"📌 Saved {saved_at_label(saved)} · months: {saved.get('months', saved.get('since',''))} · "
                f"click Run to refresh · **{saved.get('n_guest', 0):,} Guest excluded** (blanks kept)")
 if df.empty:
     st.warning("No Convo Now numbers found.")
@@ -261,7 +283,7 @@ _card(k[3], "⚪ Has VRS, no CN mins", f"{n_hasvrs_nocn:,}", "CN idle this windo
 cn_min_fv = float(fv["CN Minutes"].sum())
 k2 = st.columns(4)
 _card(k2[0], "📱 Convo Now (shown)", f"{n_fv:,}", f"of {n_base:,} total", "#4C8DFF")
-_card(k2[1], "⏱️ Convo Now minutes", f"{cn_min_fv:,.0f}", f"since {saved.get('since','')}", "#0FB5AE")
+_card(k2[1], "⏱️ Convo Now minutes", f"{cn_min_fv:,.0f}", saved.get('months', ''), "#0FB5AE")
 _card(k2[2], "💵 Convo Now cost", f"${cn_min_fv * CONVO_RATE:,.0f}", f"@ ${CONVO_RATE}/min", "#3563E9")
 _card(k2[3], "🏢 Usage types", f"{fv['Usage Type'].nunique():,}", "distinct types", "#E5484D")
 st.markdown("")
