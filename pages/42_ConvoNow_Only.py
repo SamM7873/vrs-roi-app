@@ -258,11 +258,16 @@ with b2:
 
 # ── records + dropdown ───────────────────────────────────────────────────────────
 st.markdown(f"##### Records — {pick}")
-search = st.text_input("Search number / email / name").strip().lower()
+r1, r2 = st.columns([1.6, 2])
+plan_opts = sorted([x for x in base["Credit Plan"].dropna().unique() if x and x != "—"])
+plan_pick = r1.multiselect("Credit plan", plan_opts, default=[])
+search = r2.text_input("Search number / email / name").strip().lower()
 
 view = base.copy()
 if pick != "All buckets":
     view = view[view["Bucket"] == pick]
+if plan_pick:
+    view = view[view["Credit Plan"].isin(plan_pick)]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
 view = view.sort_values("CN Minutes", ascending=False)
