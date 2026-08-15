@@ -449,7 +449,12 @@ def _cn_color(v):
     return "background-color:#fde8e8;color:#c0392b;font-weight:700"
 
 
-styled = view.style.applymap(_cn_color, subset=["CN Minutes"]) if "CN Minutes" in view.columns else view
+if "CN Minutes" in view.columns:
+    _sty = view.style
+    styled = (_sty.map(_cn_color, subset=["CN Minutes"]) if hasattr(_sty, "map")
+              else _sty.applymap(_cn_color, subset=["CN Minutes"]))
+else:
+    styled = view
 st.dataframe(styled, use_container_width=True, hide_index=True, height=440)
 st.download_button("📥 Export CSV", view.to_csv(index=False), "convo_now_only.csv", "text/csv")
 
