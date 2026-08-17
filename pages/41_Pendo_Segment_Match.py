@@ -74,11 +74,14 @@ def _latest(*vals):
     return d.strftime("%b %d, %Y") if d else ""
 
 
-st.markdown("Upload a **Pendo segment CSV** (a column of **Pendo IDs** — the UUID). We match each "
-            "Pendo ID **directly to the Number object** via `account_id`, bridge to the person's VRS "
-            "number by email, then check **Monthly Values** for usage since the window. "
-            "Flow: **Pendo ID → Number (account_id) → Monthly Values**. "
-            "Click **▶ Run match** after uploading — the cards show the *last saved run* until you do.")
+st.markdown(
+    "Upload a **Pendo segment CSV** (a column of **Pendo IDs** — the UUID). Steps:\n"
+    "1. **Pendo ID → Account ID** — match each Pendo ID to the Number object's `account_id`.\n"
+    "2. **Email → VRS & CN numbers** — take that account's email and pull **all its VRS and Convo "
+    "Now numbers** from the Number object.\n"
+    "3. **Number → Monthly Values** — match those numbers to Monthly Values for usage since the "
+    "window (VRS / URSA / CN minutes).\n\n"
+    "Click **▶ Run match** after uploading — the cards show the *last saved run* until you do.")
 
 c1, c2, c3 = st.columns([2, 1.4, 1.4])
 with c1:
@@ -196,30 +199,29 @@ if run and up is not None:
 
     contact_meta = {}  # not used (no Contact hop)
 
-    # A2) email bridge (Number → email → VRS Number): attach the person's VRS number(s)
-    #     so we can see VRS minutes even when the Pendo ID matched a Convo Now number.
+    # A2) email bridge (Number → email → VRS & CN numbers): pull ALL the person's numbers
+    #     (VRS and Convo Now) that share the account's email from the Number object.
     emails_by_vid = defaultdict(set)
     for vid, recs in num_by_vid.items():
         for r in recs:
             if r["email"]:
                 emails_by_vid[vid].add(r["email"])
     all_emails = sorted({e for s in emails_by_vid.values() for e in s})
-    vrs_by_email = defaultdict(list)   # email -> list of VRS number recs
+    nums_by_email = defaultdict(list)   # email -> list of number recs (VRS + CN)
     if all_emails:
-        with dash_spinner(f"Finding VRS numbers for {len(all_emails):,} emails…"):
+        with dash_spinner(f"Finding VRS & CN numbers for {len(all_emails):,} emails…"):
             for i in range(0, len(all_emails), 100):
                 chunk = all_emails[i:i + 100]
                 for r in fetch_all(NUM_OBJECT, props, filter_groups=[{"filters": [
-                        {"propertyName": "email", "operator": "IN", "values": chunk},
-                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}]):
+                        {"propertyName": "email", "operator": "IN", "values": chunk}]}]):
                     p = r.get("properties", {})
                     if _is_guest(p):
                         continue
-                    vrs_by_email[(p.get("email") or "").strip().lower()].append(_rec(p))
+                    nums_by_email[(p.get("email") or "").strip().lower()].append(_rec(p))
     for vid, emails in emails_by_vid.items():
         have = {r["number"] for r in num_by_vid[vid]}
         for em in emails:
-            for vr in vrs_by_email.get(em, ()):
+            for vr in nums_by_email.get(em, ()):
                 if vr["number"] not in have:
                     num_by_vid[vid].append(vr)
                     have.add(vr["number"])
