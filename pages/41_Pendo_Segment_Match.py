@@ -19,7 +19,7 @@ report_header("Pendo Segment Match",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "pendo_segment_match_v3"
+SAVE_KEY = "pendo_segment_match_v4"
 TTL = 48 * 3600
 
 
@@ -139,6 +139,32 @@ if run and up is not None:
 
     contact_meta = {}  # not used (no Contact hop)
 
+    # A2) email bridge (Number → email → VRS Number): attach the person's VRS number(s)
+    #     so we can see VRS minutes even when the Pendo ID matched a Convo Now number.
+    emails_by_vid = defaultdict(set)
+    for vid, recs in num_by_vid.items():
+        for r in recs:
+            if r["email"]:
+                emails_by_vid[vid].add(r["email"])
+    all_emails = sorted({e for s in emails_by_vid.values() for e in s})
+    vrs_by_email = defaultdict(list)   # email -> list of VRS number recs
+    if all_emails:
+        with dash_spinner(f"Finding VRS numbers for {len(all_emails):,} emails…"):
+            for i in range(0, len(all_emails), 100):
+                chunk = all_emails[i:i + 100]
+                for r in fetch_all(NUM_OBJECT, props, filter_groups=[{"filters": [
+                        {"propertyName": "email", "operator": "IN", "values": chunk},
+                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}]):
+                    p = r.get("properties", {})
+                    vrs_by_email[(p.get("email") or "").strip().lower()].append(_rec(p))
+    for vid, emails in emails_by_vid.items():
+        have = {r["number"] for r in num_by_vid[vid]}
+        for em in emails:
+            for vr in vrs_by_email.get(em, ()):
+                if vr["number"] not in have:
+                    num_by_vid[vid].append(vr)
+                    have.add(vr["number"])
+
     # 2) Monthly Values usage_minutes for the matched numbers, since the window
     #    split by service (VRS vs Convo Now)
     num_usage = defaultdict(float)       # number -> total minutes
@@ -168,7 +194,7 @@ if run and up is not None:
         recs = num_by_vid.get(vid, [])
         if not recs:
             cm = contact_meta.get(vid, {})
-            rows.append({"Visitor ID": vid,
+            rows.append({"Visitor ID": vid, "Flag": "⚪ No usage",
                          "Matched": "👤 Contact, no number" if cm else "No match",
                          "Email": cm.get("email") or "—", "Name": cm.get("name") or "—",
                          "Numbers": "—", "Service": "—", "Status": "—", "Has VRS": "No",
@@ -181,8 +207,20 @@ if run and up is not None:
         has_vrs = any(r["service"].lower() == "vrs" for r in recs)
         name = next((r["name"] for r in recs if r["name"]), "")
         email = next((r["email"] for r in recs if r["email"]), "")
+
+        # reactivation flag: Convo Now active, VRS generated nothing → target
+        if cn_min > 0 and vrs_min <= 0:
+            flag = "🎯 Reactivate VRS (CN active, VRS silent)"
+        elif cn_min > 0 and vrs_min > 0:
+            flag = "✅ Both active"
+        elif cn_min <= 0 and vrs_min > 0:
+            flag = "📞 VRS only"
+        else:
+            flag = "⚪ No usage"
+
         rows.append({
             "Visitor ID": vid,
+            "Flag": flag,
             "Matched": "🟢 Live" if live else "🟡 Not live",
             "Email": email or "—",
             "Name": name or "—",
@@ -211,10 +249,10 @@ if saved.get("saved_at"):
 
 # ── KPIs ────────────────────────────────────────────────────────────────────────
 n_seg = len(df)
-n_matched = int((df["Matched"] != "No number").sum())
+n_matched = int((df["Matched"] != "No match").sum())
 n_hasvrs = int((df["Has VRS"] == "Yes").sum()) if "Has VRS" in df.columns else 0
-n_live = int((df["Matched"] == "🟢 Live").sum())
-n_react = int((df["Total Min (since)"] > 0).sum()) if "Total Min (since)" in df.columns else 0
+n_cn_active = int((df["CN Min"] > 0).sum()) if "CN Min" in df.columns else 0
+n_reactivate = int(df["Flag"].str.startswith("🎯").sum()) if "Flag" in df.columns else 0
 
 
 def _card(col, t, v, s, c):
@@ -229,26 +267,28 @@ k = st.columns(5)
 _card(k[0], "🧬 Segment size", n_seg, "Pendo visitor IDs", "#7A5CFF")
 _card(k[1], "🔢 Matched to a Number", n_matched,
       f"{(n_matched/n_seg*100):.0f}%" if n_seg else "—", "#4C8DFF")
-_card(k[2], "📞 Have VRS number", n_hasvrs, "matched a VRS #", "#0FB5AE")
-_card(k[3], "🟢 Live", n_live, "at least one Live", "#2DB84B")
-_card(k[4], "🚀 Generated minutes", n_react, "active since window", "#E8952A")
+_card(k[2], "📞 Have VRS number", n_hasvrs, "VRS on same email", "#0FB5AE")
+_card(k[3], "📱 CN active", n_cn_active, "Convo Now minutes > 0", "#E8952A")
+_card(k[4], "🎯 Reactivate VRS", n_reactivate, "CN active, VRS silent", "#E5484D")
 st.markdown("")
 
-st.info(f"Of **{n_seg:,}** in the Pendo segment: **{n_matched:,}** matched a Number "
-        f"(directly, via convo_now_account_id / account_id) · **{n_hasvrs:,}** have a VRS number · "
-        f"**{n_react:,}** generated minutes since the window.")
+st.info(f"**🎯 {n_reactivate:,} reactivation targets** — Convo Now is active but the person's VRS "
+        f"number generated **no** minutes since the window. Of **{n_seg:,}** Pendo IDs: "
+        f"**{n_matched:,}** matched a Number · **{n_hasvrs:,}** have a VRS number (same email) · "
+        f"**{n_cn_active:,}** are Convo Now active.")
 
 # ── filters + table ─────────────────────────────────────────────────────────────
 f1, f2 = st.columns([2, 2])
-mopts = sorted(df["Matched"].unique())
-mpick = f1.multiselect("Match status", mopts, default=mopts)
+fopts = ["🎯 Reactivate VRS (CN active, VRS silent)", "✅ Both active", "📞 VRS only", "⚪ No usage"]
+fopts = [o for o in fopts if o in set(df.get("Flag", pd.Series(dtype=str)))]
+fpick = f1.multiselect("Flag", fopts, default=[o for o in fopts if o.startswith("🎯")])
 search = f2.text_input("Search email / name / number / visitor id").strip().lower()
 view = df.copy()
-if mpick:
-    view = view[view["Matched"].isin(mpick)]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
-view = view.sort_values("Total Min (since)", ascending=False)
+elif fpick and "Flag" in view.columns:
+    view = view[view["Flag"].isin(fpick)]
+view = view.sort_values("CN Min", ascending=False)
 st.caption(f"{len(view):,} rows")
 st.dataframe(view, use_container_width=True, hide_index=True, height=460)
 st.download_button("📥 Export CSV", view.to_csv(index=False), "pendo_segment_match.csv", "text/csv")
