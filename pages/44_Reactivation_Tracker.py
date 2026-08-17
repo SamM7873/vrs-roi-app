@@ -20,7 +20,7 @@ report_header("Campaign Reactivation Analysis",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "campaign_reactivation_v2"
+SAVE_KEY = "campaign_reactivation_v3"
 
 # ── outcome categories ───────────────────────────────────────────────────────────
 O_REACT_USAGE = "🚀 Reactivated + Usage"
@@ -271,11 +271,27 @@ if run and up is not None:
             outcome = O_NOREACT
 
         acct_name = pr["name"] or next((meta[n]["name"] for n in valid if meta[n]["name"]), "")
-        acct_id = next((meta[n]["account_id"] for n in valid if meta[n]["account_id"]), "")
+        # Account ID: the Pendo ID IS the Convo Now account's account_id. The VRS
+        # number belongs to a DIFFERENT account (linked by same person/email), so
+        # prefer the account_id that equals the Pendo ID, and surface VRS's separately.
+        cn_acct = next((meta[n]["account_id"] for n in cn_valid if meta[n]["account_id"]), "")
+        vrs_acct = next((meta[n]["account_id"] for n in vrs_valid if meta[n]["account_id"]), "")
+        pendo = pr["pendo"].strip()
+        acct_id = pendo if (pendo and any(meta[n]["account_id"] == pendo for n in valid)) else (cn_acct or vrs_acct)
+        if not pendo:
+            pendo_match = "—"
+        elif any(meta[n]["account_id"] == pendo for n in valid):
+            pendo_match = "✅ Pendo = Account"
+        elif vrs_acct or cn_acct:
+            pendo_match = "🔗 Linked (VRS on separate account)"
+        else:
+            pendo_match = "⚠️ Not matched"
         email = pr["email"] or next((meta[n]["email"] for n in valid if meta[n]["email"]), "")
         rows.append({
-            "Pendo ID": pr["pendo"] or "—",
+            "Pendo ID": pendo or "—",
             "Account ID": acct_id or "—",
+            "VRS Account ID": vrs_acct or "—",
+            "Pendo↔Account": pendo_match,
             "Account Name": acct_name or "—",
             "Email": email or "—",
             "Convo Now Number": ", ".join(cn_valid) or "—",
