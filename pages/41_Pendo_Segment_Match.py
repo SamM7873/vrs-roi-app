@@ -247,13 +247,15 @@ if run and up is not None:
         })
     df = pd.DataFrame(rows)
 
-    # monthly CN/VRS minutes for the REACTIVATION-target accounts (watch VRS come alive)
-    _rmonths = sorted({m for (nn, m) in list(detail_cn) + list(detail_vrs) if nn in react_numbers})
+    # monthly usage for the WHOLE uploaded cohort — watch VRS reactivation after the Pendo push.
+    # "VRS Active accounts" = distinct matched numbers that generated any VRS minutes that month.
+    _months = sorted({m for (_, m) in list(detail_cn) + list(detail_vrs)})
     monthly_df = pd.DataFrame([{
         "Month": m,
-        "CN Minutes": round(sum(v for (nn, mm), v in detail_cn.items() if mm == m and nn in react_numbers), 1),
-        "VRS Minutes": round(sum(v for (nn, mm), v in detail_vrs.items() if mm == m and nn in react_numbers), 1),
-    } for m in _rmonths])
+        "CN Minutes": round(sum(v for (nn, mm), v in detail_cn.items() if mm == m), 1),
+        "VRS Minutes": round(sum(v for (nn, mm), v in detail_vrs.items() if mm == m), 1),
+        "VRS Active accounts": sum(1 for (nn, mm), v in detail_vrs.items() if mm == m and v > 0),
+    } for m in _months])
     if not monthly_df.empty:
         monthly_df["Total Minutes"] = (monthly_df["CN Minutes"] + monthly_df["VRS Minutes"]).round(1)
 
@@ -315,14 +317,17 @@ st.info(f"**🎯 {n_reactivate:,} reactivation targets** — Convo Now is active
 # ── monthly CN / VRS usage by month_date ─────────────────────────────────────────
 monthly = saved.get("monthly")
 if monthly is not None and not monthly.empty:
-    st.markdown("##### 🎯 Reactivation targets — CN & VRS minutes by month")
-    st.caption("Only the reactivation accounts (CN active, VRS silent). Watch the **VRS Minutes** "
-               "column — a nonzero month means that group is starting to generate VRS minutes.")
+    st.markdown("##### 📈 VRS reactivation by month (uploaded cohort)")
+    st.caption("Tracks the whole uploaded segment after the Pendo push. **VRS Active accounts** = "
+               "how many of these people generated VRS minutes that month — a rising line means the "
+               "reactivation campaign is landing.")
     mx = int(max(monthly["CN Minutes"].max(), monthly["VRS Minutes"].max(), 1))
+    macc = int(max(monthly["VRS Active accounts"].max(), 1))
     st.dataframe(monthly, use_container_width=True, hide_index=True,
                  column_config={
                      "CN Minutes": st.column_config.ProgressColumn("CN Minutes", min_value=0, max_value=mx, format="%.0f"),
-                     "VRS Minutes": st.column_config.ProgressColumn("VRS Minutes", min_value=0, max_value=mx, format="%.0f")})
+                     "VRS Minutes": st.column_config.ProgressColumn("VRS Minutes", min_value=0, max_value=mx, format="%.0f"),
+                     "VRS Active accounts": st.column_config.ProgressColumn("VRS Active accounts", min_value=0, max_value=macc, format="%d")})
 
 # ── filters + table ─────────────────────────────────────────────────────────────
 f1, f2 = st.columns([2, 2])
