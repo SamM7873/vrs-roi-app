@@ -19,7 +19,7 @@ report_header("Pendo Segment Match",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "pendo_segment_match_v8"
+SAVE_KEY = "pendo_segment_match_v9"
 TTL = 48 * 3600
 
 
@@ -232,22 +232,26 @@ if run and up is not None:
     num_usage_vrs = defaultdict(float)   # number -> VRS minutes
     num_usage_cn = defaultdict(float)    # number -> Convo Now minutes
     num_usage_ursa = defaultdict(float)  # number -> URSA (app) minutes
+    num_usage_cfz = defaultdict(float)   # number -> CfZ minutes
     detail_cn = defaultdict(float)       # (number, YYYY-MM) -> CN minutes
     detail_vrs = defaultdict(float)      # (number, YYYY-MM) -> VRS minutes
     detail_ursa = defaultdict(float)     # (number, YYYY-MM) -> URSA minutes
+    detail_cfz = defaultdict(float)      # (number, YYYY-MM) -> CfZ minutes
     if with_usage:
         all_nums = sorted({r["number"] for lst in num_by_vid.values() for r in lst if r["number"]})
         # pull WITHOUT the usage_minutes>0 filter so URSA-only VRS rows (VRS min 0) are kept
         with dash_spinner(f"Pulling Monthly Values for {len(all_nums):,} matched numbers…"):
             for i in range(0, len(all_nums), 100):
                 chunk = all_nums[i:i + 100]
-                for o in _seek_mv(["number", "month_date", "usage_minutes", "ursa_minutes", "service_type"],
+                for o in _seek_mv(["number", "month_date", "usage_minutes", "ursa_minutes",
+                                   "cfz_minutes", "service_type"],
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
                                    {"propertyName": "month_date", "operator": "GTE", "value": _ms(react_since)}]):
                     p = o.get("properties", {})
                     nn = str(p.get("number") or "").strip()
                     mins = to_float(p.get("usage_minutes")) or 0.0
                     ursa = to_float(p.get("ursa_minutes")) or 0.0
+                    cfz = to_float(p.get("cfz_minutes")) or 0.0
                     svc = (p.get("service_type") or "").strip().lower()
                     per = _period_of(p.get("month_date"))
                     mlabel = str(per) if per is not None else "—"
@@ -255,8 +259,10 @@ if run and up is not None:
                     if svc == "vrs":
                         num_usage_vrs[nn] += mins
                         num_usage_ursa[nn] += ursa
+                        num_usage_cfz[nn] += cfz
                         detail_vrs[(nn, mlabel)] += mins
                         detail_ursa[(nn, mlabel)] += ursa
+                        detail_cfz[(nn, mlabel)] += cfz
                     elif svc == "convo now":
                         num_usage_cn[nn] += mins
                         detail_cn[(nn, mlabel)] += mins
@@ -271,13 +277,15 @@ if run and up is not None:
                          "Matched": "👤 Contact, no number" if cm else "No match",
                          "Email": cm.get("email") or "—", "Name": cm.get("name") or "—",
                          "Numbers": "—", "Service": "—", "Status": "—", "Has VRS": "No",
-                         "VRS Min": 0.0, "URSA Min": 0.0, "CN Min": 0.0, "Total Min (since)": 0.0,
+                         "VRS Min": 0.0, "URSA Min": 0.0, "CfZ Min": 0.0, "CN Min": 0.0,
+                         "Total Min (since)": 0.0,
                          "URSA iOS Login": "—", "URSA Android Login": "—", "URSA Web Login": "—",
                          "Login after campaign": "—"})
             continue
         vrs_min = round(sum(num_usage_vrs.get(r["number"], 0.0) for r in recs), 1)
         cn_min = round(sum(num_usage_cn.get(r["number"], 0.0) for r in recs), 1)
         ursa_min = round(sum(num_usage_ursa.get(r["number"], 0.0) for r in recs), 1)
+        cfz_min = round(sum(num_usage_cfz.get(r["number"], 0.0) for r in recs), 1)
         tot_min = round(sum(num_usage.get(r["number"], 0.0) for r in recs), 1)
         live = any(r["status"].lower() == "live" for r in recs)
         has_vrs = any(r["service"].lower() == "vrs" for r in recs)
@@ -315,6 +323,7 @@ if run and up is not None:
             "Has VRS": "Yes" if has_vrs else "No",
             "VRS Min": vrs_min,
             "URSA Min": ursa_min,
+            "CfZ Min": cfz_min,
             "CN Min": cn_min,
             "Total Min (since)": tot_min,
             "URSA iOS Login": ios_login or "—",
@@ -326,12 +335,14 @@ if run and up is not None:
 
     # monthly usage for the WHOLE uploaded cohort — watch VRS reactivation after the Pendo push.
     # "VRS Active accounts" = distinct matched numbers that generated any VRS minutes that month.
-    _months = sorted({m for (_, m) in list(detail_cn) + list(detail_vrs) + list(detail_ursa)})
+    _months = sorted({m for (_, m) in list(detail_cn) + list(detail_vrs)
+                      + list(detail_ursa) + list(detail_cfz)})
     monthly_df = pd.DataFrame([{
         "Month": m,
         "CN Minutes": round(sum(v for (nn, mm), v in detail_cn.items() if mm == m), 1),
         "VRS Minutes": round(sum(v for (nn, mm), v in detail_vrs.items() if mm == m), 1),
         "URSA Minutes": round(sum(v for (nn, mm), v in detail_ursa.items() if mm == m), 1),
+        "CfZ Minutes": round(sum(v for (nn, mm), v in detail_cfz.items() if mm == m), 1),
         "URSA Active accounts": sum(1 for (nn, mm), v in detail_ursa.items() if mm == m and v > 0),
     } for m in _months])
 
@@ -404,13 +415,15 @@ st.caption("Tracks the whole uploaded segment after the Pendo push. **URSA Activ
            "means the reactivation pop-up is landing on their devices.")
 monthly = saved.get("monthly")
 if monthly is not None and not monthly.empty:
-    mx = int(max(monthly["URSA Minutes"].max(), monthly["VRS Minutes"].max(), monthly["CN Minutes"].max(), 1))
+    mx = int(max(monthly["URSA Minutes"].max(), monthly["VRS Minutes"].max(),
+                 monthly["CN Minutes"].max(), monthly.get("CfZ Minutes", pd.Series([0])).max(), 1))
     macc = int(max(monthly["URSA Active accounts"].max(), 1))
     st.dataframe(monthly, use_container_width=True, hide_index=True,
                  column_config={
                      "CN Minutes": st.column_config.ProgressColumn("CN Minutes", min_value=0, max_value=mx, format="%.0f"),
                      "VRS Minutes": st.column_config.ProgressColumn("VRS Minutes", min_value=0, max_value=mx, format="%.0f"),
                      "URSA Minutes": st.column_config.ProgressColumn("URSA Minutes", min_value=0, max_value=mx, format="%.0f"),
+                     "CfZ Minutes": st.column_config.ProgressColumn("CfZ Minutes", min_value=0, max_value=mx, format="%.0f"),
                      "URSA Active accounts": st.column_config.ProgressColumn("URSA Active accounts", min_value=0, max_value=macc, format="%d")})
 else:
     st.info("No monthly usage yet. Make sure **Pull VRS usage** is checked, set **Usage since** back "
