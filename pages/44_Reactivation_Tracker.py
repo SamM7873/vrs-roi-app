@@ -20,7 +20,7 @@ report_header("Campaign Reactivation Analysis",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "campaign_reactivation_v3"
+SAVE_KEY = "campaign_reactivation_v4"
 
 # ── outcome categories ───────────────────────────────────────────────────────────
 O_REACT_USAGE = "🚀 Reactivated + Usage"
@@ -148,7 +148,7 @@ if run and up is not None:
     meta = {}
     nlist = sorted(all_nums)
     nprops = ["number", "service_type", "account_status", "credit_type", "credit_plan_name",
-              "email", "account_id", "first_name", "last_name",
+              "email", "account_id", "first_name", "last_name", "number_deleted_at",
               "last_login_ursa_convo_ios_date", "last_login_ursa_convo_android_date",
               "last_login_ursa_convo_web_date"]
     with dash_spinner(f"Validating {len(nlist):,} numbers on the Number object…"):
@@ -173,6 +173,7 @@ if run and up is not None:
                     "account_id": (p.get("account_id") or "").strip(),
                     "name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
                     "guest": guest, "ios": _ios, "android": _and, "web": _web,
+                    "deleted": bool((p.get("number_deleted_at") or "").strip()),
                     "login": max([d for d in (_ios, _and, _web) if d], default=None)}
 
     # 2) Monthly Values for all numbers since history window (before + after).
@@ -205,7 +206,8 @@ if run and up is not None:
     monthly_after = defaultdict(lambda: {"vrs": 0.0, "ursa": 0.0, "cfz": 0.0, "cn": 0.0, "accts": set()})
     for pr in people:
         found = [n for n in (pr["vrs"] + pr["cn"]) if n in meta]
-        valid = [n for n in found if not meta[n]["guest"]]
+        # exclude Guest and deactivated (number_deleted_at set) numbers
+        valid = [n for n in found if not meta[n]["guest"] and not meta[n]["deleted"]]
         vrs_valid = [n for n in valid if meta[n]["service"] == "vrs"]
         cn_valid = [n for n in valid if meta[n]["service"] == "convo now"]
 
