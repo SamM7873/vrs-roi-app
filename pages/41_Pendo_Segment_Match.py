@@ -19,7 +19,7 @@ report_header("Pendo Segment Match",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "pendo_segment_match_v7"
+SAVE_KEY = "pendo_segment_match_v8"
 TTL = 48 * 3600
 
 
@@ -174,7 +174,12 @@ if run and up is not None:
             "web_login": p.get("last_login_ursa_convo_web_date") or "",
         }
 
-    # A) direct: Number.account_id == Pendo ID
+    def _is_guest(p):
+        return ("guest" in (p.get("credit_type") or "").lower()
+                or "guest" in (p.get("credit_plan_name") or "").lower())
+
+    # A) direct: Number.account_id == Pendo ID  (exclude Guest credit type)
+    n_guest = 0
     with dash_spinner(f"Matching {len(vids):,} Pendo IDs to the Number object (account_id)…"):
         for i in range(0, len(vids), 100):
             chunk = vids[i:i + 100]
@@ -184,6 +189,9 @@ if run and up is not None:
                 aid = (p.get("account_id") or "").strip()
                 if aid in vidset and r.get("id") not in seen:
                     seen.add(r.get("id"))
+                    if _is_guest(p):
+                        n_guest += 1
+                        continue
                     num_by_vid[aid].append(_rec(p))
 
     contact_meta = {}  # not used (no Contact hop)
@@ -205,6 +213,8 @@ if run and up is not None:
                         {"propertyName": "email", "operator": "IN", "values": chunk},
                         {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}]):
                     p = r.get("properties", {})
+                    if _is_guest(p):
+                        continue
                     vrs_by_email[(p.get("email") or "").strip().lower()].append(_rec(p))
     for vid, emails in emails_by_vid.items():
         have = {r["number"] for r in num_by_vid[vid]}
@@ -325,7 +335,8 @@ if run and up is not None:
 
     save_report(SAVE_KEY, {"df": df, "monthly": monthly_df, "n_seg": len(vids),
                            "n_csv_ids": n_csv_ids, "since": str(react_since),
-                           "campaign": str(campaign_date), "with_usage": with_usage})
+                           "campaign": str(campaign_date), "n_guest": n_guest,
+                           "with_usage": with_usage})
 
 saved = load_report(SAVE_KEY)
 if saved is None:
@@ -336,7 +347,8 @@ if time.time() - (saved.get("saved_at") or 0) > TTL and not run:
 df = saved["df"]
 if saved.get("saved_at"):
     st.caption(f"📌 Saved {saved_at_label(saved)} · segment of {saved.get('n_seg', len(df)):,} · "
-               f"VRS usage since {saved.get('since','')}")
+               f"VRS usage since {saved.get('since','')} · "
+               f"**{saved.get('n_guest', 0):,} Guest excluded**")
 
 # ── KPIs ────────────────────────────────────────────────────────────────────────
 n_seg = len(df)
