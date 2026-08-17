@@ -108,9 +108,8 @@ if run and up is not None:
     vids = sorted({v.strip() for v in raw[vcol] if v.strip()})
     st.caption(f"Using **{vcol}** as the Pendo ID · {len(vids):,} unique IDs")
 
-    # Match the Pendo ID two ways (covers both UUID and numeric visitor-ID exports):
-    #   A) Number object's account_id  (Pendo ID stored directly on the Number)
-    #   B) Contact's convo_now_account_id → email → Number  (Pendo ID stored on the Contact)
+    # Match the Pendo ID (UUID from the CSV) directly to the Number object's account_id.
+    # No Contact hop — the Pendo ID is the account_id.
     vidset = set(vids)
     num_by_vid = defaultdict(list)   # vid -> list of number-record dicts
     props = ["number", "email", "first_name", "last_name", "service_type", "account_status",
@@ -138,36 +137,7 @@ if run and up is not None:
                     seen.add(r.get("id"))
                     num_by_vid[aid].append(_rec(p))
 
-    # B) via Contact: Contact.convo_now_account_id == Pendo ID → email → Number
-    unmatched = [v for v in vids if v not in num_by_vid]
-    email_to_vids = defaultdict(set)
-    contact_meta = {}   # vid -> {email,name}
-    if unmatched:
-        with dash_spinner(f"Resolving {len(unmatched):,} Pendo IDs via Contact…"):
-            for i in range(0, len(unmatched), 100):
-                chunk = unmatched[i:i + 100]
-                for c in fetch_all("contacts", ["email", "firstname", "lastname", "convo_now_account_id"],
-                                   filter_groups=[{"filters": [
-                                       {"propertyName": "convo_now_account_id", "operator": "IN", "values": chunk}]}]):
-                    cp = c.get("properties", {})
-                    vid = (cp.get("convo_now_account_id") or "").strip()
-                    em = (cp.get("email") or "").strip().lower()
-                    if vid in vidset:
-                        contact_meta[vid] = {
-                            "email": em,
-                            "name": f"{(cp.get('firstname') or '').strip()} {(cp.get('lastname') or '').strip()}".strip()}
-                        if em:
-                            email_to_vids[em].add(vid)
-        emails = sorted(email_to_vids)
-        with dash_spinner(f"Resolving numbers for {len(emails):,} emails…"):
-            for i in range(0, len(emails), 100):
-                chunk = emails[i:i + 100]
-                for r in fetch_all(NUM_OBJECT, props, filter_groups=[{"filters": [
-                        {"propertyName": "email", "operator": "IN", "values": chunk}]}]):
-                    p = r.get("properties", {})
-                    em = (p.get("email") or "").strip().lower()
-                    for vid in email_to_vids.get(em, ()):
-                        num_by_vid[vid].append(_rec(p))
+    contact_meta = {}  # not used (no Contact hop)
 
     # 2) Monthly Values usage for the matched numbers, since the window
     num_usage = defaultdict(float)   # number -> minutes
