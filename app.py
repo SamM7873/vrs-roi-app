@@ -122,7 +122,7 @@ ursa_audit_page = st.Page("pages/39_URSA_Login_Audit.py",                title="
 cn_novrs_page = st.Page("pages/40_ConvoNow_No_VRS.py",                   title="Convo Now without VRS",        icon="📱")
 cn_only_page = st.Page("pages/42_ConvoNow_Only.py",                      title="Convo Now Only (No VRS)",      icon="📱")
 cn20_recon_page = st.Page("pages/43_CN20_Reconciliation.py",             title="CN20 Reconciliation",          icon="🔀")
-react_track_page = st.Page("pages/44_Reactivation_Tracker.py",           title="Reactivation Tracker",         icon="🚀")
+react_track_page = st.Page("pages/44_Reactivation_Tracker.py",           title="Campaign Reactivation",        icon="🚀")
 
 # Grouped sidebar navigation (sections keep the 24 pages organized).
 pg = st.navigation({

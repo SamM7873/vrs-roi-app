@@ -9,32 +9,45 @@ from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
                    headers as _H, BASE_URL as _B, fetch_all, to_float, dash_spinner,
                    save_report, load_report, saved_at_label, log_report_view)
 
-st.set_page_config(page_title="Reactivation Tracker", layout="wide", page_icon="🚀")
+st.set_page_config(page_title="Campaign Reactivation", layout="wide", page_icon="🚀")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
-log_report_view("Reactivation Tracker")
+log_report_view("Campaign Reactivation")
 
-report_header("VRS Reactivation Tracker",
-              "Upload a VRS-zero / CN-active cohort → track URSA logins & minutes after the campaign",
+report_header("Campaign Reactivation Analysis",
+              "Did the campaign audience change behavior? Before → After usage, reactivation & outcomes",
               section="Customers")
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "reactivation_tracker_v1"
+SAVE_KEY = "campaign_reactivation_v1"
+
+# ── outcome categories ───────────────────────────────────────────────────────────
+O_REACT_USAGE = "🚀 Reactivated + Usage"
+O_REACT_NOUSE = "🟡 Reactivated — No Usage"
+O_ACTIVE_USAGE = "✅ Already Active + Usage"
+O_ACTIVE_NONEW = "◽ Already Active — No New Usage"
+O_CN_NOVRS = "🟣 CN Active — No VRS"
+O_CN_VRS_NOUSE = "🟠 CN Active — VRS No Usage"
+O_NOREACT = "⚪ No Reactivation"
+O_NOMATCH = "❌ No Match"
+O_REVIEW = "🔎 Review Required"
+OUTCOMES = [O_REACT_USAGE, O_REACT_NOUSE, O_ACTIVE_USAGE, O_ACTIVE_NONEW,
+            O_CN_NOVRS, O_CN_VRS_NOUSE, O_NOREACT, O_NOMATCH, O_REVIEW]
 
 
 def _ms(d):
     return str(int(datetime(d.year, d.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
 
 
-def _period(v):
+def _month(v):
     try:
         s = str(v)
         dt = (datetime.fromtimestamp(int(s) / 1000, tz=timezone.utc) if s.isdigit()
               else datetime.fromisoformat(s.replace("Z", "+00:00")))
         return dt.strftime("%Y-%m")
     except Exception:
-        return "—"
+        return ""
 
 
 def _dt(v):
@@ -48,13 +61,7 @@ def _dt(v):
         return None
 
 
-def _latest(*vals):
-    ds = [d for d in (_dt(v) for v in vals) if d]
-    return max(ds) if ds else None
-
-
 def _nums(cell):
-    """Split a 'VRS Numbers' / 'Convo Now Numbers' cell into a clean list of digit strings."""
     return [re.sub(r"\D", "", x) for x in str(cell or "").split(",") if re.sub(r"\D", "", x)]
 
 
@@ -85,19 +92,21 @@ def _seek_mv(props, filters):
 
 
 st.markdown(
-    "Upload the **VRS Zero / Convo Now Active** export (or any CSV with **VRS Numbers** and "
-    "**Convo Now Numbers** columns). We pull **Monthly Values** (VRS / URSA / CfZ / CN minutes) and "
-    "the **URSA last-login dates** for those numbers, then flag who reactivated **after the campaign**.")
+    "Upload the **campaign audience CSV** (Pendo IDs, and ideally **VRS Numbers** / **Convo Now "
+    "Numbers**). We validate the numbers on the Number object (excluding Guest), pull **Monthly "
+    "Values** across a history window, split usage into **before vs after** the campaign, and assign "
+    "each audience member a **campaign outcome**. The goal isn't who's active now — it's who "
+    "**changed behavior after the campaign**.")
 
 c1, c2, c3 = st.columns([2, 1.3, 1.3])
 with c1:
-    up = st.file_uploader("Cohort CSV", type=["csv"], key="react_csv")
+    up = st.file_uploader("Campaign audience CSV", type=["csv"], key="camp_csv")
 with c2:
-    usage_since = st.date_input("Usage since (month)", value=date(2026, 5, 1))
+    history_since = st.date_input("History since (month)", value=date(2026, 1, 1),
+                                  help="How far back to pull Monthly Values for the before-period.")
 with c3:
-    campaign_date = st.date_input("Campaign release date", value=date(2026, 7, 31),
-                                  help="Flag URSA logins on/after this date as reactivated.")
-run = st.button("▶ Run", type="primary", disabled=(up is None))
+    campaign_date = st.date_input("Campaign release date", value=date(2026, 7, 31))
+run = st.button("▶ Run analysis", type="primary", disabled=(up is None))
 
 if run and up is not None:
     up.seek(0)
@@ -110,113 +119,175 @@ if run and up is not None:
                 return cols[cand.lower()]
         return None
 
+    pendo_col = col("Pendo ID", "pendo")
     vrs_col = col("VRS Numbers", "vrs number")
     cn_col = col("Convo Now Numbers", "convo now number", "cn numbers")
     name_col = col("Name")
     email_col = col("Email")
-    pendo_col = col("Pendo ID")
-    if not vrs_col and not cn_col:
-        st.error(f"Couldn't find 'VRS Numbers' or 'Convo Now Numbers' columns. Found: {list(raw.columns)}")
-        st.stop()
 
     people = []
-    all_vrs, all_cn = set(), set()
+    all_nums = set()
     for _, r in raw.iterrows():
         vn = _nums(r.get(vrs_col, "")) if vrs_col else []
         cn = _nums(r.get(cn_col, "")) if cn_col else []
-        all_vrs.update(vn); all_cn.update(cn)
+        all_nums.update(vn); all_nums.update(cn)
         people.append({
-            "Name": (r.get(name_col) or "").strip() if name_col else "",
-            "Email": (r.get(email_col) or "").strip() if email_col else "",
-            "Pendo ID": (r.get(pendo_col) or "").strip() if pendo_col else "",
+            "pendo": (r.get(pendo_col) or "").strip() if pendo_col else "",
+            "name": (r.get(name_col) or "").strip() if name_col else "",
+            "email": (r.get(email_col) or "").strip() if email_col else "",
             "vrs": vn, "cn": cn})
 
-    # 1) URSA last-login dates from the Number object (per VRS number)
-    login_by_num = {}
-    vrs_list = sorted(all_vrs)
-    lprops = ["number", "last_login_ursa_convo_ios_date", "last_login_ursa_convo_android_date",
+    camp_month = campaign_date.strftime("%Y-%m")  # months >= this are "after"
+
+    # 1) Read Number objects → meta (service, status, credit, email, account_id, logins)
+    meta = {}
+    nlist = sorted(all_nums)
+    nprops = ["number", "service_type", "account_status", "credit_type", "credit_plan_name",
+              "email", "account_id", "first_name", "last_name",
+              "last_login_ursa_convo_ios_date", "last_login_ursa_convo_android_date",
               "last_login_ursa_convo_web_date"]
-    with dash_spinner(f"Reading URSA logins for {len(vrs_list):,} VRS numbers…"):
-        for i in range(0, len(vrs_list), 100):
-            chunk = vrs_list[i:i + 100]
-            for rr in fetch_all(NUM_OBJECT, lprops, filter_groups=[{"filters": [
+    with dash_spinner(f"Validating {len(nlist):,} numbers on the Number object…"):
+        for i in range(0, len(nlist), 100):
+            chunk = nlist[i:i + 100]
+            for rr in fetch_all(NUM_OBJECT, nprops, filter_groups=[{"filters": [
                     {"propertyName": "number", "operator": "IN", "values": chunk}]}]):
                 p = rr.get("properties", {})
-                login_by_num[str(p.get("number") or "").strip()] = {
-                    "ios": p.get("last_login_ursa_convo_ios_date") or "",
-                    "android": p.get("last_login_ursa_convo_android_date") or "",
-                    "web": p.get("last_login_ursa_convo_web_date") or ""}
+                num = str(p.get("number") or "").strip()
+                if not num:
+                    continue
+                svc = (p.get("service_type") or "").strip().lower()
+                guest = ("guest" in (p.get("credit_type") or "").lower()
+                         or "guest" in (p.get("credit_plan_name") or "").lower())
+                meta[num] = {
+                    "service": svc, "status": (p.get("account_status") or "").strip(),
+                    "credit_type": (p.get("credit_type") or "").strip(),
+                    "email": (p.get("email") or "").strip(),
+                    "account_id": (p.get("account_id") or "").strip(),
+                    "name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
+                    "guest": guest,
+                    "login": max([d for d in (_dt(p.get("last_login_ursa_convo_ios_date")),
+                                              _dt(p.get("last_login_ursa_convo_android_date")),
+                                              _dt(p.get("last_login_ursa_convo_web_date"))) if d],
+                                 default=None)}
 
-    # 2) Monthly Values for VRS + CN numbers since window
-    v_vrs, v_ursa, v_cfz, v_cn = (defaultdict(float) for _ in range(4))
-    d_ursa, d_vrs, d_cfz, d_cn = (defaultdict(float) for _ in range(4))
-    both = sorted(all_vrs | all_cn)
-    with dash_spinner(f"Pulling Monthly Values for {len(both):,} numbers…"):
-        for i in range(0, len(both), 100):
-            chunk = both[i:i + 100]
-            for o in _seek_mv(["number", "month_date", "usage_minutes", "ursa_minutes",
-                               "cfz_minutes", "service_type"],
+    # 2) Monthly Values for all numbers since history window (before + after)
+    d_vrs = defaultdict(float)   # (number, YYYY-MM) -> VRS usage_minutes
+    d_cn = defaultdict(float)    # (number, YYYY-MM) -> CN usage_minutes
+    with dash_spinner(f"Pulling Monthly Values for {len(nlist):,} numbers…"):
+        for i in range(0, len(nlist), 100):
+            chunk = nlist[i:i + 100]
+            for o in _seek_mv(["number", "month_date", "usage_minutes", "service_type"],
                               [{"propertyName": "number", "operator": "IN", "values": chunk},
-                               {"propertyName": "month_date", "operator": "GTE", "value": _ms(usage_since)}]):
+                               {"propertyName": "month_date", "operator": "GTE", "value": _ms(history_since)}]):
                 p = o.get("properties", {})
                 nn = str(p.get("number") or "").strip()
+                m = _month(p.get("month_date"))
                 mins = to_float(p.get("usage_minutes")) or 0.0
-                ursa = to_float(p.get("ursa_minutes")) or 0.0
-                cfz = to_float(p.get("cfz_minutes")) or 0.0
                 svc = (p.get("service_type") or "").strip().lower()
-                m = _period(p.get("month_date"))
                 if svc == "vrs":
-                    v_vrs[nn] += mins; v_ursa[nn] += ursa; v_cfz[nn] += cfz
-                    d_vrs[(nn, m)] += mins; d_ursa[(nn, m)] += ursa; d_cfz[(nn, m)] += cfz
+                    d_vrs[(nn, m)] += mins
                 elif svc == "convo now":
-                    v_cn[nn] += mins; d_cn[(nn, m)] += mins
+                    d_cn[(nn, m)] += mins
 
+    # 3) Classify each audience member
     rows = []
+    monthly_after = defaultdict(lambda: {"vrs": 0.0, "accts": set()})
     for pr in people:
-        ios = _latest(*[login_by_num.get(n, {}).get("ios") for n in pr["vrs"]])
-        andr = _latest(*[login_by_num.get(n, {}).get("android") for n in pr["vrs"]])
-        web = _latest(*[login_by_num.get(n, {}).get("web") for n in pr["vrs"]])
-        latest_login = _latest(*[x for n in pr["vrs"] for x in login_by_num.get(n, {}).values()])
-        post = bool(latest_login and latest_login.date() >= campaign_date)
-        vrs_min = round(sum(v_vrs.get(n, 0.0) for n in pr["vrs"]), 1)
-        ursa_min = round(sum(v_ursa.get(n, 0.0) for n in pr["vrs"]), 1)
-        cfz_min = round(sum(v_cfz.get(n, 0.0) for n in pr["vrs"]), 1)
-        cn_min = round(sum(v_cn.get(n, 0.0) for n in pr["cn"]), 1)
+        found = [n for n in (pr["vrs"] + pr["cn"]) if n in meta]
+        valid = [n for n in found if not meta[n]["guest"]]
+        vrs_valid = [n for n in valid if meta[n]["service"] == "vrs"]
+        cn_valid = [n for n in valid if meta[n]["service"] == "convo now"]
+
+        # before / after VRS usage
+        prev_vrs = round(sum(v for (nn, m), v in d_vrs.items()
+                             if nn in vrs_valid and m < camp_month), 1)
+        curr_vrs = round(sum(v for (nn, m), v in d_vrs.items()
+                             if nn in vrs_valid and m >= camp_month), 1)
+        curr_cn = round(sum(v for (nn, m), v in d_cn.items()
+                            if nn in cn_valid and m >= camp_month), 1)
+        # first post-campaign VRS usage month
+        post_months = sorted({m for (nn, m), v in d_vrs.items()
+                              if nn in vrs_valid and m >= camp_month and v > 0})
+        first_post = post_months[0] if post_months else ""
+        latest_mv = max([m for (nn, m) in list(d_vrs) + list(d_cn)
+                         if nn in valid], default="")
+
+        has_vrs = bool(vrs_valid)
+        cn_active = any(meta[n]["status"].lower() == "live" for n in cn_valid) or bool(cn_valid)
+        login = max([meta[n]["login"] for n in vrs_valid if meta[n]["login"]], default=None)
+        login_post = bool(login and login.date() >= campaign_date)
+
+        # month-level after aggregation (for the trend table)
+        for (nn, m), v in d_vrs.items():
+            if nn in vrs_valid and m >= camp_month and v > 0:
+                monthly_after[m]["vrs"] += v
+                monthly_after[m]["accts"].add(pr["pendo"] or pr["email"] or id(pr))
+
+        # ── outcome ──
+        match_status = "Matched"
+        if not found:
+            outcome, match_status = O_NOMATCH, "Account Not Found"
+        elif has_vrs and prev_vrs <= 0 and curr_vrs > 0:
+            outcome = O_REACT_USAGE
+        elif has_vrs and prev_vrs <= 0 and curr_vrs <= 0 and login_post:
+            outcome = O_REACT_NOUSE
+        elif has_vrs and prev_vrs > 0 and curr_vrs > 0:
+            outcome = O_ACTIVE_USAGE
+        elif has_vrs and prev_vrs > 0 and curr_vrs <= 0:
+            outcome = O_ACTIVE_NONEW
+        elif not has_vrs and cn_active:
+            outcome = O_CN_NOVRS
+        elif has_vrs and prev_vrs <= 0 and curr_vrs <= 0 and cn_active:
+            outcome = O_CN_VRS_NOUSE
+        else:
+            outcome = O_NOREACT
+
+        acct_name = pr["name"] or next((meta[n]["name"] for n in valid if meta[n]["name"]), "")
+        acct_id = next((meta[n]["account_id"] for n in valid if meta[n]["account_id"]), "")
+        email = pr["email"] or next((meta[n]["email"] for n in valid if meta[n]["email"]), "")
         rows.append({
-            "Name": pr["Name"] or "—", "Email": pr["Email"] or "—", "Pendo ID": pr["Pendo ID"] or "—",
-            "VRS Numbers": ", ".join(pr["vrs"]) or "—",
-            "CN Numbers": ", ".join(pr["cn"]) or "—",
-            "Reactivated": "🚀 Yes" if (post or ursa_min > 0) else "—",
-            "Login after campaign": "✅ Yes" if post else "—",
-            "URSA Min": ursa_min, "VRS Min": vrs_min, "CfZ Min": cfz_min, "CN Min": cn_min,
-            "URSA iOS Login": (ios.strftime("%b %d, %Y") if ios else "—"),
-            "URSA Android Login": (andr.strftime("%b %d, %Y") if andr else "—"),
-            "URSA Web Login": (web.strftime("%b %d, %Y") if web else "—"),
+            "Pendo ID": pr["pendo"] or "—",
+            "Account ID": acct_id or "—",
+            "Account Name": acct_name or "—",
+            "Email": email or "—",
+            "Convo Now Number": ", ".join(cn_valid) or "—",
+            "Convo Now Status": ", ".join(sorted({meta[n]["status"] for n in cn_valid})) or "—",
+            "VRS Number": ", ".join(vrs_valid) or "—",
+            "VRS Status": ", ".join(sorted({meta[n]["status"] for n in vrs_valid})) or "—",
+            "Credit Type": ", ".join(sorted({meta[n]["credit_type"] for n in valid if meta[n]["credit_type"]})) or "—",
+            "Previous Status": "Active" if prev_vrs > 0 else "Inactive",
+            "Previous Usage Min": prev_vrs,
+            "Current Status": "Active" if curr_vrs > 0 else "Inactive",
+            "Current Usage Min": curr_vrs,
+            "Usage Change": round(curr_vrs - prev_vrs, 1),
+            "CN Min (after)": curr_cn,
+            "First Post-Campaign Usage": first_post or "—",
+            "Latest MV Month": latest_mv or "—",
+            "URSA Login (post)": "✅" if login_post else "—",
+            "Campaign Outcome": outcome,
+            "Match Status": match_status,
         })
     df = pd.DataFrame(rows)
 
-    months = sorted({m for (_, m) in list(d_ursa) + list(d_vrs) + list(d_cfz) + list(d_cn)})
+    months = sorted(monthly_after)
     monthly = pd.DataFrame([{
-        "Month": m,
-        "VRS Minutes": round(sum(v for (nn, mm), v in d_vrs.items() if mm == m), 1),
-        "URSA Minutes": round(sum(v for (nn, mm), v in d_ursa.items() if mm == m), 1),
-        "CfZ Minutes": round(sum(v for (nn, mm), v in d_cfz.items() if mm == m), 1),
-        "CN Minutes": round(sum(v for (nn, mm), v in d_cn.items() if mm == m), 1),
-        "URSA Active accounts": sum(1 for (nn, mm), v in d_ursa.items() if mm == m and v > 0),
+        "Month (after campaign)": m,
+        "VRS Usage Min": round(monthly_after[m]["vrs"], 1),
+        "Accounts with VRS usage": len(monthly_after[m]["accts"]),
     } for m in months])
 
     save_report(SAVE_KEY, {"df": df, "monthly": monthly, "n": len(people),
-                           "since": str(usage_since), "campaign": str(campaign_date)})
+                           "since": str(history_since), "campaign": str(campaign_date)})
 
 saved = load_report(SAVE_KEY)
 if saved is None:
-    st.info("Upload the cohort CSV and click **▶ Run**.")
+    st.info("Upload the campaign audience CSV and click **▶ Run analysis**.")
     report_header_close(); st.stop()
 
 df = saved["df"]
 if saved.get("saved_at"):
-    st.caption(f"📌 Saved {saved_at_label(saved)} · cohort of {saved.get('n', len(df)):,} · "
-               f"usage since {saved.get('since','')} · campaign {saved.get('campaign','')}")
+    st.caption(f"📌 Saved {saved_at_label(saved)} · audience of {saved.get('n', len(df)):,} · "
+               f"history since {saved.get('since','')} · campaign {saved.get('campaign','')}")
 if df.empty:
     st.warning("No rows."); report_header_close(); st.stop()
 
@@ -225,48 +296,76 @@ def _card(col, t, v, s, c):
     col.markdown(f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
         padding:14px 16px 12px;background:rgba(127,127,127,0.03);">
         <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#667085;">{t}</div>
-        <div style="font-size:2rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v:,}</div>
+        <div style="font-size:1.9rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
         <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
 
-n_total = len(df)
-n_react = int((df["Reactivated"] == "🚀 Yes").sum())
-n_login = int((df["Login after campaign"] == "✅ Yes").sum())
-tot_ursa = int(round(df["URSA Min"].sum()))
+N = len(df)
+oc = df["Campaign Outcome"]
+
+
+def _pct(n):
+    return f"{n/N*100:.0f}%" if N else "—"
+
+
+n_react_usage = int((oc == O_REACT_USAGE).sum())
+n_react = int(oc.isin([O_REACT_USAGE, O_REACT_NOUSE]).sum())
+n_usage = int((df["Current Usage Min"] > 0).sum())
+n_active = int(oc.isin([O_ACTIVE_USAGE, O_ACTIVE_NONEW]).sum())
+n_cn_novrs = int((oc == O_CN_NOVRS).sum())
+n_cn_vrs_nouse = int((oc == O_CN_VRS_NOUSE).sum())
+n_nomatch = int((oc == O_NOMATCH).sum())
+
+# ── headline metrics ─────────────────────────────────────────────────────────────
 k = st.columns(4)
-_card(k[0], "🧬 Cohort", n_total, "uploaded rows", "#7A5CFF")
-_card(k[1], "🚀 Reactivated", n_react, "URSA login post-campaign or URSA min", "#2DB84B")
-_card(k[2], "📲 Login after campaign", n_login, f"URSA login ≥ {saved.get('campaign','')}", "#4C8DFF")
-_card(k[3], "⏱️ Total URSA minutes", tot_ursa, "since window", "#0FB5AE")
+_card(k[0], "🧬 Campaign audience", f"{N:,}", "people in CSV", "#7A5CFF")
+_card(k[1], "🚀 Reactivated + Usage", f"{n_react_usage:,}", f"{_pct(n_react_usage)} · strongest outcome", "#2DB84B")
+_card(k[2], "🔄 Reactivated (any)", f"{n_react:,}", f"{_pct(n_react)} of audience", "#4C8DFF")
+_card(k[3], "⏱️ Generated usage", f"{n_usage:,}", f"{_pct(n_usage)} post-campaign VRS min", "#0FB5AE")
+k2 = st.columns(4)
+_card(k2[0], "✅ Already active", f"{n_active:,}", f"{_pct(n_active)} (not reactivation)", "#98A2B3")
+_card(k2[1], "🟣 CN Active — No VRS", f"{n_cn_novrs:,}", _pct(n_cn_novrs), "#7A5CFF")
+_card(k2[2], "🟠 CN Active — VRS No Usage", f"{n_cn_vrs_nouse:,}", _pct(n_cn_vrs_nouse), "#E8952A")
+_card(k2[3], "❌ No match", f"{n_nomatch:,}", _pct(n_nomatch), "#E5484D")
 st.markdown("")
 
-monthly = saved.get("monthly")
-st.markdown("##### 📈 Reactivation by month")
-if monthly is not None and not monthly.empty:
-    mx = int(max(monthly["URSA Minutes"].max(), monthly["VRS Minutes"].max(),
-                 monthly["CN Minutes"].max(), 1))
-    st.dataframe(monthly, use_container_width=True, hide_index=True, column_config={
-        "VRS Minutes": st.column_config.ProgressColumn("VRS Minutes", min_value=0, max_value=mx, format="%.0f"),
-        "URSA Minutes": st.column_config.ProgressColumn("URSA Minutes", min_value=0, max_value=mx, format="%.0f"),
-        "CfZ Minutes": st.column_config.ProgressColumn("CfZ Minutes", min_value=0, max_value=mx, format="%.0f"),
-        "CN Minutes": st.column_config.ProgressColumn("CN Minutes", min_value=0, max_value=mx, format="%.0f")})
-else:
-    st.info("No monthly usage — set **Usage since** earlier and re-run.")
+# ── Output 2: campaign summary ───────────────────────────────────────────────────
+st.markdown("##### Campaign summary — outcome breakdown")
+summ = oc.value_counts().rename_axis("Outcome").reset_index(name="Count")
+summ = summ.set_index("Outcome").reindex(OUTCOMES).dropna(how="all").reset_index()
+summ["Count"] = summ["Count"].fillna(0).astype(int)
+summ["% of audience"] = (summ["Count"] / N * 100).round(1)
+st.dataframe(summ, use_container_width=True, hide_index=True, column_config={
+    "Count": st.column_config.ProgressColumn("Count", min_value=0,
+                                             max_value=int(summ["Count"].max()) if not summ.empty else 1, format="%d")})
 
-st.markdown("##### Records")
-f1, f2 = st.columns([1.5, 2])
-only_react = f1.selectbox("Show", ["Reactivated only", "Login after campaign only", "All"])
-search = f2.text_input("Search name / email / number / pendo id").strip().lower()
+# ── monthly reactivation trend ───────────────────────────────────────────────────
+monthly = saved.get("monthly")
+st.markdown("##### VRS usage after campaign, by month")
+if monthly is not None and not monthly.empty:
+    mx = int(max(monthly["VRS Usage Min"].max(), 1))
+    st.dataframe(monthly, use_container_width=True, hide_index=True, column_config={
+        "VRS Usage Min": st.column_config.ProgressColumn("VRS Usage Min", min_value=0, max_value=mx, format="%.0f")})
+else:
+    st.info("No post-campaign VRS usage yet.")
+
+# ── Output 1: individual dataset ─────────────────────────────────────────────────
+st.markdown("##### Individual audience dataset")
+f1, f2 = st.columns([1.6, 2])
+pick = f1.multiselect("Outcome", OUTCOMES, default=[])
+search = f2.text_input("Search pendo / account / email / number").strip().lower()
 view = df.copy()
-if only_react == "Reactivated only":
-    view = view[view["Reactivated"] == "🚀 Yes"]
-elif only_react == "Login after campaign only":
-    view = view[view["Login after campaign"] == "✅ Yes"]
+if pick:
+    view = view[view["Campaign Outcome"].isin(pick)]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
-view = view.sort_values("URSA Min", ascending=False)
-st.caption(f"{len(view):,} of {n_total:,}")
+st.caption(f"{len(view):,} of {N:,}")
 st.dataframe(view, use_container_width=True, hide_index=True, height=460)
-st.download_button("📥 Export CSV", view.to_csv(index=False), "reactivation_tracker.csv", "text/csv")
+st.download_button("📥 Export individual dataset", view.to_csv(index=False),
+                   "campaign_reactivation.csv", "text/csv")
+
+st.caption("**Reactivated + Usage** = previously inactive (no VRS usage before) and generated VRS "
+           "usage after the campaign — the strongest outcome. **Already Active** = had VRS usage "
+           "before the campaign, so not a reactivation. Guest numbers excluded.")
 
 report_header_close()
