@@ -107,8 +107,10 @@ if run and up is not None:
         next((c for c in raw.columns if "pendo" in c.lower()), None)
         or next((c for c in raw.columns if "visitor" in c.lower()), None)
         or raw.columns[0])
-    vids = sorted({v.strip() for v in raw[vcol] if v.strip()})
-    st.caption(f"Using **{vcol}** as the Pendo ID · {len(vids):,} unique IDs")
+    _all_ids = [v.strip() for v in raw[vcol] if v.strip()]
+    n_csv_ids = len(_all_ids)              # total Pendo IDs in the CSV (incl. duplicates)
+    vids = sorted(set(_all_ids))           # unique Pendo IDs
+    st.caption(f"Using **{vcol}** as the Pendo ID · {n_csv_ids:,} rows · {len(vids):,} unique IDs")
 
     # Match the Pendo ID (UUID from the CSV) directly to the Number object's account_id.
     # No Contact hop — the Pendo ID is the account_id.
@@ -235,8 +237,8 @@ if run and up is not None:
             "Total Min (since)": tot_min,
         })
     df = pd.DataFrame(rows)
-    save_report(SAVE_KEY, {"df": df, "n_seg": len(vids), "since": str(react_since),
-                           "with_usage": with_usage})
+    save_report(SAVE_KEY, {"df": df, "n_seg": len(vids), "n_csv_ids": n_csv_ids,
+                           "since": str(react_since), "with_usage": with_usage})
 
 saved = load_report(SAVE_KEY)
 if saved is None:
@@ -265,8 +267,10 @@ def _card(col, t, v, s, c):
         <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
 
+n_csv_ids = saved.get("n_csv_ids", n_seg)
 k = st.columns(5)
-_card(k[0], "🧬 Segment size", n_seg, "Pendo visitor IDs", "#7A5CFF")
+_card(k[0], "🧬 Pendo IDs (CSV)", n_csv_ids,
+      f"{n_seg:,} unique" if n_csv_ids != n_seg else "unique Pendo IDs", "#7A5CFF")
 _card(k[1], "🔢 Matched to a Number", n_matched,
       f"{(n_matched/n_seg*100):.0f}%" if n_seg else "—", "#4C8DFF")
 _card(k[2], "📞 Have VRS number", n_hasvrs, "VRS on same email", "#0FB5AE")
