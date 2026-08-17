@@ -48,8 +48,10 @@ c1, c2, c3 = st.columns([2, 1.4, 1.4])
 with c1:
     up = st.file_uploader("Pendo segment CSV (Visitor IDs)", type=["csv"], key="pseg_csv")
 with c2:
-    react_since = st.date_input("VRS usage since", value=date(2026, 5, 1),
-                                help="Count VRS minutes generated on/after this month.")
+    _cur_month = date.today().replace(day=1)
+    react_since = st.date_input("Usage since (month)", value=_cur_month,
+                                help="Pulls Monthly Values on/after this month. Defaults to the "
+                                     "current month so it reflects the latest usage.")
 with c3:
     with_usage = st.checkbox("Pull VRS usage (slower)", value=True)
 
