@@ -19,7 +19,7 @@ report_header("Pendo Segment Match",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "pendo_segment_match_v5"
+SAVE_KEY = "pendo_segment_match_v6"
 TTL = 48 * 3600
 
 
@@ -37,6 +37,35 @@ def _period_of(v):
 
 def _ms(d):
     return str(int(datetime(d.year, d.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
+
+
+def _fmt_date(v):
+    if not v:
+        return ""
+    try:
+        s = str(v)
+        d = (datetime.fromtimestamp(int(s) / 1000, tz=timezone.utc) if s.isdigit()
+             else datetime.fromisoformat(s.replace("Z", "+00:00")))
+        return d.strftime("%b %d, %Y")
+    except Exception:
+        return str(v)[:10]
+
+
+def _latest(*vals):
+    """Return the most recent of several date strings/epochs (formatted), '' if none."""
+    best_ts, best = None, ""
+    for v in vals:
+        if not v:
+            continue
+        try:
+            s = str(v)
+            d = (datetime.fromtimestamp(int(s) / 1000, tz=timezone.utc) if s.isdigit()
+                 else datetime.fromisoformat(s.replace("Z", "+00:00")))
+            if best_ts is None or d > best_ts:
+                best_ts, best = d, d.strftime("%b %d, %Y")
+        except Exception:
+            pass
+    return best
 
 
 st.markdown("Upload a **Pendo segment CSV** (a column of **Pendo IDs** — the UUID). We match each "
@@ -118,7 +147,9 @@ if run and up is not None:
     vidset = set(vids)
     num_by_vid = defaultdict(list)   # vid -> list of number-record dicts
     props = ["number", "email", "first_name", "last_name", "service_type", "account_status",
-             "account_id", "credit_type", "credit_plan_name"]
+             "account_id", "credit_type", "credit_plan_name",
+             "last_login_ursa_convo_ios_date", "last_login_ursa_convo_android_date",
+             "last_login_ursa_convo_web_date"]
     seen = set()
 
     def _rec(p):
@@ -128,6 +159,9 @@ if run and up is not None:
             "name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
             "service": (p.get("service_type") or "").strip(),
             "status": (p.get("account_status") or "").strip(),
+            "ios_login": p.get("last_login_ursa_convo_ios_date") or "",
+            "android_login": p.get("last_login_ursa_convo_android_date") or "",
+            "web_login": p.get("last_login_ursa_convo_web_date") or "",
         }
 
     # A) direct: Number.account_id == Pendo ID
@@ -215,7 +249,8 @@ if run and up is not None:
                          "Matched": "👤 Contact, no number" if cm else "No match",
                          "Email": cm.get("email") or "—", "Name": cm.get("name") or "—",
                          "Numbers": "—", "Service": "—", "Status": "—", "Has VRS": "No",
-                         "VRS Min": 0.0, "URSA Min": 0.0, "CN Min": 0.0, "Total Min (since)": 0.0})
+                         "VRS Min": 0.0, "URSA Min": 0.0, "CN Min": 0.0, "Total Min (since)": 0.0,
+                         "URSA iOS Login": "—", "URSA Android Login": "—", "URSA Web Login": "—"})
             continue
         vrs_min = round(sum(num_usage_vrs.get(r["number"], 0.0) for r in recs), 1)
         cn_min = round(sum(num_usage_cn.get(r["number"], 0.0) for r in recs), 1)
@@ -225,6 +260,11 @@ if run and up is not None:
         has_vrs = any(r["service"].lower() == "vrs" for r in recs)
         name = next((r["name"] for r in recs if r["name"]), "")
         email = next((r["email"] for r in recs if r["email"]), "")
+        # URSA last-login dates from the VRS number record(s)
+        vrs_recs = [r for r in recs if r["service"].lower() == "vrs"]
+        ios_login = _latest(*[r.get("ios_login") for r in vrs_recs])
+        android_login = _latest(*[r.get("android_login") for r in vrs_recs])
+        web_login = _latest(*[r.get("web_login") for r in vrs_recs])
 
         # reactivation flag: Convo Now active, VRS generated nothing → target
         if cn_min > 0 and vrs_min <= 0:
@@ -251,6 +291,9 @@ if run and up is not None:
             "URSA Min": ursa_min,
             "CN Min": cn_min,
             "Total Min (since)": tot_min,
+            "URSA iOS Login": ios_login or "—",
+            "URSA Android Login": android_login or "—",
+            "URSA Web Login": web_login or "—",
         })
     df = pd.DataFrame(rows)
 
