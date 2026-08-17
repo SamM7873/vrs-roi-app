@@ -14,7 +14,7 @@ require_auth()
 log_report_view("Pendo Segment Match")
 
 report_header("Pendo Segment Match",
-              "Match a Pendo visitor-ID segment to HubSpot Contacts → Numbers → usage",
+              "Match a Pendo ID segment to the Number object (account_id) → Monthly Values usage",
               section="Customers")
 
 NUM_OBJECT = "2-40974683"
@@ -52,6 +52,20 @@ with c2:
                                 help="Count VRS minutes generated on/after this month.")
 with c3:
     with_usage = st.checkbox("Pull VRS usage (slower)", value=True)
+
+# let the user confirm which column holds the Pendo ID (defaults to the 'Pendo ID' column)
+id_col = None
+if up is not None:
+    try:
+        _cols = pd.read_csv(up, nrows=0).columns.tolist()
+        up.seek(0)
+        _default = (next((c for c in _cols if "pendo" in c.lower()), None)
+                    or next((c for c in _cols if "visitor" in c.lower()), None)
+                    or _cols[0])
+        id_col = st.selectbox("Pendo ID column (matched to the Number object's account_id)",
+                              _cols, index=_cols.index(_default))
+    except Exception:
+        id_col = None
 run = st.button("▶ Run match", type="primary", disabled=(up is None))
 
 
@@ -84,41 +98,76 @@ def _seek_mv(props, filters, label=""):
 
 
 if run and up is not None:
+    up.seek(0)
     raw = pd.read_csv(up, dtype=str).fillna("")
-    # visitor-id column = first column, or one containing 'visitor'/'id'
-    vcol = next((c for c in raw.columns if "visitor" in c.lower() or c.lower() == "id"), raw.columns[0])
+    # Pendo ID column = the picker choice, else 'Pendo ID' / 'visitor' / first column
+    vcol = id_col if (id_col and id_col in raw.columns) else (
+        next((c for c in raw.columns if "pendo" in c.lower()), None)
+        or next((c for c in raw.columns if "visitor" in c.lower()), None)
+        or raw.columns[0])
     vids = sorted({v.strip() for v in raw[vcol] if v.strip()})
+    st.caption(f"Using **{vcol}** as the Pendo ID · {len(vids):,} unique IDs")
 
-    # 1) Match visitor IDs DIRECTLY to the Number object (by convo_now_account_id OR account_id)
+    # Match the Pendo ID two ways (covers both UUID and numeric visitor-ID exports):
+    #   A) Number object's account_id  (Pendo ID stored directly on the Number)
+    #   B) Contact's convo_now_account_id → email → Number  (Pendo ID stored on the Contact)
     vidset = set(vids)
     num_by_vid = defaultdict(list)   # vid -> list of number-record dicts
     props = ["number", "email", "first_name", "last_name", "service_type", "account_status",
-             "convo_now_account_id", "account_id", "credit_type", "credit_plan_name"]
+             "account_id", "credit_type", "credit_plan_name"]
     seen = set()
 
-    def _absorb(recs):
-        for r in recs:
-            rid = r.get("id")
-            if rid in seen:
-                continue
-            p = r.get("properties", {})
-            vid = (p.get("convo_now_account_id") or "").strip()
-            if vid not in vidset:
-                continue
-            seen.add(rid)
-            num_by_vid[vid].append({
-                "number": str(p.get("number") or "").strip(),
-                "email": (p.get("email") or "").strip().lower(),
-                "name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
-                "service": (p.get("service_type") or "").strip(),
-                "status": (p.get("account_status") or "").strip(),
-            })
+    def _rec(p):
+        return {
+            "number": str(p.get("number") or "").strip(),
+            "email": (p.get("email") or "").strip().lower(),
+            "name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
+            "service": (p.get("service_type") or "").strip(),
+            "status": (p.get("account_status") or "").strip(),
+        }
 
-    with dash_spinner(f"Matching {len(vids):,} Pendo IDs to the Number object…"):
+    # A) direct: Number.account_id == Pendo ID
+    with dash_spinner(f"Matching {len(vids):,} Pendo IDs to the Number object (account_id)…"):
         for i in range(0, len(vids), 100):
             chunk = vids[i:i + 100]
-            _absorb(fetch_all(NUM_OBJECT, props, filter_groups=[{"filters": [
-                {"propertyName": "convo_now_account_id", "operator": "IN", "values": chunk}]}]))
+            for r in fetch_all(NUM_OBJECT, props, filter_groups=[{"filters": [
+                    {"propertyName": "account_id", "operator": "IN", "values": chunk}]}]):
+                p = r.get("properties", {})
+                aid = (p.get("account_id") or "").strip()
+                if aid in vidset and r.get("id") not in seen:
+                    seen.add(r.get("id"))
+                    num_by_vid[aid].append(_rec(p))
+
+    # B) via Contact: Contact.convo_now_account_id == Pendo ID → email → Number
+    unmatched = [v for v in vids if v not in num_by_vid]
+    email_to_vids = defaultdict(set)
+    contact_meta = {}   # vid -> {email,name}
+    if unmatched:
+        with dash_spinner(f"Resolving {len(unmatched):,} Pendo IDs via Contact…"):
+            for i in range(0, len(unmatched), 100):
+                chunk = unmatched[i:i + 100]
+                for c in fetch_all("contacts", ["email", "firstname", "lastname", "convo_now_account_id"],
+                                   filter_groups=[{"filters": [
+                                       {"propertyName": "convo_now_account_id", "operator": "IN", "values": chunk}]}]):
+                    cp = c.get("properties", {})
+                    vid = (cp.get("convo_now_account_id") or "").strip()
+                    em = (cp.get("email") or "").strip().lower()
+                    if vid in vidset:
+                        contact_meta[vid] = {
+                            "email": em,
+                            "name": f"{(cp.get('firstname') or '').strip()} {(cp.get('lastname') or '').strip()}".strip()}
+                        if em:
+                            email_to_vids[em].add(vid)
+        emails = sorted(email_to_vids)
+        with dash_spinner(f"Resolving numbers for {len(emails):,} emails…"):
+            for i in range(0, len(emails), 100):
+                chunk = emails[i:i + 100]
+                for r in fetch_all(NUM_OBJECT, props, filter_groups=[{"filters": [
+                        {"propertyName": "email", "operator": "IN", "values": chunk}]}]):
+                    p = r.get("properties", {})
+                    em = (p.get("email") or "").strip().lower()
+                    for vid in email_to_vids.get(em, ()):
+                        num_by_vid[vid].append(_rec(p))
 
     # 2) Monthly Values usage for the matched numbers, since the window
     num_usage = defaultdict(float)   # number -> minutes
@@ -138,8 +187,12 @@ if run and up is not None:
     for vid in vids:
         recs = num_by_vid.get(vid, [])
         if not recs:
-            rows.append({"Visitor ID": vid, "Matched": "No number", "Email": "—", "Name": "—",
-                         "Numbers": "—", "Service": "—", "Status": "—", "Min (since)": 0.0})
+            cm = contact_meta.get(vid, {})
+            rows.append({"Visitor ID": vid,
+                         "Matched": "👤 Contact, no number" if cm else "No match",
+                         "Email": cm.get("email") or "—", "Name": cm.get("name") or "—",
+                         "Numbers": "—", "Service": "—", "Status": "—",
+                         "Has VRS": "No", "Min (since)": 0.0})
             continue
         mins = round(sum(num_usage.get(r["number"], 0.0) for r in recs), 1)
         live = any(r["status"].lower() == "live" for r in recs)
