@@ -409,12 +409,17 @@ else:
 
 # ── Output 1: individual dataset ─────────────────────────────────────────────────
 st.markdown("##### Individual audience dataset")
-f1, f2 = st.columns([1.6, 2])
+f1, f2, f3 = st.columns([1.5, 1.1, 2])
 pick = f1.multiselect("Outcome", OUTCOMES, default=[])
-search = f2.text_input("Search pendo / account / email / number").strip().lower()
+login_pick = f2.selectbox("Login after campaign", ["All", "Yes", "No"], index=0)
+search = f3.text_input("Search pendo / account / email / number").strip().lower()
 view = df.copy()
 if pick:
     view = view[view["Campaign Outcome"].isin(pick)]
+if login_pick == "Yes":
+    view = view[view["Login after campaign"] == "✅ Yes"]
+elif login_pick == "No":
+    view = view[view["Login after campaign"] != "✅ Yes"]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
 st.caption(f"{len(view):,} of {N:,}")
