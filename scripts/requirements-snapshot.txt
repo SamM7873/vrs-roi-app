@@ -1,0 +1,5 @@
+requests
+pandas
+pyarrow
+google-api-python-client
+google-auth
