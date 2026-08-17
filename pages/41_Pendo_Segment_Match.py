@@ -272,6 +272,14 @@ _card(k[1], "🔢 Matched to a Number", n_matched,
 _card(k[2], "📞 Have VRS number", n_hasvrs, "VRS on same email", "#0FB5AE")
 _card(k[3], "📱 CN active", n_cn_active, "Convo Now minutes > 0", "#E8952A")
 _card(k[4], "🎯 Reactivate VRS", n_reactivate, "CN active, VRS silent", "#E5484D")
+
+tot_cn = float(df["CN Min"].sum()) if "CN Min" in df.columns else 0.0
+tot_vrs = float(df["VRS Min"].sum()) if "VRS Min" in df.columns else 0.0
+tot_all = float(df["Total Min (since)"].sum()) if "Total Min (since)" in df.columns else 0.0
+k2 = st.columns(3)
+_card(k2[0], "⏱️ Total usage minutes", int(round(tot_all)), "CN + VRS since window", "#3563E9")
+_card(k2[1], "📱 Total CN minutes", int(round(tot_cn)), "Convo Now", "#E8952A")
+_card(k2[2], "📞 Total VRS minutes", int(round(tot_vrs)), "VRS", "#0FB5AE")
 st.markdown("")
 
 st.info(f"**🎯 {n_reactivate:,} reactivation targets** — Convo Now is active but the person's VRS "
