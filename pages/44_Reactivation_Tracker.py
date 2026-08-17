@@ -20,20 +20,15 @@ report_header("Campaign Reactivation Analysis",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "campaign_reactivation_v6"
+SAVE_KEY = "campaign_reactivation_v7"
 
-# ── outcome categories ───────────────────────────────────────────────────────────
-O_REACT_USAGE = "🚀 Reactivated + Usage"
-O_REACT_NOUSE = "🟡 Reactivated — No Usage"
-O_ACTIVE_USAGE = "✅ Already Active + Usage"
-O_ACTIVE_NONEW = "◽ Already Active — No New Usage"
-O_CN_NOVRS = "🟣 CN Active — No VRS"
-O_CN_VRS_NOUSE = "🟠 CN Active — VRS No Usage"
-O_NOREACT = "⚪ No Reactivation"
+# ── outcome categories (simple: was 0 before? generating now?) ────────────────────
+O_REACT = "🚀 Reactivated (was 0 → generating now)"
+O_NOT = "⚪ Not reactivated (still 0)"
+O_ACTIVE = "✅ Already active (was generating → still is)"
+O_QUIET = "◽ Went quiet (was generating → 0 now)"
 O_NOMATCH = "❌ No Match"
-O_REVIEW = "🔎 Review Required"
-OUTCOMES = [O_REACT_USAGE, O_REACT_NOUSE, O_ACTIVE_USAGE, O_ACTIVE_NONEW,
-            O_CN_NOVRS, O_CN_VRS_NOUSE, O_NOREACT, O_NOMATCH, O_REVIEW]
+OUTCOMES = [O_REACT, O_NOT, O_ACTIVE, O_QUIET, O_NOMATCH]
 
 
 def _ms(d):
@@ -279,22 +274,17 @@ if run and up is not None:
 
         # ── outcome ──
         match_status = "Matched"
+        # Simple 4-box logic: was 0 in baseline? generating now?
         if not found:
             outcome, match_status = O_NOMATCH, "Account Not Found"
-        elif has_vrs and prev_vrs <= 0 and curr_vrs > 0:
-            outcome = O_REACT_USAGE
-        elif has_vrs and prev_vrs <= 0 and curr_vrs <= 0 and login_post:
-            outcome = O_REACT_NOUSE
-        elif has_vrs and prev_vrs > 0 and curr_vrs > 0:
-            outcome = O_ACTIVE_USAGE
-        elif has_vrs and prev_vrs > 0 and curr_vrs <= 0:
-            outcome = O_ACTIVE_NONEW
-        elif not has_vrs and cn_active:
-            outcome = O_CN_NOVRS
-        elif has_vrs and prev_vrs <= 0 and curr_vrs <= 0 and cn_active:
-            outcome = O_CN_VRS_NOUSE
+        elif prev_vrs <= 0 and curr_vrs > 0:
+            outcome = O_REACT              # was 0 → generating now (the win)
+        elif prev_vrs <= 0 and curr_vrs <= 0:
+            outcome = O_NOT                # still 0 (keep targeting)
+        elif prev_vrs > 0 and curr_vrs > 0:
+            outcome = O_ACTIVE             # was generating, still is
         else:
-            outcome = O_NOREACT
+            outcome = O_QUIET             # was generating → 0 now
 
         acct_name = pr["name"] or next((meta[n]["name"] for n in valid if meta[n]["name"]), "")
         # Account ID: the Pendo ID IS the Convo Now account's account_id. The VRS
@@ -389,25 +379,19 @@ def _pct(n):
     return f"{n/N*100:.0f}%" if N else "—"
 
 
-n_react_usage = int((oc == O_REACT_USAGE).sum())
-n_react = int(oc.isin([O_REACT_USAGE, O_REACT_NOUSE]).sum())
-n_usage = int((df["VRS Min (measure)"] > 0).sum())
-n_active = int(oc.isin([O_ACTIVE_USAGE, O_ACTIVE_NONEW]).sum())
-n_cn_novrs = int((oc == O_CN_NOVRS).sum())
-n_cn_vrs_nouse = int((oc == O_CN_VRS_NOUSE).sum())
+n_react = int((oc == O_REACT).sum())
+n_not = int((oc == O_NOT).sum())
+n_active = int((oc == O_ACTIVE).sum())
+n_quiet = int((oc == O_QUIET).sum())
 n_nomatch = int((oc == O_NOMATCH).sum())
 
-# ── headline metrics ─────────────────────────────────────────────────────────────
-k = st.columns(4)
-_card(k[0], "🧬 Campaign audience", f"{N:,}", "people in CSV", "#7A5CFF")
-_card(k[1], "🚀 Reactivated + Usage", f"{n_react_usage:,}", f"{_pct(n_react_usage)} · strongest outcome", "#2DB84B")
-_card(k[2], "🔄 Reactivated (any)", f"{n_react:,}", f"{_pct(n_react)} of audience", "#4C8DFF")
-_card(k[3], "⏱️ Generated usage", f"{n_usage:,}", f"{_pct(n_usage)} VRS min in measure month", "#0FB5AE")
-k2 = st.columns(4)
-_card(k2[0], "✅ Already active", f"{n_active:,}", f"{_pct(n_active)} (not reactivation)", "#98A2B3")
-_card(k2[1], "🟣 CN Active — No VRS", f"{n_cn_novrs:,}", _pct(n_cn_novrs), "#7A5CFF")
-_card(k2[2], "🟠 CN Active — VRS No Usage", f"{n_cn_vrs_nouse:,}", _pct(n_cn_vrs_nouse), "#E8952A")
-_card(k2[3], "❌ No match", f"{n_nomatch:,}", _pct(n_nomatch), "#E5484D")
+# ── headline metrics: the 4 simple boxes ─────────────────────────────────────────
+k = st.columns(5)
+_card(k[0], "🧬 Audience", f"{N:,}", "people in CSV", "#7A5CFF")
+_card(k[1], "🚀 Reactivated", f"{n_react:,}", f"{_pct(n_react)} · was 0 → generating now", "#2DB84B")
+_card(k[2], "⚪ Not reactivated", f"{n_not:,}", f"{_pct(n_not)} · still 0 (keep targeting)", "#98A2B3")
+_card(k[3], "✅ Already active", f"{n_active:,}", f"{_pct(n_active)} · not the campaign", "#4C8DFF")
+_card(k[4], "◽ Went quiet", f"{n_quiet:,}", f"{_pct(n_quiet)} · was active → 0 now", "#E8952A")
 st.markdown("")
 
 # ── Output 2: campaign summary ───────────────────────────────────────────────────
@@ -457,8 +441,10 @@ st.dataframe(view, use_container_width=True, hide_index=True, height=460)
 st.download_button("📥 Export individual dataset", view.to_csv(index=False),
                    "campaign_reactivation.csv", "text/csv")
 
-st.caption("**Reactivated + Usage** = previously inactive (no VRS usage before) and generated VRS "
-           "usage after the campaign — the strongest outcome. **Already Active** = had VRS usage "
-           "before the campaign, so not a reactivation. Guest numbers excluded.")
+st.caption("Two questions decide the bucket: **was VRS 0 in baseline?** and **generating in the "
+           "measure month?** · 🚀 **Reactivated** = was 0 → generating now (the campaign win). "
+           "⚪ **Not reactivated** = still 0. ✅ **Already active** = was generating before and still is "
+           "(not the campaign). ◽ **Went quiet** = was generating → 0 now. Guest & deactivated numbers "
+           "excluded.")
 
 report_header_close()
