@@ -7,7 +7,8 @@ import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta, date
 from utils import (dash_spinner, require_auth, fetch_all, COMMON_CSS, report_header,
-                   report_header_close, norm, vrs_rate_for_month, save_report, load_report)
+                   report_header_close, norm, vrs_rate_for_month, save_report, load_report,
+                   saved_at_label)
 
 CONVO_NOW_RATE = 2.60
 
@@ -221,6 +222,7 @@ _CS_CACHE_VARS = [
 _report_key_cs = "cs_tickets_" + "_".join(str(x) for x in _sig).replace(" ", "").replace("/", "-")[:120]
 _cs_cache = st.session_state.get("_cs_cache")
 _use_cache = (not run_clicked) and isinstance(_cs_cache, dict) and _cs_cache.get("sig") == _sig
+_saved_at_label = None
 
 # Disk fallback: reuse a previously-saved run so a page reload / re-login /
 # navigating away doesn't force clicking "Run" again.
@@ -230,6 +232,11 @@ if not run_clicked and not _use_cache:
         st.session_state["_cs_cache"] = {"sig": _sig, "vars": _disk["vars"]}
         _cs_cache = st.session_state["_cs_cache"]
         _use_cache = True
+        _saved_at_label = saved_at_label(_disk)
+
+if _use_cache:
+    st.caption(f"📌 Saved report restored{(' · ' + _saved_at_label) if _saved_at_label else ''}"
+               " · click **Run Consumer Success Tickets** to refresh")
 
 if run_clicked or _use_cache:
     if _use_cache:
