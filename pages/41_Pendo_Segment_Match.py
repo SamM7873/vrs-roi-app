@@ -303,7 +303,11 @@ if search:
 elif fpick and "Flag" in view.columns:
     view = view[view["Flag"].isin(fpick)]
 view = view.sort_values("CN Min", ascending=False)
-st.caption(f"{len(view):,} rows")
+vc = st.columns([1, 3])
+_n_view = view["Visitor ID"].nunique()
+_card(vc[0], "🧬 Pendo IDs in view", _n_view,
+      f"out of {n_csv_ids:,} in CSV", "#7A5CFF")
+st.markdown("")
 st.dataframe(view, use_container_width=True, hide_index=True, height=460)
 st.download_button("📥 Export CSV", view.to_csv(index=False), "pendo_segment_match.csv", "text/csv")
 
