@@ -205,7 +205,7 @@ def _is_closed(status_label):
 run_clicked = st.button("Run Consumer Success Tickets", use_container_width=False)
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
-_CS_PIPELINE_VERSION = "v2-fcc-rate"  # bump to invalidate old cached costs
+_CS_PIPELINE_VERSION = "v3-date-filter"  # bump to invalidate old cached costs
 _sig = [_CS_PIPELINE_VERSION, preset, str(filter_start), str(filter_end), date_field,
         status_filter, ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
 _CS_CACHE_VARS = [
@@ -290,13 +290,25 @@ if run_clicked or _use_cache:
             except Exception:
                 pass
 
+            # Server-side date filter so we only pull tickets in the selected range
+            # (previously every CS ticket was fetched, then filtered in Python → slow).
+            _ticket_filters = [{"propertyName": "hs_pipeline", "operator": "EQ", "value": cs_pipeline_id}]
+            if filter_start and filter_end:
+                _ct_f = timezone(timedelta(hours=-5 if 3 <= filter_start.month <= 11 else -6))
+                _fs_ms = str(int(datetime(filter_start.year, filter_start.month, filter_start.day,
+                                          0, 0, 0, tzinfo=_ct_f).timestamp() * 1000))
+                _fe_ms = str(int(datetime(filter_end.year, filter_end.month, filter_end.day,
+                                          23, 59, 59, tzinfo=_ct_f).timestamp() * 1000))
+                _ticket_filters += [
+                    {"propertyName": date_field, "operator": "GTE", "value": _fs_ms},
+                    {"propertyName": date_field, "operator": "LTE", "value": _fe_ms},
+                ]
+
             all_tickets = []
             after = None
             while True:
                 body = {
-                    "filterGroups": [{"filters": [
-                        {"propertyName": "hs_pipeline", "operator": "EQ", "value": cs_pipeline_id}
-                    ]}],
+                    "filterGroups": [{"filters": _ticket_filters}],
                     "properties": TICKET_PROPS,
                     "limit": 100,
                     "sorts": [{"propertyName": "createdate", "direction": "DESCENDING"}],
