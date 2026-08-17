@@ -20,7 +20,7 @@ report_header("Campaign Reactivation Analysis",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "campaign_reactivation_v5"
+SAVE_KEY = "campaign_reactivation_v6"
 
 # ── outcome categories ───────────────────────────────────────────────────────────
 O_REACT_USAGE = "🚀 Reactivated + Usage"
@@ -111,18 +111,25 @@ st.markdown(
 
 _mopts = _month_firsts()
 _mfmt = lambda d: d.strftime("%m/01/%Y")
-_jan = date(2026, 1, 1)
-c1, c2, c3, c4 = st.columns([1.9, 1.1, 1.1, 1.2])
+
+
+def _idx(d):
+    return _mopts.index(d) if d in _mopts else len(_mopts) - 1
+
+
+_may, _jul = date(2026, 5, 1), date(2026, 7, 1)
+_cur = date.today().replace(day=1)
+st.markdown("**Baseline** = the months they did **not** generate VRS minutes (before the campaign). "
+            "**Measure month** = where you want to see new generation now.")
+c1, c2, c3, c4 = st.columns([1.7, 1.05, 1.05, 1.15])
 with c1:
     up = st.file_uploader("Campaign audience CSV", type=["csv"], key="camp_csv")
 with c2:
-    from_month = st.selectbox("From month (1st)", _mopts,
-                              index=_mopts.index(_jan) if _jan in _mopts else 0, format_func=_mfmt)
+    from_month = st.selectbox("Baseline from (1st)", _mopts, index=_idx(_may), format_func=_mfmt)
 with c3:
-    to_month = st.selectbox("To month (1st)", _mopts, index=len(_mopts) - 1, format_func=_mfmt)
+    to_month = st.selectbox("Baseline to (1st)", _mopts, index=_idx(_jul), format_func=_mfmt)
 with c4:
-    campaign_date = st.date_input("Campaign release date", value=date(2026, 7, 31))
-history_since = from_month  # Monthly Values custom range lower bound
+    measure_month = st.selectbox("Measure month (1st)", _mopts, index=_idx(_cur), format_func=_mfmt)
 run = st.button("▶ Run analysis", type="primary", disabled=(up is None))
 
 if run and up is not None:
@@ -154,12 +161,12 @@ if run and up is not None:
             "email": (r.get(email_col) or "").strip() if email_col else "",
             "vrs": vn, "cn": cn})
 
-    # "after the campaign" = the month AFTER the campaign date (campaign released
-    # Jul 31 2026 → after = Aug 2026 onward). before = everything earlier.
-    _ay, _am = campaign_date.year, campaign_date.month + 1
-    if _am > 12:
-        _am, _ay = 1, _ay + 1
-    after_month = f"{_ay:04d}-{_am:02d}"
+    # baseline window (did NOT generate) vs measure month (new generation now)
+    base_from = from_month.strftime("%Y-%m")
+    base_to = to_month.strftime("%Y-%m")
+    measure_str = measure_month.strftime("%Y-%m")
+    history_since = from_month            # MV pull lower bound
+    pull_to = max(measure_month, to_month)  # MV pull upper bound
 
     # 1) Read Number objects → meta (service, status, credit, email, account_id, logins)
     meta = {}
@@ -206,7 +213,7 @@ if run and up is not None:
                                "cfz_minutes", "service_type"],
                               [{"propertyName": "number", "operator": "IN", "values": chunk},
                                {"propertyName": "month_date", "operator": "GTE", "value": _ms(history_since)},
-                               {"propertyName": "month_date", "operator": "LTE", "value": _ms(to_month)}]):
+                               {"propertyName": "month_date", "operator": "LTE", "value": _ms(pull_to)}]):
                 p = o.get("properties", {})
                 nn = str(p.get("number") or "").strip()
                 m = _month(p.get("month_date"))
@@ -229,48 +236,45 @@ if run and up is not None:
         vrs_valid = [n for n in valid if meta[n]["service"] == "vrs"]
         cn_valid = [n for n in valid if meta[n]["service"] == "convo now"]
 
-        # before (through campaign) / after (month after campaign onward) — VRS & CN kept separate
+        # BASELINE (did not generate) = base_from..base_to · AFTER = measure month only
         prev_vrs = round(sum(v for (nn, m), v in d_vrs.items()
-                             if nn in vrs_valid and m < after_month), 1)
+                             if nn in vrs_valid and base_from <= m <= base_to), 1)
         curr_vrs = round(sum(v for (nn, m), v in d_vrs.items()
-                             if nn in vrs_valid and m >= after_month), 1)
+                             if nn in vrs_valid and m == measure_str), 1)
         curr_ursa = round(sum(v for (nn, m), v in d_ursa.items()
-                              if nn in vrs_valid and m >= after_month), 1)
+                              if nn in vrs_valid and m == measure_str), 1)
         curr_cfz = round(sum(v for (nn, m), v in d_cfz.items()
-                             if nn in vrs_valid and m >= after_month), 1)
+                             if nn in vrs_valid and m == measure_str), 1)
         curr_cn = round(sum(v for (nn, m), v in d_cn.items()
-                            if nn in cn_valid and m >= after_month), 1)
-        # first post-campaign VRS usage month
-        post_months = sorted({m for (nn, m), v in d_vrs.items()
-                              if nn in vrs_valid and m >= after_month and v > 0})
-        first_post = post_months[0] if post_months else ""
+                            if nn in cn_valid and m == measure_str), 1)
+        first_post = measure_str if curr_vrs > 0 else ""
         latest_mv = max([m for (nn, m) in list(d_vrs) + list(d_cn)
                          if nn in valid], default="")
 
-        range_vrs = round(prev_vrs + curr_vrs, 1)   # total VRS usage across the custom range
         has_vrs = bool(vrs_valid)
-        no_vrs_or_zero = (not has_vrs) or range_vrs <= 0
+        no_vrs_or_zero = (not has_vrs) or (prev_vrs <= 0 and curr_vrs <= 0)
         cn_active = any(meta[n]["status"].lower() == "live" for n in cn_valid) or bool(cn_valid)
         login = max([meta[n]["login"] for n in vrs_valid if meta[n]["login"]], default=None)
-        login_post = bool(login and login.date() > campaign_date)
+        login_post = bool(login and login.date() > to_month)  # login after baseline window
         _fmtd = lambda dd: dd.strftime("%b %d, %Y") if dd else "—"
         ios_l = max([meta[n]["ios"] for n in vrs_valid if meta[n]["ios"]], default=None)
         and_l = max([meta[n]["android"] for n in vrs_valid if meta[n]["android"]], default=None)
         web_l = max([meta[n]["web"] for n in vrs_valid if meta[n]["web"]], default=None)
 
-        # month-level after aggregation (VRS usage, for the trend table)
+        # month-level trend across the whole pulled window (baseline + after)
         for (nn, m), v in d_vrs.items():
-            if nn in vrs_valid and m >= after_month and v > 0:
+            if nn in vrs_valid:
+                if v > 0:
+                    monthly_after[m]["accts"].add(pr["pendo"] or pr["email"] or id(pr))
                 monthly_after[m]["vrs"] += v
-                monthly_after[m]["accts"].add(pr["pendo"] or pr["email"] or id(pr))
         for (nn, m), v in d_ursa.items():
-            if nn in vrs_valid and m >= after_month:
+            if nn in vrs_valid:
                 monthly_after[m]["ursa"] += v
         for (nn, m), v in d_cfz.items():
-            if nn in vrs_valid and m >= after_month:
+            if nn in vrs_valid:
                 monthly_after[m]["cfz"] += v
         for (nn, m), v in d_cn.items():
-            if nn in cn_valid and m >= after_month:
+            if nn in cn_valid:
                 monthly_after[m]["cn"] += v
 
         # ── outcome ──
@@ -321,22 +325,21 @@ if run and up is not None:
             "VRS Number": ", ".join(vrs_valid) or "—",
             "VRS Status": ", ".join(sorted({meta[n]["status"] for n in vrs_valid})) or "—",
             "Credit Type": ", ".join(sorted({meta[n]["credit_type"] for n in valid if meta[n]["credit_type"]})) or "—",
-            "VRS Min (range)": range_vrs,
-            "No VRS / Zero VRS": "✅ Yes" if no_vrs_or_zero else "—",
-            "Previous Status": "Active" if prev_vrs > 0 else "Inactive",
-            "Prev VRS Usage Min": prev_vrs,
-            "Current Status": "Active" if curr_vrs > 0 else "Inactive",
-            "VRS Usage Min (after)": curr_vrs,
-            "URSA Min (after)": curr_ursa,
-            "CfZ Min (after)": curr_cfz,
-            "CN Usage Min (after)": curr_cn,
+            "No VRS / Zero VRS (baseline)": "✅ Yes" if no_vrs_or_zero else "—",
+            "Baseline Status": "Active" if prev_vrs > 0 else "Inactive",
+            "Baseline VRS Min": prev_vrs,
+            "Measure Status": "Active" if curr_vrs > 0 else "Inactive",
+            "VRS Min (measure)": curr_vrs,
+            "URSA Min (measure)": curr_ursa,
+            "CfZ Min (measure)": curr_cfz,
+            "CN Min (measure)": curr_cn,
             "VRS Usage Change": round(curr_vrs - prev_vrs, 1),
-            "First Post-Campaign Usage": first_post or "—",
+            "First Generation Month": first_post or "—",
             "Latest MV Month": latest_mv or "—",
             "URSA iOS Login": _fmtd(ios_l),
             "URSA Android Login": _fmtd(and_l),
             "URSA Web Login": _fmtd(web_l),
-            "Login after campaign": "✅ Yes" if login_post else "—",
+            "Login after baseline": "✅ Yes" if login_post else "—",
             "Campaign Outcome": outcome,
             "Match Status": match_status,
         })
@@ -353,8 +356,8 @@ if run and up is not None:
     } for m in months])
 
     save_report(SAVE_KEY, {"df": df, "monthly": monthly, "n": len(people),
-                           "since": str(history_since), "to": str(to_month),
-                           "campaign": str(campaign_date)})
+                           "base_from": str(from_month), "base_to": str(to_month),
+                           "measure": str(measure_month)})
 
 saved = load_report(SAVE_KEY)
 if saved is None:
@@ -364,8 +367,8 @@ if saved is None:
 df = saved["df"]
 if saved.get("saved_at"):
     st.caption(f"📌 Saved {saved_at_label(saved)} · audience of {saved.get('n', len(df)):,} · "
-               f"MV range {saved.get('since','')} → {saved.get('to','')} · "
-               f"campaign {saved.get('campaign','')}")
+               f"baseline {saved.get('base_from','')} → {saved.get('base_to','')} · "
+               f"measure {saved.get('measure','')}")
 if df.empty:
     st.warning("No rows."); report_header_close(); st.stop()
 
@@ -388,7 +391,7 @@ def _pct(n):
 
 n_react_usage = int((oc == O_REACT_USAGE).sum())
 n_react = int(oc.isin([O_REACT_USAGE, O_REACT_NOUSE]).sum())
-n_usage = int((df["VRS Usage Min (after)"] > 0).sum())
+n_usage = int((df["VRS Min (measure)"] > 0).sum())
 n_active = int(oc.isin([O_ACTIVE_USAGE, O_ACTIVE_NONEW]).sum())
 n_cn_novrs = int((oc == O_CN_NOVRS).sum())
 n_cn_vrs_nouse = int((oc == O_CN_VRS_NOUSE).sum())
@@ -399,7 +402,7 @@ k = st.columns(4)
 _card(k[0], "🧬 Campaign audience", f"{N:,}", "people in CSV", "#7A5CFF")
 _card(k[1], "🚀 Reactivated + Usage", f"{n_react_usage:,}", f"{_pct(n_react_usage)} · strongest outcome", "#2DB84B")
 _card(k[2], "🔄 Reactivated (any)", f"{n_react:,}", f"{_pct(n_react)} of audience", "#4C8DFF")
-_card(k[3], "⏱️ Generated usage", f"{n_usage:,}", f"{_pct(n_usage)} post-campaign VRS min", "#0FB5AE")
+_card(k[3], "⏱️ Generated usage", f"{n_usage:,}", f"{_pct(n_usage)} VRS min in measure month", "#0FB5AE")
 k2 = st.columns(4)
 _card(k2[0], "✅ Already active", f"{n_active:,}", f"{_pct(n_active)} (not reactivation)", "#98A2B3")
 _card(k2[1], "🟣 CN Active — No VRS", f"{n_cn_novrs:,}", _pct(n_cn_novrs), "#7A5CFF")
@@ -429,24 +432,24 @@ if monthly is not None and not monthly.empty:
         "CfZ Min": st.column_config.ProgressColumn("CfZ Min", min_value=0, max_value=mx, format="%.0f"),
         "CN Usage Min": st.column_config.ProgressColumn("CN Usage Min", min_value=0, max_value=mx, format="%.0f")})
 else:
-    st.info("No post-campaign usage yet.")
+    st.info("No usage in the selected window yet.")
 
 # ── Output 1: individual dataset ─────────────────────────────────────────────────
 st.markdown("##### Individual audience dataset")
 f1, f2, f3 = st.columns([1.5, 1.1, 2])
 pick = f1.multiselect("Outcome", OUTCOMES, default=[])
-login_pick = f2.selectbox("Login after campaign", ["All", "Yes", "No"], index=0)
+login_pick = f2.selectbox("URSA login after baseline", ["All", "Yes", "No"], index=0)
 search = f3.text_input("Search pendo / account / email / number").strip().lower()
 only_zero = st.checkbox("Only: no VRS number **or** zero VRS minutes in range", value=False)
 view = df.copy()
-if only_zero and "No VRS / Zero VRS" in view.columns:
-    view = view[view["No VRS / Zero VRS"] == "✅ Yes"]
+if only_zero and "No VRS / Zero VRS (baseline)" in view.columns:
+    view = view[view["No VRS / Zero VRS (baseline)"] == "✅ Yes"]
 if pick:
     view = view[view["Campaign Outcome"].isin(pick)]
 if login_pick == "Yes":
-    view = view[view["Login after campaign"] == "✅ Yes"]
+    view = view[view["Login after baseline"] == "✅ Yes"]
 elif login_pick == "No":
-    view = view[view["Login after campaign"] != "✅ Yes"]
+    view = view[view["Login after baseline"] != "✅ Yes"]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
 st.caption(f"{len(view):,} of {N:,}")
