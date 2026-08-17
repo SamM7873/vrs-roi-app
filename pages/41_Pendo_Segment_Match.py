@@ -321,12 +321,12 @@ st.info(f"**🎯 {n_reactivate:,} reactivation targets** — Convo Now is active
         f"**{n_cn_active:,}** are Convo Now active.")
 
 # ── monthly CN / VRS usage by month_date ─────────────────────────────────────────
+st.markdown("##### 📈 URSA / VRS reactivation by month (uploaded cohort)")
+st.caption("Tracks the whole uploaded segment after the Pendo push. **URSA Active accounts** = "
+           "how many of these people generated **URSA (app) minutes** that month — a rising line "
+           "means the reactivation pop-up is landing on their devices.")
 monthly = saved.get("monthly")
 if monthly is not None and not monthly.empty:
-    st.markdown("##### 📈 URSA / VRS reactivation by month (uploaded cohort)")
-    st.caption("Tracks the whole uploaded segment after the Pendo push. **URSA Active accounts** = "
-               "how many of these people generated **URSA (app) minutes** that month — a rising line "
-               "means the reactivation pop-up is landing on their devices.")
     mx = int(max(monthly["URSA Minutes"].max(), monthly["VRS Minutes"].max(), monthly["CN Minutes"].max(), 1))
     macc = int(max(monthly["URSA Active accounts"].max(), 1))
     st.dataframe(monthly, use_container_width=True, hide_index=True,
@@ -335,6 +335,9 @@ if monthly is not None and not monthly.empty:
                      "VRS Minutes": st.column_config.ProgressColumn("VRS Minutes", min_value=0, max_value=mx, format="%.0f"),
                      "URSA Minutes": st.column_config.ProgressColumn("URSA Minutes", min_value=0, max_value=mx, format="%.0f"),
                      "URSA Active accounts": st.column_config.ProgressColumn("URSA Active accounts", min_value=0, max_value=macc, format="%d")})
+else:
+    st.info("No monthly usage yet. Make sure **Pull VRS usage** is checked, set **Usage since** back "
+            "a few months (e.g. 2026-05-01) to get multiple month rows, then click **▶ Run match**.")
 
 # ── filters + table ─────────────────────────────────────────────────────────────
 f1, f2 = st.columns([2, 2])
