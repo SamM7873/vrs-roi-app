@@ -77,6 +77,7 @@ TICKET_NAME_OPTIONS = [
     "VRS Registration",
     "🧊 AT RISK",
     "⚠️ DECLINING",
+    "🧊⚠️ AT RISK + DECLINING",
     "Churn | Non-Migrated",
     "VRS Registration + Churn",
     "Port-Out Winback",
@@ -84,6 +85,7 @@ TICKET_NAME_OPTIONS = [
 
 TICKET_NAME_MULTI = {
     "VRS Registration + Churn": ["vrs registration", "churn | non-migrated"],
+    "🧊⚠️ AT RISK + DECLINING": ["at risk", "declining"],
 }
 
 def _date_range(preset):
