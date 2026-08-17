@@ -19,7 +19,7 @@ report_header("Pendo Segment Match",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "pendo_segment_match"
+SAVE_KEY = "pendo_segment_match_v2"
 TTL = 48 * 3600
 
 
@@ -39,10 +39,10 @@ def _ms(d):
     return str(int(datetime(d.year, d.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
 
 
-st.markdown("Upload a **Pendo segment CSV** (a column of **Visitor IDs**). We match each visitor to "
-            "a HubSpot **Contact** via `convo_now_account_id`, resolve the contact's **VRS "
-            "number(s)** by email, and (optionally) pull recent **VRS usage** to see who's active / "
-            "reactivated.")
+st.markdown("Upload a **Pendo segment CSV** (a column of **Visitor IDs**). We match each visitor "
+            "**directly to the Number object** (by `convo_now_account_id` or `account_id`), then "
+            "check **Monthly Values** for usage since the window. Flow: **Visitor ID → Number → "
+            "Monthly Values**.")
 
 c1, c2, c3 = st.columns([2, 1.4, 1.4])
 with c1:
@@ -89,74 +89,69 @@ if run and up is not None:
     vcol = next((c for c in raw.columns if "visitor" in c.lower() or c.lower() == "id"), raw.columns[0])
     vids = sorted({v.strip() for v in raw[vcol] if v.strip()})
 
-    # 1) Contacts by convo_now_account_id (= Pendo visitor id)
-    contact_by_vid = {}
-    with dash_spinner(f"Matching {len(vids):,} visitor IDs to Contacts…"):
+    # 1) Match visitor IDs DIRECTLY to the Number object (by convo_now_account_id OR account_id)
+    vidset = set(vids)
+    num_by_vid = defaultdict(list)   # vid -> list of number-record dicts
+    props = ["number", "email", "first_name", "last_name", "service_type", "account_status",
+             "convo_now_account_id", "account_id", "credit_type", "credit_plan_name"]
+    with dash_spinner(f"Matching {len(vids):,} visitor IDs to the Number object…"):
         for i in range(0, len(vids), 100):
             chunk = vids[i:i + 100]
-            for c in fetch_all("contacts",
-                               ["email", "firstname", "lastname", "convo_now_account_id", "lifecyclestage"],
-                               filter_groups=[{"filters": [
-                                   {"propertyName": "convo_now_account_id", "operator": "IN", "values": chunk}]}]):
-                cp = c.get("properties", {})
-                vid = (cp.get("convo_now_account_id") or "").strip()
-                if vid and vid not in contact_by_vid:
-                    contact_by_vid[vid] = {
-                        "email": (cp.get("email") or "").strip().lower(),
-                        "name": f"{(cp.get('firstname') or '').strip()} {(cp.get('lastname') or '').strip()}".strip(),
-                        "lifecycle": (cp.get("lifecyclestage") or "").strip()}
-
-    # 2) Numbers by contact email (VRS)
-    emails = sorted({m["email"] for m in contact_by_vid.values() if m["email"]})
-    email_numbers = defaultdict(list)   # email -> list of (number, status)
-    with dash_spinner(f"Resolving VRS numbers for {len(emails):,} emails…"):
-        for i in range(0, len(emails), 100):
-            chunk = emails[i:i + 100]
-            for r in fetch_all(NUM_OBJECT, ["number", "email", "service_type", "account_status"],
-                               filter_groups=[{"filters": [
-                                   {"propertyName": "email", "operator": "IN", "values": chunk},
-                                   {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}]):
+            # OR across the two id fields → two filter groups
+            recs = fetch_all(NUM_OBJECT, props, filter_groups=[
+                {"filters": [{"propertyName": "convo_now_account_id", "operator": "IN", "values": chunk}]},
+                {"filters": [{"propertyName": "account_id", "operator": "IN", "values": chunk}]}])
+            for r in recs:
                 p = r.get("properties", {})
-                e = (p.get("email") or "").strip().lower()
-                n = str(p.get("number") or "").strip()
-                if e and n:
-                    email_numbers[e].append((n, (p.get("account_status") or "").strip()))
+                cid = (p.get("convo_now_account_id") or "").strip()
+                aid = (p.get("account_id") or "").strip()
+                vid = cid if cid in vidset else (aid if aid in vidset else "")
+                if not vid:
+                    continue
+                num_by_vid[vid].append({
+                    "number": str(p.get("number") or "").strip(),
+                    "email": (p.get("email") or "").strip().lower(),
+                    "name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
+                    "service": (p.get("service_type") or "").strip(),
+                    "status": (p.get("account_status") or "").strip(),
+                })
 
-    # 3) VRS usage since react_since (optional)
-    num_usage = defaultdict(float)
+    # 2) Monthly Values usage for the matched numbers, since the window
+    num_usage = defaultdict(float)   # number -> minutes
     if with_usage:
-        all_nums = [n for lst in email_numbers.values() for n, _ in lst]
-        mv = _seek_mv(["number", "month_date", "usage_minutes", "service_type"],
-                      [{"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
-                       {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
-                       {"propertyName": "month_date", "operator": "GTE", "value": _ms(react_since)}],
-                      label="VRS usage:")
-        _numset = set(all_nums)
-        for o in mv:
-            p = o.get("properties", {})
-            n = str(p.get("number") or "").strip()
-            if n in _numset:
-                num_usage[n] += to_float(p.get("usage_minutes")) or 0.0
+        all_nums = sorted({r["number"] for lst in num_by_vid.values() for r in lst if r["number"]})
+        with dash_spinner(f"Pulling Monthly Values for {len(all_nums):,} matched numbers…"):
+            for i in range(0, len(all_nums), 100):
+                chunk = all_nums[i:i + 100]
+                for o in _seek_mv(["number", "month_date", "usage_minutes", "service_type"],
+                                  [{"propertyName": "number", "operator": "IN", "values": chunk},
+                                   {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
+                                   {"propertyName": "month_date", "operator": "GTE", "value": _ms(react_since)}]):
+                    p = o.get("properties", {})
+                    num_usage[str(p.get("number") or "").strip()] += to_float(p.get("usage_minutes")) or 0.0
 
     rows = []
     for vid in vids:
-        c = contact_by_vid.get(vid)
-        if not c:
-            rows.append({"Visitor ID": vid, "Matched": "No contact", "Email": "—", "Name": "—",
-                         "VRS Numbers": "—", "VRS Status": "—", "VRS Min (since)": 0.0})
+        recs = num_by_vid.get(vid, [])
+        if not recs:
+            rows.append({"Visitor ID": vid, "Matched": "No number", "Email": "—", "Name": "—",
+                         "Numbers": "—", "Service": "—", "Status": "—", "Min (since)": 0.0})
             continue
-        nums = email_numbers.get(c["email"], [])
-        vrs_min = round(sum(num_usage.get(n, 0.0) for n, _ in nums), 1)
-        live = any(s.lower() == "live" for _, s in nums)
+        mins = round(sum(num_usage.get(r["number"], 0.0) for r in recs), 1)
+        live = any(r["status"].lower() == "live" for r in recs)
+        has_vrs = any(r["service"].lower() == "vrs" for r in recs)
+        name = next((r["name"] for r in recs if r["name"]), "")
+        email = next((r["email"] for r in recs if r["email"]), "")
         rows.append({
             "Visitor ID": vid,
-            "Matched": "✅ Contact" if not nums else ("✅ Live VRS" if live else "🟡 VRS not live"),
-            "Email": c["email"] or "—",
-            "Name": c["name"] or "—",
-            "Lifecycle": c["lifecycle"] or "—",
-            "VRS Numbers": ", ".join(n for n, _ in nums) or "— (no VRS)",
-            "VRS Status": ", ".join(sorted({s for _, s in nums})) or "—",
-            "VRS Min (since)": vrs_min,
+            "Matched": "🟢 Live" if live else "🟡 Not live",
+            "Email": email or "—",
+            "Name": name or "—",
+            "Numbers": ", ".join(r["number"] for r in recs if r["number"]) or "—",
+            "Service": ", ".join(sorted({r["service"] for r in recs if r["service"]})) or "—",
+            "Status": ", ".join(sorted({r["status"] for r in recs if r["status"]})) or "—",
+            "Has VRS": "Yes" if has_vrs else "No",
+            "Min (since)": mins,
         })
     df = pd.DataFrame(rows)
     save_report(SAVE_KEY, {"df": df, "n_seg": len(vids), "since": str(react_since),
@@ -175,10 +170,10 @@ if saved.get("saved_at"):
 
 # ── KPIs ────────────────────────────────────────────────────────────────────────
 n_seg = len(df)
-n_contact = int((df["Matched"] != "No contact").sum())
-n_hasvrs = int((df["VRS Numbers"] != "— (no VRS)").sum() - (df["VRS Numbers"] == "—").sum())
-n_live = int((df["Matched"] == "✅ Live VRS").sum())
-n_react = int((df["VRS Min (since)"] > 0).sum())
+n_matched = int((df["Matched"] != "No number").sum())
+n_hasvrs = int((df["Has VRS"] == "Yes").sum()) if "Has VRS" in df.columns else 0
+n_live = int((df["Matched"] == "🟢 Live").sum())
+n_react = int((df["Min (since)"] > 0).sum())
 
 
 def _card(col, t, v, s, c):
@@ -191,16 +186,16 @@ def _card(col, t, v, s, c):
 
 k = st.columns(5)
 _card(k[0], "🧬 Segment size", n_seg, "Pendo visitor IDs", "#7A5CFF")
-_card(k[1], "👤 Matched to contact", n_contact,
-      f"{(n_contact/n_seg*100):.0f}%" if n_seg else "—", "#4C8DFF")
-_card(k[2], "📞 Have VRS number", n_hasvrs, "resolved a VRS #", "#0FB5AE")
-_card(k[3], "🟢 Live VRS", n_live, "at least one Live", "#2DB84B")
-_card(k[4], "🚀 Generated VRS min", n_react, "active since window", "#E8952A")
+_card(k[1], "🔢 Matched to a Number", n_matched,
+      f"{(n_matched/n_seg*100):.0f}%" if n_seg else "—", "#4C8DFF")
+_card(k[2], "📞 Have VRS number", n_hasvrs, "matched a VRS #", "#0FB5AE")
+_card(k[3], "🟢 Live", n_live, "at least one Live", "#2DB84B")
+_card(k[4], "🚀 Generated minutes", n_react, "active since window", "#E8952A")
 st.markdown("")
 
-st.info(f"Of **{n_seg:,}** in the Pendo segment: **{n_contact:,}** matched a Contact · "
-        f"**{n_hasvrs:,}** have a VRS number · **{n_react:,}** generated VRS minutes since the window "
-        "(reactivated).")
+st.info(f"Of **{n_seg:,}** in the Pendo segment: **{n_matched:,}** matched a Number "
+        f"(directly, via convo_now_account_id / account_id) · **{n_hasvrs:,}** have a VRS number · "
+        f"**{n_react:,}** generated minutes since the window.")
 
 # ── filters + table ─────────────────────────────────────────────────────────────
 f1, f2 = st.columns([2, 2])
@@ -212,7 +207,7 @@ if mpick:
     view = view[view["Matched"].isin(mpick)]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
-view = view.sort_values("VRS Min (since)", ascending=False)
+view = view.sort_values("Min (since)", ascending=False)
 st.caption(f"{len(view):,} rows")
 st.dataframe(view, use_container_width=True, hide_index=True, height=460)
 st.download_button("📥 Export CSV", view.to_csv(index=False), "pendo_segment_match.csv", "text/csv")
