@@ -20,7 +20,7 @@ report_header("Campaign Reactivation Analysis",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "campaign_reactivation_v4"
+SAVE_KEY = "campaign_reactivation_v5"
 
 # ── outcome categories ───────────────────────────────────────────────────────────
 O_REACT_USAGE = "🚀 Reactivated + Usage"
@@ -65,6 +65,17 @@ def _nums(cell):
     return [re.sub(r"\D", "", x) for x in str(cell or "").split(",") if re.sub(r"\D", "", x)]
 
 
+def _month_firsts(start=date(2025, 1, 1)):
+    """First-of-month dates from `start` through the current month."""
+    out, y, m, t = [], start.year, start.month, date.today()
+    while (y, m) <= (t.year, t.month):
+        out.append(date(y, m, 1))
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return out
+
+
 def _seek_mv(props, filters):
     url = f"{_B}/crm/v3/objects/{MV_OBJECT}/search"
     out, last = [], "0"
@@ -98,14 +109,20 @@ st.markdown(
     "each audience member a **campaign outcome**. The goal isn't who's active now — it's who "
     "**changed behavior after the campaign**.")
 
-c1, c2, c3 = st.columns([2, 1.3, 1.3])
+_mopts = _month_firsts()
+_mfmt = lambda d: d.strftime("%m/01/%Y")
+_jan = date(2026, 1, 1)
+c1, c2, c3, c4 = st.columns([1.9, 1.1, 1.1, 1.2])
 with c1:
     up = st.file_uploader("Campaign audience CSV", type=["csv"], key="camp_csv")
 with c2:
-    history_since = st.date_input("History since (month)", value=date(2026, 1, 1),
-                                  help="How far back to pull Monthly Values for the before-period.")
+    from_month = st.selectbox("From month (1st)", _mopts,
+                              index=_mopts.index(_jan) if _jan in _mopts else 0, format_func=_mfmt)
 with c3:
+    to_month = st.selectbox("To month (1st)", _mopts, index=len(_mopts) - 1, format_func=_mfmt)
+with c4:
     campaign_date = st.date_input("Campaign release date", value=date(2026, 7, 31))
+history_since = from_month  # Monthly Values custom range lower bound
 run = st.button("▶ Run analysis", type="primary", disabled=(up is None))
 
 if run and up is not None:
@@ -188,7 +205,8 @@ if run and up is not None:
             for o in _seek_mv(["number", "month_date", "usage_minutes", "ursa_minutes",
                                "cfz_minutes", "service_type"],
                               [{"propertyName": "number", "operator": "IN", "values": chunk},
-                               {"propertyName": "month_date", "operator": "GTE", "value": _ms(history_since)}]):
+                               {"propertyName": "month_date", "operator": "GTE", "value": _ms(history_since)},
+                               {"propertyName": "month_date", "operator": "LTE", "value": _ms(to_month)}]):
                 p = o.get("properties", {})
                 nn = str(p.get("number") or "").strip()
                 m = _month(p.get("month_date"))
@@ -229,7 +247,9 @@ if run and up is not None:
         latest_mv = max([m for (nn, m) in list(d_vrs) + list(d_cn)
                          if nn in valid], default="")
 
+        range_vrs = round(prev_vrs + curr_vrs, 1)   # total VRS usage across the custom range
         has_vrs = bool(vrs_valid)
+        no_vrs_or_zero = (not has_vrs) or range_vrs <= 0
         cn_active = any(meta[n]["status"].lower() == "live" for n in cn_valid) or bool(cn_valid)
         login = max([meta[n]["login"] for n in vrs_valid if meta[n]["login"]], default=None)
         login_post = bool(login and login.date() > campaign_date)
@@ -301,6 +321,8 @@ if run and up is not None:
             "VRS Number": ", ".join(vrs_valid) or "—",
             "VRS Status": ", ".join(sorted({meta[n]["status"] for n in vrs_valid})) or "—",
             "Credit Type": ", ".join(sorted({meta[n]["credit_type"] for n in valid if meta[n]["credit_type"]})) or "—",
+            "VRS Min (range)": range_vrs,
+            "No VRS / Zero VRS": "✅ Yes" if no_vrs_or_zero else "—",
             "Previous Status": "Active" if prev_vrs > 0 else "Inactive",
             "Prev VRS Usage Min": prev_vrs,
             "Current Status": "Active" if curr_vrs > 0 else "Inactive",
@@ -331,7 +353,8 @@ if run and up is not None:
     } for m in months])
 
     save_report(SAVE_KEY, {"df": df, "monthly": monthly, "n": len(people),
-                           "since": str(history_since), "campaign": str(campaign_date)})
+                           "since": str(history_since), "to": str(to_month),
+                           "campaign": str(campaign_date)})
 
 saved = load_report(SAVE_KEY)
 if saved is None:
@@ -341,7 +364,8 @@ if saved is None:
 df = saved["df"]
 if saved.get("saved_at"):
     st.caption(f"📌 Saved {saved_at_label(saved)} · audience of {saved.get('n', len(df)):,} · "
-               f"history since {saved.get('since','')} · campaign {saved.get('campaign','')}")
+               f"MV range {saved.get('since','')} → {saved.get('to','')} · "
+               f"campaign {saved.get('campaign','')}")
 if df.empty:
     st.warning("No rows."); report_header_close(); st.stop()
 
@@ -413,7 +437,10 @@ f1, f2, f3 = st.columns([1.5, 1.1, 2])
 pick = f1.multiselect("Outcome", OUTCOMES, default=[])
 login_pick = f2.selectbox("Login after campaign", ["All", "Yes", "No"], index=0)
 search = f3.text_input("Search pendo / account / email / number").strip().lower()
+only_zero = st.checkbox("Only: no VRS number **or** zero VRS minutes in range", value=False)
 view = df.copy()
+if only_zero and "No VRS / Zero VRS" in view.columns:
+    view = view[view["No VRS / Zero VRS"] == "✅ Yes"]
 if pick:
     view = view[view["Campaign Outcome"].isin(pick)]
 if login_pick == "Yes":
