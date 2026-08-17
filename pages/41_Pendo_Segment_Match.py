@@ -175,6 +175,8 @@ if run and up is not None:
     num_usage = defaultdict(float)       # number -> total minutes
     num_usage_vrs = defaultdict(float)   # number -> VRS minutes
     num_usage_cn = defaultdict(float)    # number -> Convo Now minutes
+    month_cn = defaultdict(float)        # YYYY-MM -> CN minutes
+    month_vrs = defaultdict(float)       # YYYY-MM -> VRS minutes
     if with_usage:
         all_nums = sorted({r["number"] for lst in num_by_vid.values() for r in lst if r["number"]})
         with dash_spinner(f"Pulling Monthly Values for {len(all_nums):,} matched numbers…"):
@@ -188,11 +190,23 @@ if run and up is not None:
                     nn = str(p.get("number") or "").strip()
                     mins = to_float(p.get("usage_minutes")) or 0.0
                     svc = (p.get("service_type") or "").strip().lower()
+                    per = _period_of(p.get("month_date"))
+                    mlabel = str(per) if per is not None else "—"
                     num_usage[nn] += mins
                     if svc == "vrs":
                         num_usage_vrs[nn] += mins
+                        month_vrs[mlabel] += mins
                     elif svc == "convo now":
                         num_usage_cn[nn] += mins
+                        month_cn[mlabel] += mins
+    # monthly CN/VRS usage table
+    _months = sorted(set(month_cn) | set(month_vrs))
+    monthly_df = pd.DataFrame([{
+        "Month": m,
+        "CN Minutes": round(month_cn.get(m, 0.0), 1),
+        "VRS Minutes": round(month_vrs.get(m, 0.0), 1),
+        "Total Minutes": round(month_cn.get(m, 0.0) + month_vrs.get(m, 0.0), 1),
+    } for m in _months])
 
     rows = []
     for vid in vids:
@@ -238,8 +252,9 @@ if run and up is not None:
             "Total Min (since)": tot_min,
         })
     df = pd.DataFrame(rows)
-    save_report(SAVE_KEY, {"df": df, "n_seg": len(vids), "n_csv_ids": n_csv_ids,
-                           "since": str(react_since), "with_usage": with_usage})
+    save_report(SAVE_KEY, {"df": df, "monthly": monthly_df, "n_seg": len(vids),
+                           "n_csv_ids": n_csv_ids, "since": str(react_since),
+                           "with_usage": with_usage})
 
 saved = load_report(SAVE_KEY)
 if saved is None:
@@ -291,6 +306,16 @@ st.info(f"**🎯 {n_reactivate:,} reactivation targets** — Convo Now is active
         f"number generated **no** minutes since the window. Of **{n_seg:,}** Pendo IDs: "
         f"**{n_matched:,}** matched a Number · **{n_hasvrs:,}** have a VRS number (same email) · "
         f"**{n_cn_active:,}** are Convo Now active.")
+
+# ── monthly CN / VRS usage by month_date ─────────────────────────────────────────
+monthly = saved.get("monthly")
+if monthly is not None and not monthly.empty:
+    st.markdown("##### CN & VRS usage minutes by month")
+    mx = int(max(monthly["CN Minutes"].max(), monthly["VRS Minutes"].max(), 1))
+    st.dataframe(monthly, use_container_width=True, hide_index=True,
+                 column_config={
+                     "CN Minutes": st.column_config.ProgressColumn("CN Minutes", min_value=0, max_value=mx, format="%.0f"),
+                     "VRS Minutes": st.column_config.ProgressColumn("VRS Minutes", min_value=0, max_value=mx, format="%.0f")})
 
 # ── filters + table ─────────────────────────────────────────────────────────────
 f1, f2 = st.columns([2, 2])
