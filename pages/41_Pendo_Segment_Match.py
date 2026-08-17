@@ -19,7 +19,7 @@ report_header("Pendo Segment Match",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "pendo_segment_match_v2"
+SAVE_KEY = "pendo_segment_match_v3"
 TTL = 48 * 3600
 
 
@@ -139,8 +139,11 @@ if run and up is not None:
 
     contact_meta = {}  # not used (no Contact hop)
 
-    # 2) Monthly Values usage for the matched numbers, since the window
-    num_usage = defaultdict(float)   # number -> minutes
+    # 2) Monthly Values usage_minutes for the matched numbers, since the window
+    #    split by service (VRS vs Convo Now)
+    num_usage = defaultdict(float)       # number -> total minutes
+    num_usage_vrs = defaultdict(float)   # number -> VRS minutes
+    num_usage_cn = defaultdict(float)    # number -> Convo Now minutes
     if with_usage:
         all_nums = sorted({r["number"] for lst in num_by_vid.values() for r in lst if r["number"]})
         with dash_spinner(f"Pulling Monthly Values for {len(all_nums):,} matched numbers…"):
@@ -151,7 +154,14 @@ if run and up is not None:
                                    {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
                                    {"propertyName": "month_date", "operator": "GTE", "value": _ms(react_since)}]):
                     p = o.get("properties", {})
-                    num_usage[str(p.get("number") or "").strip()] += to_float(p.get("usage_minutes")) or 0.0
+                    nn = str(p.get("number") or "").strip()
+                    mins = to_float(p.get("usage_minutes")) or 0.0
+                    svc = (p.get("service_type") or "").strip().lower()
+                    num_usage[nn] += mins
+                    if svc == "vrs":
+                        num_usage_vrs[nn] += mins
+                    elif svc == "convo now":
+                        num_usage_cn[nn] += mins
 
     rows = []
     for vid in vids:
@@ -161,10 +171,12 @@ if run and up is not None:
             rows.append({"Visitor ID": vid,
                          "Matched": "👤 Contact, no number" if cm else "No match",
                          "Email": cm.get("email") or "—", "Name": cm.get("name") or "—",
-                         "Numbers": "—", "Service": "—", "Status": "—",
-                         "Has VRS": "No", "Min (since)": 0.0})
+                         "Numbers": "—", "Service": "—", "Status": "—", "Has VRS": "No",
+                         "VRS Min": 0.0, "CN Min": 0.0, "Total Min (since)": 0.0})
             continue
-        mins = round(sum(num_usage.get(r["number"], 0.0) for r in recs), 1)
+        vrs_min = round(sum(num_usage_vrs.get(r["number"], 0.0) for r in recs), 1)
+        cn_min = round(sum(num_usage_cn.get(r["number"], 0.0) for r in recs), 1)
+        tot_min = round(sum(num_usage.get(r["number"], 0.0) for r in recs), 1)
         live = any(r["status"].lower() == "live" for r in recs)
         has_vrs = any(r["service"].lower() == "vrs" for r in recs)
         name = next((r["name"] for r in recs if r["name"]), "")
@@ -178,7 +190,9 @@ if run and up is not None:
             "Service": ", ".join(sorted({r["service"] for r in recs if r["service"]})) or "—",
             "Status": ", ".join(sorted({r["status"] for r in recs if r["status"]})) or "—",
             "Has VRS": "Yes" if has_vrs else "No",
-            "Min (since)": mins,
+            "VRS Min": vrs_min,
+            "CN Min": cn_min,
+            "Total Min (since)": tot_min,
         })
     df = pd.DataFrame(rows)
     save_report(SAVE_KEY, {"df": df, "n_seg": len(vids), "since": str(react_since),
@@ -200,7 +214,7 @@ n_seg = len(df)
 n_matched = int((df["Matched"] != "No number").sum())
 n_hasvrs = int((df["Has VRS"] == "Yes").sum()) if "Has VRS" in df.columns else 0
 n_live = int((df["Matched"] == "🟢 Live").sum())
-n_react = int((df["Min (since)"] > 0).sum())
+n_react = int((df["Total Min (since)"] > 0).sum()) if "Total Min (since)" in df.columns else 0
 
 
 def _card(col, t, v, s, c):
@@ -234,7 +248,7 @@ if mpick:
     view = view[view["Matched"].isin(mpick)]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
-view = view.sort_values("Min (since)", ascending=False)
+view = view.sort_values("Total Min (since)", ascending=False)
 st.caption(f"{len(view):,} rows")
 st.dataframe(view, use_container_width=True, hide_index=True, height=460)
 st.download_button("📥 Export CSV", view.to_csv(index=False), "pendo_segment_match.csv", "text/csv")
