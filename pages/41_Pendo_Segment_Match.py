@@ -19,7 +19,7 @@ report_header("Pendo Segment Match",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "pendo_segment_match_v6"
+SAVE_KEY = "pendo_segment_match_v7"
 TTL = 48 * 3600
 
 
@@ -51,9 +51,9 @@ def _fmt_date(v):
         return str(v)[:10]
 
 
-def _latest(*vals):
-    """Return the most recent of several date strings/epochs (formatted), '' if none."""
-    best_ts, best = None, ""
+def _latest_dt(*vals):
+    """Return the most recent datetime among several date strings/epochs, or None."""
+    best = None
     for v in vals:
         if not v:
             continue
@@ -61,11 +61,17 @@ def _latest(*vals):
             s = str(v)
             d = (datetime.fromtimestamp(int(s) / 1000, tz=timezone.utc) if s.isdigit()
                  else datetime.fromisoformat(s.replace("Z", "+00:00")))
-            if best_ts is None or d > best_ts:
-                best_ts, best = d, d.strftime("%b %d, %Y")
+            if best is None or d > best:
+                best = d
         except Exception:
             pass
     return best
+
+
+def _latest(*vals):
+    """Formatted most-recent date, '' if none."""
+    d = _latest_dt(*vals)
+    return d.strftime("%b %d, %Y") if d else ""
 
 
 st.markdown("Upload a **Pendo segment CSV** (a column of **Pendo IDs** — the UUID). We match each "
@@ -84,6 +90,10 @@ with c2:
                                      "current month so it reflects the latest usage.")
 with c3:
     with_usage = st.checkbox("Pull VRS usage (slower)", value=True)
+campaign_date = st.date_input("Campaign release date (flag URSA logins after this)",
+                              value=date(2026, 7, 31),
+                              help="Anyone whose last URSA login is on/after this date is flagged "
+                                   "as reactivated by the campaign.")
 
 # let the user confirm which column holds the Pendo ID (defaults to the 'Pendo ID' column)
 id_col = None
@@ -250,7 +260,8 @@ if run and up is not None:
                          "Email": cm.get("email") or "—", "Name": cm.get("name") or "—",
                          "Numbers": "—", "Service": "—", "Status": "—", "Has VRS": "No",
                          "VRS Min": 0.0, "URSA Min": 0.0, "CN Min": 0.0, "Total Min (since)": 0.0,
-                         "URSA iOS Login": "—", "URSA Android Login": "—", "URSA Web Login": "—"})
+                         "URSA iOS Login": "—", "URSA Android Login": "—", "URSA Web Login": "—",
+                         "Login after campaign": "—"})
             continue
         vrs_min = round(sum(num_usage_vrs.get(r["number"], 0.0) for r in recs), 1)
         cn_min = round(sum(num_usage_cn.get(r["number"], 0.0) for r in recs), 1)
@@ -265,6 +276,9 @@ if run and up is not None:
         ios_login = _latest(*[r.get("ios_login") for r in vrs_recs])
         android_login = _latest(*[r.get("android_login") for r in vrs_recs])
         web_login = _latest(*[r.get("web_login") for r in vrs_recs])
+        _latest_login_dt = _latest_dt(*[r.get(k) for r in vrs_recs
+                                        for k in ("ios_login", "android_login", "web_login")])
+        post_campaign = bool(_latest_login_dt and _latest_login_dt.date() >= campaign_date)
 
         # reactivation flag: Convo Now active, VRS generated nothing → target
         if cn_min > 0 and vrs_min <= 0:
@@ -294,6 +308,7 @@ if run and up is not None:
             "URSA iOS Login": ios_login or "—",
             "URSA Android Login": android_login or "—",
             "URSA Web Login": web_login or "—",
+            "Login after campaign": "✅ Yes" if post_campaign else "—",
         })
     df = pd.DataFrame(rows)
 
@@ -310,7 +325,7 @@ if run and up is not None:
 
     save_report(SAVE_KEY, {"df": df, "monthly": monthly_df, "n_seg": len(vids),
                            "n_csv_ids": n_csv_ids, "since": str(react_since),
-                           "with_usage": with_usage})
+                           "campaign": str(campaign_date), "with_usage": with_usage})
 
 saved = load_report(SAVE_KEY)
 if saved is None:
@@ -329,6 +344,7 @@ n_matched = int((df["Matched"] != "No match").sum())
 n_hasvrs = int((df["Has VRS"] == "Yes").sum()) if "Has VRS" in df.columns else 0
 n_cn_active = int((df["CN Min"] > 0).sum()) if "CN Min" in df.columns else 0
 n_reactivate = int(df["Flag"].str.startswith("🎯").sum()) if "Flag" in df.columns else 0
+n_post_login = int((df["Login after campaign"] == "✅ Yes").sum()) if "Login after campaign" in df.columns else 0
 
 
 def _card(col, t, v, s, c):
@@ -356,6 +372,10 @@ k2 = st.columns(3)
 _card(k2[0], "⏱️ Total usage minutes", int(round(tot_all)), "CN + VRS since window", "#3563E9")
 _card(k2[1], "📱 Total CN minutes", int(round(tot_cn)), "Convo Now", "#E8952A")
 _card(k2[2], "📞 Total VRS minutes", int(round(tot_vrs)), "VRS", "#0FB5AE")
+st.markdown("")
+k3 = st.columns(5)
+_card(k3[0], "🚀 Logged in after campaign", n_post_login,
+      f"URSA login ≥ {saved.get('campaign','')}", "#2DB84B")
 st.markdown("")
 
 st.info(f"**🎯 {n_reactivate:,} reactivation targets** — Convo Now is active but the person's VRS "
