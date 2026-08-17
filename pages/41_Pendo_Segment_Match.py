@@ -94,27 +94,34 @@ if run and up is not None:
     num_by_vid = defaultdict(list)   # vid -> list of number-record dicts
     props = ["number", "email", "first_name", "last_name", "service_type", "account_status",
              "convo_now_account_id", "account_id", "credit_type", "credit_plan_name"]
+    seen = set()
+
+    def _absorb(recs):
+        for r in recs:
+            rid = r.get("id")
+            if rid in seen:
+                continue
+            p = r.get("properties", {})
+            cid = (p.get("convo_now_account_id") or "").strip()
+            aid = (p.get("account_id") or "").strip()
+            vid = cid if cid in vidset else (aid if aid in vidset else "")
+            if not vid:
+                continue
+            seen.add(rid)
+            num_by_vid[vid].append({
+                "number": str(p.get("number") or "").strip(),
+                "email": (p.get("email") or "").strip().lower(),
+                "name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
+                "service": (p.get("service_type") or "").strip(),
+                "status": (p.get("account_status") or "").strip(),
+            })
+
     with dash_spinner(f"Matching {len(vids):,} visitor IDs to the Number object…"):
-        for i in range(0, len(vids), 100):
-            chunk = vids[i:i + 100]
-            # OR across the two id fields → two filter groups
-            recs = fetch_all(NUM_OBJECT, props, filter_groups=[
-                {"filters": [{"propertyName": "convo_now_account_id", "operator": "IN", "values": chunk}]},
-                {"filters": [{"propertyName": "account_id", "operator": "IN", "values": chunk}]}])
-            for r in recs:
-                p = r.get("properties", {})
-                cid = (p.get("convo_now_account_id") or "").strip()
-                aid = (p.get("account_id") or "").strip()
-                vid = cid if cid in vidset else (aid if aid in vidset else "")
-                if not vid:
-                    continue
-                num_by_vid[vid].append({
-                    "number": str(p.get("number") or "").strip(),
-                    "email": (p.get("email") or "").strip().lower(),
-                    "name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip(),
-                    "service": (p.get("service_type") or "").strip(),
-                    "status": (p.get("account_status") or "").strip(),
-                })
+        for field in ("convo_now_account_id", "account_id"):
+            for i in range(0, len(vids), 100):
+                chunk = vids[i:i + 100]
+                _absorb(fetch_all(NUM_OBJECT, props, filter_groups=[{"filters": [
+                    {"propertyName": field, "operator": "IN", "values": chunk}]}]))
 
     # 2) Monthly Values usage for the matched numbers, since the window
     num_usage = defaultdict(float)   # number -> minutes
