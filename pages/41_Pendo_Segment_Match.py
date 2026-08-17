@@ -19,7 +19,7 @@ report_header("Pendo Segment Match",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "pendo_segment_match_v4"
+SAVE_KEY = "pendo_segment_match_v5"
 TTL = 48 * 3600
 
 
@@ -175,27 +175,32 @@ if run and up is not None:
     num_usage = defaultdict(float)       # number -> total minutes
     num_usage_vrs = defaultdict(float)   # number -> VRS minutes
     num_usage_cn = defaultdict(float)    # number -> Convo Now minutes
+    num_usage_ursa = defaultdict(float)  # number -> URSA (app) minutes
     detail_cn = defaultdict(float)       # (number, YYYY-MM) -> CN minutes
     detail_vrs = defaultdict(float)      # (number, YYYY-MM) -> VRS minutes
+    detail_ursa = defaultdict(float)     # (number, YYYY-MM) -> URSA minutes
     if with_usage:
         all_nums = sorted({r["number"] for lst in num_by_vid.values() for r in lst if r["number"]})
+        # pull WITHOUT the usage_minutes>0 filter so URSA-only VRS rows (VRS min 0) are kept
         with dash_spinner(f"Pulling Monthly Values for {len(all_nums):,} matched numbers…"):
             for i in range(0, len(all_nums), 100):
                 chunk = all_nums[i:i + 100]
-                for o in _seek_mv(["number", "month_date", "usage_minutes", "service_type"],
+                for o in _seek_mv(["number", "month_date", "usage_minutes", "ursa_minutes", "service_type"],
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
-                                   {"propertyName": "usage_minutes", "operator": "GT", "value": "0"},
                                    {"propertyName": "month_date", "operator": "GTE", "value": _ms(react_since)}]):
                     p = o.get("properties", {})
                     nn = str(p.get("number") or "").strip()
                     mins = to_float(p.get("usage_minutes")) or 0.0
+                    ursa = to_float(p.get("ursa_minutes")) or 0.0
                     svc = (p.get("service_type") or "").strip().lower()
                     per = _period_of(p.get("month_date"))
                     mlabel = str(per) if per is not None else "—"
                     num_usage[nn] += mins
                     if svc == "vrs":
                         num_usage_vrs[nn] += mins
+                        num_usage_ursa[nn] += ursa
                         detail_vrs[(nn, mlabel)] += mins
+                        detail_ursa[(nn, mlabel)] += ursa
                     elif svc == "convo now":
                         num_usage_cn[nn] += mins
                         detail_cn[(nn, mlabel)] += mins
@@ -210,10 +215,11 @@ if run and up is not None:
                          "Matched": "👤 Contact, no number" if cm else "No match",
                          "Email": cm.get("email") or "—", "Name": cm.get("name") or "—",
                          "Numbers": "—", "Service": "—", "Status": "—", "Has VRS": "No",
-                         "VRS Min": 0.0, "CN Min": 0.0, "Total Min (since)": 0.0})
+                         "VRS Min": 0.0, "URSA Min": 0.0, "CN Min": 0.0, "Total Min (since)": 0.0})
             continue
         vrs_min = round(sum(num_usage_vrs.get(r["number"], 0.0) for r in recs), 1)
         cn_min = round(sum(num_usage_cn.get(r["number"], 0.0) for r in recs), 1)
+        ursa_min = round(sum(num_usage_ursa.get(r["number"], 0.0) for r in recs), 1)
         tot_min = round(sum(num_usage.get(r["number"], 0.0) for r in recs), 1)
         live = any(r["status"].lower() == "live" for r in recs)
         has_vrs = any(r["service"].lower() == "vrs" for r in recs)
@@ -242,6 +248,7 @@ if run and up is not None:
             "Status": ", ".join(sorted({r["status"] for r in recs if r["status"]})) or "—",
             "Has VRS": "Yes" if has_vrs else "No",
             "VRS Min": vrs_min,
+            "URSA Min": ursa_min,
             "CN Min": cn_min,
             "Total Min (since)": tot_min,
         })
@@ -249,15 +256,14 @@ if run and up is not None:
 
     # monthly usage for the WHOLE uploaded cohort — watch VRS reactivation after the Pendo push.
     # "VRS Active accounts" = distinct matched numbers that generated any VRS minutes that month.
-    _months = sorted({m for (_, m) in list(detail_cn) + list(detail_vrs)})
+    _months = sorted({m for (_, m) in list(detail_cn) + list(detail_vrs) + list(detail_ursa)})
     monthly_df = pd.DataFrame([{
         "Month": m,
         "CN Minutes": round(sum(v for (nn, mm), v in detail_cn.items() if mm == m), 1),
         "VRS Minutes": round(sum(v for (nn, mm), v in detail_vrs.items() if mm == m), 1),
-        "VRS Active accounts": sum(1 for (nn, mm), v in detail_vrs.items() if mm == m and v > 0),
+        "URSA Minutes": round(sum(v for (nn, mm), v in detail_ursa.items() if mm == m), 1),
+        "URSA Active accounts": sum(1 for (nn, mm), v in detail_ursa.items() if mm == m and v > 0),
     } for m in _months])
-    if not monthly_df.empty:
-        monthly_df["Total Minutes"] = (monthly_df["CN Minutes"] + monthly_df["VRS Minutes"]).round(1)
 
     save_report(SAVE_KEY, {"df": df, "monthly": monthly_df, "n_seg": len(vids),
                            "n_csv_ids": n_csv_ids, "since": str(react_since),
@@ -317,17 +323,18 @@ st.info(f"**🎯 {n_reactivate:,} reactivation targets** — Convo Now is active
 # ── monthly CN / VRS usage by month_date ─────────────────────────────────────────
 monthly = saved.get("monthly")
 if monthly is not None and not monthly.empty:
-    st.markdown("##### 📈 VRS reactivation by month (uploaded cohort)")
-    st.caption("Tracks the whole uploaded segment after the Pendo push. **VRS Active accounts** = "
-               "how many of these people generated VRS minutes that month — a rising line means the "
-               "reactivation campaign is landing.")
-    mx = int(max(monthly["CN Minutes"].max(), monthly["VRS Minutes"].max(), 1))
-    macc = int(max(monthly["VRS Active accounts"].max(), 1))
+    st.markdown("##### 📈 URSA / VRS reactivation by month (uploaded cohort)")
+    st.caption("Tracks the whole uploaded segment after the Pendo push. **URSA Active accounts** = "
+               "how many of these people generated **URSA (app) minutes** that month — a rising line "
+               "means the reactivation pop-up is landing on their devices.")
+    mx = int(max(monthly["URSA Minutes"].max(), monthly["VRS Minutes"].max(), monthly["CN Minutes"].max(), 1))
+    macc = int(max(monthly["URSA Active accounts"].max(), 1))
     st.dataframe(monthly, use_container_width=True, hide_index=True,
                  column_config={
                      "CN Minutes": st.column_config.ProgressColumn("CN Minutes", min_value=0, max_value=mx, format="%.0f"),
                      "VRS Minutes": st.column_config.ProgressColumn("VRS Minutes", min_value=0, max_value=mx, format="%.0f"),
-                     "VRS Active accounts": st.column_config.ProgressColumn("VRS Active accounts", min_value=0, max_value=macc, format="%d")})
+                     "URSA Minutes": st.column_config.ProgressColumn("URSA Minutes", min_value=0, max_value=mx, format="%.0f"),
+                     "URSA Active accounts": st.column_config.ProgressColumn("URSA Active accounts", min_value=0, max_value=macc, format="%d")})
 
 # ── filters + table ─────────────────────────────────────────────────────────────
 f1, f2 = st.columns([2, 2])
