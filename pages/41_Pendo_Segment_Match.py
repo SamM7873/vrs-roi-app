@@ -39,10 +39,11 @@ def _ms(d):
     return str(int(datetime(d.year, d.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
 
 
-st.markdown("Upload a **Pendo segment CSV** (a column of **Visitor IDs / Pendo IDs**). We match each "
-            "Pendo ID **directly to the Number object** via `convo_now_account_id`, then check "
-            "**Monthly Values** for usage since the window. Flow: **Pendo ID → Number → "
-            "Monthly Values**.")
+st.markdown("Upload a **Pendo segment CSV** (a column of **Pendo IDs** — the UUID). We match each "
+            "Pendo ID **directly to the Number object** via `account_id`, bridge to the person's VRS "
+            "number by email, then check **Monthly Values** for usage since the window. "
+            "Flow: **Pendo ID → Number (account_id) → Monthly Values**. "
+            "Click **▶ Run match** after uploading — the cards show the *last saved run* until you do.")
 
 c1, c2, c3 = st.columns([2, 1.4, 1.4])
 with c1:
