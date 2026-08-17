@@ -175,8 +175,8 @@ if run and up is not None:
     num_usage = defaultdict(float)       # number -> total minutes
     num_usage_vrs = defaultdict(float)   # number -> VRS minutes
     num_usage_cn = defaultdict(float)    # number -> Convo Now minutes
-    month_cn = defaultdict(float)        # YYYY-MM -> CN minutes
-    month_vrs = defaultdict(float)       # YYYY-MM -> VRS minutes
+    detail_cn = defaultdict(float)       # (number, YYYY-MM) -> CN minutes
+    detail_vrs = defaultdict(float)      # (number, YYYY-MM) -> VRS minutes
     if with_usage:
         all_nums = sorted({r["number"] for lst in num_by_vid.values() for r in lst if r["number"]})
         with dash_spinner(f"Pulling Monthly Values for {len(all_nums):,} matched numbers…"):
@@ -195,20 +195,13 @@ if run and up is not None:
                     num_usage[nn] += mins
                     if svc == "vrs":
                         num_usage_vrs[nn] += mins
-                        month_vrs[mlabel] += mins
+                        detail_vrs[(nn, mlabel)] += mins
                     elif svc == "convo now":
                         num_usage_cn[nn] += mins
-                        month_cn[mlabel] += mins
-    # monthly CN/VRS usage table
-    _months = sorted(set(month_cn) | set(month_vrs))
-    monthly_df = pd.DataFrame([{
-        "Month": m,
-        "CN Minutes": round(month_cn.get(m, 0.0), 1),
-        "VRS Minutes": round(month_vrs.get(m, 0.0), 1),
-        "Total Minutes": round(month_cn.get(m, 0.0) + month_vrs.get(m, 0.0), 1),
-    } for m in _months])
+                        detail_cn[(nn, mlabel)] += mins
 
     rows = []
+    react_numbers = set()   # numbers belonging to reactivation-target accounts
     for vid in vids:
         recs = num_by_vid.get(vid, [])
         if not recs:
@@ -230,6 +223,7 @@ if run and up is not None:
         # reactivation flag: Convo Now active, VRS generated nothing → target
         if cn_min > 0 and vrs_min <= 0:
             flag = "🎯 Reactivate VRS (CN active, VRS silent)"
+            react_numbers.update(r["number"] for r in recs if r["number"])
         elif cn_min > 0 and vrs_min > 0:
             flag = "✅ Both active"
         elif cn_min <= 0 and vrs_min > 0:
@@ -252,6 +246,17 @@ if run and up is not None:
             "Total Min (since)": tot_min,
         })
     df = pd.DataFrame(rows)
+
+    # monthly CN/VRS minutes for the REACTIVATION-target accounts (watch VRS come alive)
+    _rmonths = sorted({m for (nn, m) in list(detail_cn) + list(detail_vrs) if nn in react_numbers})
+    monthly_df = pd.DataFrame([{
+        "Month": m,
+        "CN Minutes": round(sum(v for (nn, mm), v in detail_cn.items() if mm == m and nn in react_numbers), 1),
+        "VRS Minutes": round(sum(v for (nn, mm), v in detail_vrs.items() if mm == m and nn in react_numbers), 1),
+    } for m in _rmonths])
+    if not monthly_df.empty:
+        monthly_df["Total Minutes"] = (monthly_df["CN Minutes"] + monthly_df["VRS Minutes"]).round(1)
+
     save_report(SAVE_KEY, {"df": df, "monthly": monthly_df, "n_seg": len(vids),
                            "n_csv_ids": n_csv_ids, "since": str(react_since),
                            "with_usage": with_usage})
@@ -310,7 +315,9 @@ st.info(f"**🎯 {n_reactivate:,} reactivation targets** — Convo Now is active
 # ── monthly CN / VRS usage by month_date ─────────────────────────────────────────
 monthly = saved.get("monthly")
 if monthly is not None and not monthly.empty:
-    st.markdown("##### CN & VRS usage minutes by month")
+    st.markdown("##### 🎯 Reactivation targets — CN & VRS minutes by month")
+    st.caption("Only the reactivation accounts (CN active, VRS silent). Watch the **VRS Minutes** "
+               "column — a nonzero month means that group is starting to generate VRS minutes.")
     mx = int(max(monthly["CN Minutes"].max(), monthly["VRS Minutes"].max(), 1))
     st.dataframe(monthly, use_container_width=True, hide_index=True,
                  column_config={
