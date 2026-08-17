@@ -39,9 +39,9 @@ def _ms(d):
     return str(int(datetime(d.year, d.month, 1, tzinfo=timezone.utc).timestamp() * 1000))
 
 
-st.markdown("Upload a **Pendo segment CSV** (a column of **Visitor IDs**). We match each visitor "
-            "**directly to the Number object** (by `convo_now_account_id` or `account_id`), then "
-            "check **Monthly Values** for usage since the window. Flow: **Visitor ID → Number → "
+st.markdown("Upload a **Pendo segment CSV** (a column of **Visitor IDs / Pendo IDs**). We match each "
+            "Pendo ID **directly to the Number object** via `convo_now_account_id`, then check "
+            "**Monthly Values** for usage since the window. Flow: **Pendo ID → Number → "
             "Monthly Values**.")
 
 c1, c2, c3 = st.columns([2, 1.4, 1.4])
@@ -102,10 +102,8 @@ if run and up is not None:
             if rid in seen:
                 continue
             p = r.get("properties", {})
-            cid = (p.get("convo_now_account_id") or "").strip()
-            aid = (p.get("account_id") or "").strip()
-            vid = cid if cid in vidset else (aid if aid in vidset else "")
-            if not vid:
+            vid = (p.get("convo_now_account_id") or "").strip()
+            if vid not in vidset:
                 continue
             seen.add(rid)
             num_by_vid[vid].append({
@@ -116,12 +114,11 @@ if run and up is not None:
                 "status": (p.get("account_status") or "").strip(),
             })
 
-    with dash_spinner(f"Matching {len(vids):,} visitor IDs to the Number object…"):
-        for field in ("convo_now_account_id", "account_id"):
-            for i in range(0, len(vids), 100):
-                chunk = vids[i:i + 100]
-                _absorb(fetch_all(NUM_OBJECT, props, filter_groups=[{"filters": [
-                    {"propertyName": field, "operator": "IN", "values": chunk}]}]))
+    with dash_spinner(f"Matching {len(vids):,} Pendo IDs to the Number object…"):
+        for i in range(0, len(vids), 100):
+            chunk = vids[i:i + 100]
+            _absorb(fetch_all(NUM_OBJECT, props, filter_groups=[{"filters": [
+                {"propertyName": "convo_now_account_id", "operator": "IN", "values": chunk}]}]))
 
     # 2) Monthly Values usage for the matched numbers, since the window
     num_usage = defaultdict(float)   # number -> minutes
