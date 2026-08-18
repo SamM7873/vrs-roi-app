@@ -20,7 +20,7 @@ report_header("Campaign Reactivation Analysis",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-SAVE_KEY = "campaign_reactivation_v8"
+SAVE_KEY = "campaign_reactivation_v9"
 
 # ── outcome categories (simple: was 0 before? generating now?) ────────────────────
 O_REACT = "🚀 Reactivated (was 0 → generating now)"
@@ -154,6 +154,8 @@ with c3:
     to_month = st.selectbox("Baseline to (1st)", _mopts, index=_idx(_jul), format_func=_mfmt)
 with c4:
     measure_month = st.selectbox("Measure month (1st)", _mopts, index=_idx(_cur), format_func=_mfmt)
+campaign_cutoff = st.date_input("Campaign date (flag URSA logins after this)", value=date(2026, 7, 31),
+                                help="URSA last-login is flagged when it is strictly after this date.")
 run = st.button("▶ Run analysis", type="primary", disabled=(up is None))
 
 if run and up is not None:
@@ -282,7 +284,7 @@ if run and up is not None:
         no_vrs_or_zero = (not has_vrs) or (prev_vrs <= 0 and curr_vrs <= 0)
         cn_active = any(meta[n]["status"].lower() == "live" for n in cn_valid) or bool(cn_valid)
         login = max([meta[n]["login"] for n in vrs_valid if meta[n]["login"]], default=None)
-        login_post = bool(login and login.date() > to_month)  # login after baseline window
+        login_post = bool(login and login.date() > campaign_cutoff)  # URSA login after the campaign date
         _fmtd = lambda dd: dd.strftime("%b %d, %Y") if dd else "—"
         ios_l = max([meta[n]["ios"] for n in vrs_valid if meta[n]["ios"]], default=None)
         and_l = max([meta[n]["android"] for n in vrs_valid if meta[n]["android"]], default=None)
@@ -359,10 +361,14 @@ if run and up is not None:
             "VRS Usage Change": round(curr_vrs - prev_vrs, 1),
             "First Generation Month": first_post or "—",
             "Latest MV Month": latest_mv or "—",
+            "Latest URSA Login": _fmtd(login),
             "URSA iOS Login": _fmtd(ios_l),
             "URSA Android Login": _fmtd(and_l),
             "URSA Web Login": _fmtd(web_l),
-            "Login after baseline": "✅ Yes" if login_post else "—",
+            "URSA login after 7/31": "✅ Yes" if login_post else "—",
+            "Login vs usage": ("✅ login + usage" if (curr_vrs > 0 and login_post)
+                               else "⚠️ usage, no post-7/31 login" if curr_vrs > 0
+                               else "🔵 login, no usage" if login_post else "—"),
             "Campaign Outcome": outcome,
             "Match Status": match_status,
         })
@@ -474,7 +480,7 @@ else:
 st.markdown("##### Individual audience dataset")
 f1, f2, f3 = st.columns([1.5, 1.1, 2])
 pick = f1.multiselect("Outcome", OUTCOMES, default=[])
-login_pick = f2.selectbox("URSA login after baseline", ["All", "Yes", "No"], index=0)
+login_pick = f2.selectbox("URSA login after 7/31", ["All", "Yes", "No"], index=0)
 search = f3.text_input("Search pendo / account / email / number").strip().lower()
 only_zero = st.checkbox("Only: no VRS number **or** zero VRS minutes in range", value=False)
 view = df.copy()
@@ -483,9 +489,9 @@ if only_zero and "No VRS / Zero VRS (baseline)" in view.columns:
 if pick:
     view = view[view["Campaign Outcome"].isin(pick)]
 if login_pick == "Yes":
-    view = view[view["Login after baseline"] == "✅ Yes"]
+    view = view[view["URSA login after 7/31"] == "✅ Yes"]
 elif login_pick == "No":
-    view = view[view["Login after baseline"] != "✅ Yes"]
+    view = view[view["URSA login after 7/31"] != "✅ Yes"]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
 st.caption(f"{len(view):,} of {N:,}")
