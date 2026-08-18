@@ -388,10 +388,16 @@ if saved is None:
     report_header_close(); st.stop()
 
 df = saved["df"]
+RETENTION_DAYS = 14
 if saved.get("saved_at"):
+    _age_days = (time.time() - saved["saved_at"]) / 86400
+    _left = max(0, RETENTION_DAYS - int(_age_days))
     st.caption(f"📌 Saved {saved_at_label(saved)} · audience of {saved.get('n', len(df)):,} · "
                f"baseline {saved.get('base_from','')} → {saved.get('base_to','')} · "
-               f"measure {saved.get('measure','')}")
+               f"measure {saved.get('measure','')} · kept {RETENTION_DAYS} days "
+               f"({_left} left)")
+    if _age_days > RETENTION_DAYS:
+        st.warning(f"This saved report is older than {RETENTION_DAYS} days — re-run to refresh.")
 if df.empty:
     st.warning("No rows."); report_header_close(); st.stop()
 
