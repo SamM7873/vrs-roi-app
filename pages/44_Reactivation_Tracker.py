@@ -99,10 +99,39 @@ def _seek_mv(props, filters):
 
 st.markdown(
     "Upload the **campaign audience CSV** (Pendo IDs, and ideally **VRS Numbers** / **Convo Now "
-    "Numbers**). We validate the numbers on the Number object (excluding Guest), pull **Monthly "
-    "Values** across a history window, split usage into **before vs after** the campaign, and assign "
-    "each audience member a **campaign outcome**. The goal isn't who's active now — it's who "
-    "**changed behavior after the campaign**.")
+    "Numbers**). We check each person's VRS usage **before** the campaign vs **now**, to see who the "
+    "campaign brought back. The goal isn't who's active now — it's who **started generating after "
+    "the campaign**.")
+
+with st.expander("📖 How this works — read me first"):
+    st.markdown("""
+**The whole idea is 2 questions:**
+
+1. **Were they generating VRS minutes in the baseline?** (the months *before* the campaign — e.g. May–Jul)
+2. **Are they generating VRS minutes in the measure month?** (now)
+
+That gives **4 simple outcomes:**
+
+| | **Generating now?** | |
+|---|---|---|
+| | **Yes** | **No** |
+| **Was 0 before** | 🚀 **Reactivated** — the campaign win | ⚪ **Not reactivated** — keep targeting |
+| **Was generating before** | ✅ **Already active** — nice, but *not* the campaign | ◽ **Went quiet** — was using, stopped |
+
+**Only 🚀 Reactivated means the campaign changed behavior.** Someone who was already
+generating before the campaign (✅) does **not** count as a reactivation.
+
+**How to use it:**
+1. **Baseline from / to** — pick the months they were *not* generating (default May → Jul 2026).
+2. **Measure month** — the month you want to check for new generation (default = current month).
+3. Upload your CSV → **▶ Run analysis**.
+4. Read the **🚀 Reactivated** card — that's your campaign result. Filter the table to it and export.
+
+**Fine print:** VRS and Convo Now usage are kept separate (never summed). **Guest** credit type and
+**deactivated** numbers (with a `number_deleted_at` date) are excluded. Each person is matched by the
+numbers in the CSV, validated on the Number object; the **Pendo ID** is the Convo Now account, and the
+VRS number often sits on a *separate* account linked by the same email (shown in **VRS Account ID**).
+""")
 
 _mopts = _month_firsts()
 _mfmt = lambda d: d.strftime("%m/01/%Y")
