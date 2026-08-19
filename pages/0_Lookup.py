@@ -1224,7 +1224,8 @@ if "search_results" in st.session_state:
             elif show_monthly:
                 convo_rows_html = "".join(
                     info_row(mk, f"{sum(vals['convo']):.1f} min")
-                    for mk, vals in sorted(convo_monthly.items(), reverse=True)
+                    for mk, vals in sorted(convo_monthly.items(),
+                                           key=lambda x: month_sort_key(x[0]), reverse=True)
                     if vals.get("convo") and sum(vals["convo"]) > 0
                 ) or info_row("No data", "—")
                 ursa_col_html = (
