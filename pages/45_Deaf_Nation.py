@@ -507,31 +507,13 @@ def _card(col, t, v, s, c):
         <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
 
-N = len(df)
-n_vrs = int((df["Has VRS"] == "Yes").sum())
-n_active = int((df["VRS Min (window)"] > 0).sum())
-tot_min = int(round(df["VRS Min (window)"].sum()))
-k = st.columns(4)
-_card(k[0], "🎪 Event submissions", f"{N:,}", "records matched", "#7A5CFF")
-_card(k[1], "📞 Have VRS number", f"{n_vrs:,}", f"{n_vrs/N*100:.0f}% of submissions" if N else "—", "#0FB5AE")
-_card(k[2], "🚀 Generated VRS usage", f"{n_active:,}", f"in {saved.get('window','')}", "#2DB84B")
-_card(k[3], "⏱️ Total VRS minutes", f"{tot_min:,}", saved.get('window', ''), "#4C8DFF")
-st.markdown("")
-
-# by-event breakdown
-st.markdown("##### By event")
-be = df.groupby("Event").agg(Submissions=("Event", "size"),
-                             **{"Have VRS": ("Has VRS", lambda s: (s == "Yes").sum()),
-                                "VRS Minutes": ("VRS Min (window)", "sum")}).reset_index()
-st.dataframe(be, use_container_width=True, hide_index=True)
-
-# records
-st.markdown("##### Records")
+# ── filters drive the WHOLE dashboard (cards + breakdown + table all react) ─────────
 f1, f2, f3 = st.columns([1.4, 1.2, 2])
 evpick = f1.multiselect("Event", sorted(df["Event"].unique()), default=[])
 _states = sorted(s for s in df["State"].unique() if s and s != "—") if "State" in df.columns else []
 stpick = f2.multiselect("State", _states, default=[])
 search = f3.text_input("Search name / email / number").strip().lower()
+
 view = df.copy()
 if evpick:
     view = view[view["Event"].isin(evpick)]
@@ -539,9 +521,38 @@ if stpick:
     view = view[view["State"].isin(stpick)]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
-view = view.sort_values("VRS Min (window)", ascending=False)
-st.caption(f"{len(view):,} of {N:,}")
-st.dataframe(view, use_container_width=True, hide_index=True, height=460)
-st.download_button("📥 Export CSV", view.to_csv(index=False), "deaf_nation.csv", "text/csv")
+
+TOTAL = len(df)
+N = len(view)
+n_vrs = int((view["Has VRS"] == "Yes").sum())
+n_active = int((view["VRS Min (window)"] > 0).sum())
+tot_min = int(round(view["VRS Min (window)"].sum()))
+_filtered = bool(evpick or stpick or search)
+_scope = f"of {TOTAL:,} total" if _filtered else "records matched"
+k = st.columns(4)
+_card(k[0], "🎪 Event submissions", f"{N:,}", _scope, "#7A5CFF")
+_card(k[1], "📞 Have VRS number", f"{n_vrs:,}", f"{n_vrs/N*100:.0f}% of submissions" if N else "—", "#0FB5AE")
+_card(k[2], "🚀 Generated VRS usage", f"{n_active:,}", f"in {saved.get('window','')}", "#2DB84B")
+_card(k[3], "⏱️ Total VRS minutes", f"{tot_min:,}", saved.get('window', ''), "#4C8DFF")
+if _filtered:
+    st.caption(f"Filtered — showing {N:,} of {TOTAL:,} submissions.")
+st.markdown("")
+
+# by-event breakdown (respects the filters)
+st.markdown("##### By event")
+if len(view):
+    be = view.groupby("Event").agg(Submissions=("Event", "size"),
+                                   **{"Have VRS": ("Has VRS", lambda s: (s == "Yes").sum()),
+                                      "VRS Minutes": ("VRS Min (window)", "sum")}).reset_index()
+    st.dataframe(be, use_container_width=True, hide_index=True)
+else:
+    st.caption("No rows match the current filters.")
+
+# records
+st.markdown("##### Records")
+tview = view.sort_values("VRS Min (window)", ascending=False)
+st.caption(f"{len(tview):,} of {TOTAL:,}")
+st.dataframe(tview, use_container_width=True, hide_index=True, height=460)
+st.download_button("📥 Export CSV", tview.to_csv(index=False), "deaf_nation.csv", "text/csv")
 
 report_header_close()
