@@ -222,6 +222,38 @@ with st.expander(f"📋 All event names in the submission object ({len(_all_even
     else:
         st.warning("Couldn't identify the event-name field on the submission object.")
 
+# ── diagnostic tracer: trace one email through every hop ───────────────────────────
+with st.expander("🔧 Diagnose one email (debug the chain)", expanded=False):
+    demail = st.text_input("Email to trace", "israel174@icloud.com", key="trace_email").strip().lower()
+    if st.button("Trace") and demail:
+        # 1) contacts with this email
+        cts = fetch_all("contacts", ["email", "firstname", "lastname"],
+                        filter_groups=[{"filters": [
+                            {"propertyName": "email", "operator": "EQ", "value": demail}]}])
+        st.write(f"**1. Contacts with email = {demail}:** {len(cts)}")
+        for c in cts:
+            st.write(f"• contact id `{c['id']}` — {c.get('properties', {})}")
+        # 2) contact → Number association (raw)
+        cids = [str(c["id"]) for c in cts]
+        c2n = _assoc("contacts", NUM_OBJECT, cids) if cids else {}
+        nids = sorted({n for v in c2n.values() for n in v})
+        st.write(f"**2. Numbers linked by contact→Number association:** {len(nids)}")
+        st.json({k: v for k, v in c2n.items()} or {"(none)": []})
+        if nids:
+            st.write("Number records (via association):")
+            st.json(_batch_read(NUM_OBJECT, nids,
+                    ["number", "email", "service_type", "account_status", "number_status"]))
+        # 3) Number object rows where number's own email = this email
+        nbe = fetch_all(NUM_OBJECT, ["number", "email", "service_type", "account_status", "number_status"],
+                        filter_groups=[{"filters": [
+                            {"propertyName": "email", "operator": "EQ", "value": demail}]}])
+        st.write(f"**3. Number records whose OWN email = {demail}:** {len(nbe)}")
+        for n in nbe:
+            st.write(f"• number id `{n['id']}` — {n.get('properties', {})}")
+        if not cts and not nbe:
+            st.warning("No contact and no number carry this email — the person may not be in HubSpot "
+                       "under this address, or the email is stored on a different property.")
+
 # default the picker to the two Deaf Nation events if present, else nothing
 _opts = _all_event_names or EVENTS_DEFAULT
 _default = [e for e in EVENTS_DEFAULT if e in _opts] or []
