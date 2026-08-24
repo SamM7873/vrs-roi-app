@@ -27,6 +27,21 @@ EVENTS_DEFAULT = ["DeafNationAtlanta_May_2026", "DeafNationDallas_April_2026"]
 WINDOWS = {"Last 3 months": 3, "Last 6 months": 6, "Last 9 months": 9, "Last 12 months": 12}
 
 
+def _fmt_created(v):
+    """hs_createdate (ISO string or epoch ms) → 'YYYY-MM-DD HH:MM' in Central Time."""
+    if not v:
+        return ""
+    try:
+        if str(v).isdigit():
+            dt = datetime.fromtimestamp(int(v) / 1000, tz=timezone.utc)
+        else:
+            dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        off = -5 if 3 <= dt.month <= 11 else -6
+        return dt.astimezone(timezone(timedelta(hours=off))).strftime("%Y-%m-%d %H:%M")
+    except (ValueError, TypeError):
+        return str(v)
+
+
 def _months_ago_ms(n):
     today = date.today()
     y, m = today.year, today.month - n
@@ -333,6 +348,7 @@ if run:
         sub_meta[str(s["id"])] = {
             "event": (p.get(event_prop) or "").strip(),
             "email": (p.get("email") or "").strip().lower(),
+            "created": _fmt_created(p.get("hs_createdate")),
             "name": f"{(p.get('firstname') or '').strip()} {(p.get('lastname') or '').strip()}".strip()}
 
     # 2) submission → Contact. Use the association, and also resolve contacts by the
@@ -368,7 +384,8 @@ if run:
                 email = (cm.get("email") or "").strip().lower()
                 name = name or f"{(cm.get('firstname') or '').strip()} {(cm.get('lastname') or '').strip()}".strip()
                 break
-        sub_person[sid] = {"event": meta["event"], "email": email, "name": name}
+        sub_person[sid] = {"event": meta["event"], "email": email, "name": name,
+                           "created": meta["created"]}
 
     # 3) Contact → Number via CRM association (the email lives on the Contact, the number
     #    is linked to the contact — the Number's own email may be blank). Also try an
@@ -449,6 +466,7 @@ if run:
         mins = round(sum(_nid_min(n) for n in vnids), 1)
         rows.append({
             "Event": p["event"] or "—",
+            "Created": p["created"] or "—",
             "Name": name or "—",
             "Email": email or "—",
             "VRS Number(s)": ", ".join(numbers) or "—",
