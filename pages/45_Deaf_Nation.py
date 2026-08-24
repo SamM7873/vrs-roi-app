@@ -37,14 +37,30 @@ def _months_ago_ms(n):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _list_props(obj):
-    """Discover the object's property names/labels at runtime (uses the app token)."""
+    """Discover the object's property names/labels/types at runtime (uses the app token)."""
     try:
         r = requests.get(f"{_B}/crm/v3/properties/{obj}", headers=_H, timeout=30)
         if r.status_code == 200:
-            return [(p.get("name"), p.get("label") or p.get("name")) for p in r.json().get("results", [])]
+            return [(p.get("name"), p.get("label") or p.get("name"), p.get("type"))
+                    for p in r.json().get("results", [])]
     except Exception:
         pass
     return []
+
+
+def _count_matches(prop, values):
+    """How many submission records have `prop` IN the given event values (server-side total)."""
+    try:
+        r = requests.post(f"{_B}/crm/v3/objects/{SUB_OBJECT}/search", headers=_H,
+                          json={"limit": 1, "properties": ["hs_object_id"],
+                                "filterGroups": [{"filters": [
+                                    {"propertyName": prop, "operator": "IN", "values": values}]}]},
+                          timeout=20)
+        if r.status_code == 200:
+            return r.json().get("total", 0)
+    except Exception:
+        pass
+    return -1  # error / not filterable
 
 
 def _assoc_contacts(sub_ids):
@@ -98,23 +114,34 @@ st.markdown("Reads **event submission** records, follows them to the **Contact**
             "contact's email to a **VRS Number** (with its status), then pulls **Monthly Values** "
             "usage over the chosen window. Flow: **Submission → Contact → VRS Number → Monthly Values**.")
 
-# ── discover the event-name property so we filter on the right field ──────────────
+# ── discover submission properties (used to auto-find the event field at run time) ──
 props = _list_props(SUB_OBJECT)
-prop_names = [n for n, _ in props]
-_event_guess = (next((n for n, l in props if "event" in (n or "").lower() or "event" in (l or "").lower()), None)
-                or ("name" if "name" in prop_names else (prop_names[0] if prop_names else "event_name")))
-_email_prop = next((n for n in ("email", "hs_email", "contact_email") if n in prop_names), None)
+prop_names = [n for n, _, _ in props]
+# fields worth testing for the event name: text / enumeration / string-ish, event-ish first
+_str_types = {"string", "enumeration", None}
+_cands = [n for n, l, t in props if t in _str_types]
+_cands.sort(key=lambda n: (0 if "event" in n.lower() else 1 if any(
+    k in n.lower() for k in ("form", "submission", "campaign", "name", "title")) else 2, n))
 
-c1, c2, c3 = st.columns([1.6, 1.2, 1.2])
+
+def _find_event_field(values):
+    """Return the property name that actually contains the given event values (or None)."""
+    for n in _cands:
+        if _count_matches(n, values) > 0:
+            return n
+    return None
+
+
+st.markdown("Reads **event submission** records, follows them to the **Contact**, matches the "
+            "contact's email to a **VRS Number** (with its status), then pulls **Monthly Values** "
+            "usage over the chosen window. Flow: **Submission → Contact → VRS Number → Monthly Values**.")
+
+c1, c2 = st.columns([1.8, 1.2])
 with c1:
     events = st.multiselect("Event(s)", EVENTS_DEFAULT, default=EVENTS_DEFAULT,
                             accept_new_options=True,
                             help="Add another event name if it isn't listed.")
 with c2:
-    event_prop = st.selectbox("Event field", prop_names or ["event_name"],
-                              index=(prop_names.index(_event_guess) if _event_guess in prop_names else 0),
-                              help="Which property on the submission object holds the event name.")
-with c3:
     window_label = st.selectbox("Usage window", list(WINDOWS.keys()), index=0)
 
 status_filter = st.multiselect("Number status (VRS)", ["Live", "Suspended", "Cancelled", "Ported Out"],
@@ -124,15 +151,23 @@ run = st.button("▶ Run", type="primary", disabled=(not events))
 if run:
     floor_ms = _months_ago_ms(WINDOWS[window_label])
 
+    # 0) auto-detect which submission field holds the event name
+    with dash_spinner("Finding the event field…"):
+        event_prop = _find_event_field(events)
+    if not event_prop:
+        st.warning(f"Couldn't find any submission field containing {', '.join(events)}. "
+                   "Double-check the event name spelling.")
+        report_header_close(); st.stop()
+
     # 1) submission records for the selected event(s)
     sub_props = [event_prop] + [p for p in ("email", "firstname", "lastname", "createdate") if p in prop_names]
     with dash_spinner("Reading event submissions…"):
         subs = fetch_all(SUB_OBJECT, sub_props, filter_groups=[{"filters": [
             {"propertyName": event_prop, "operator": "IN", "values": events}]}])
     if not subs:
-        st.warning(f"No submission records found for {', '.join(events)} on field `{event_prop}`. "
-                   "Pick a different Event field and try again.")
+        st.warning(f"No submission records found for {', '.join(events)}.")
         report_header_close(); st.stop()
+    st.caption(f"Matched on submission field `{event_prop}`")
 
     sub_ids = [str(s["id"]) for s in subs]
     sub_meta = {}
