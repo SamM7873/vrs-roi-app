@@ -27,6 +27,12 @@ EVENTS_DEFAULT = ["DeafNationAtlanta_May_2026", "DeafNationDallas_April_2026"]
 WINDOWS = {"Last 3 months": 3, "Last 6 months": 6, "Last 9 months": 9, "Last 12 months": 12}
 
 
+def _digits(v):
+    """Normalize a phone number to its last 10 digits for reliable matching."""
+    d = "".join(ch for ch in str(v or "") if ch.isdigit())
+    return d[-10:] if len(d) >= 10 else d
+
+
 def _months_ago_ms(n):
     today = date.today()
     y, m = today.year, today.month - n
@@ -236,12 +242,13 @@ if run:
                                    {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                                    {"propertyName": "month_date", "operator": "GTE", "value": floor_ms}]):
                     op = o.get("properties", {})
-                    num_usage[str(op.get("number") or "").strip()] += to_float(op.get("usage_minutes")) or 0.0
+                    # key by last-10 digits so +1 / dashes / spaces don't break the join
+                    num_usage[_digits(op.get("number"))] += to_float(op.get("usage_minutes")) or 0.0
 
     rows = []
     for p in people:
         nums = vrs_by_email.get(p["email"], [])
-        mins = round(sum(num_usage.get(n, 0.0) for n, _ in nums), 1)
+        mins = round(sum(num_usage.get(_digits(n), 0.0) for n, _ in nums), 1)
         rows.append({
             "Event": p["event"] or "—",
             "Name": p["name"] or "—",
