@@ -290,6 +290,9 @@ if use_created:
         return str(int(dt.timestamp() * 1000))
     created_lo = _ct_to_ms(sd, stime)
     created_hi = _ct_to_ms(ed, etime)
+    if int(created_lo) > int(created_hi):   # inverted range → swap so it isn't empty
+        created_lo, created_hi = created_hi, created_lo
+        st.warning("From was after To — I swapped them so the range isn't empty.")
     st.caption(f"Submissions created {sd} {stime.strftime('%H:%M')} → {ed} {etime.strftime('%H:%M')} (Central)")
 
 run = st.button("▶ Run", type="primary", disabled=(not events and not any_event))
