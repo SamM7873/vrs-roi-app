@@ -258,10 +258,12 @@ with st.expander("🔧 Diagnose one email (debug the chain)", expanded=False):
 _opts = _all_event_names or EVENTS_DEFAULT
 _default = [e for e in EVENTS_DEFAULT if e in _opts] or []
 
+any_event = st.checkbox("Any event (include all events)", value=False,
+                        help="Ignore the event picker and include every submission.")
 c1, c2 = st.columns([1.8, 1.2])
 with c1:
     events = st.multiselect("Event(s)", _opts, default=_default,
-                            accept_new_options=True,
+                            accept_new_options=True, disabled=any_event,
                             help="Pick from the events found above, or type another name.")
 with c2:
     window_label = st.selectbox("Usage window", list(WINDOWS.keys()), index=0)
@@ -290,32 +292,35 @@ if use_created:
     created_hi = _ct_to_ms(ed, etime)
     st.caption(f"Submissions created {sd} {stime.strftime('%H:%M')} → {ed} {etime.strftime('%H:%M')} (Central)")
 
-run = st.button("▶ Run", type="primary", disabled=(not events))
+run = st.button("▶ Run", type="primary", disabled=(not events and not any_event))
 
 if run:
     floor_ms = _months_ago_ms(WINDOWS[window_label])
 
-    # 0) auto-detect which submission field holds the event name
+    # 0) determine the event field (needed for display; also for filtering unless "Any event")
     with dash_spinner("Finding the event field…"):
-        event_prop = _find_event_field(events)
+        event_prop = _find_event_field(events) if events else cat_field
     if not event_prop:
-        st.warning(f"Couldn't find any submission field containing {', '.join(events)}. "
-                   "Double-check the event name spelling.")
+        st.warning("Couldn't identify the event-name field on the submission object.")
         report_header_close(); st.stop()
 
-    # 1) submission records for the selected event(s), optionally within a created-date range
+    # 1) submission records, optionally filtered by event and/or created-date range
     sub_props = [event_prop, "hs_createdate"] + [p for p in ("email", "firstname", "lastname") if p in prop_names]
-    _sub_filters = [{"propertyName": event_prop, "operator": "IN", "values": events}]
+    _sub_filters = []
+    if not any_event:
+        _sub_filters.append({"propertyName": event_prop, "operator": "IN", "values": events})
     if created_lo:
         _sub_filters.append({"propertyName": "hs_createdate", "operator": "GTE", "value": created_lo})
     if created_hi:
         _sub_filters.append({"propertyName": "hs_createdate", "operator": "LTE", "value": created_hi})
+    _fg = [{"filters": _sub_filters}] if _sub_filters else None
     with dash_spinner("Reading event submissions…"):
-        subs = fetch_all(SUB_OBJECT, sub_props, filter_groups=[{"filters": _sub_filters}])
+        subs = fetch_all(SUB_OBJECT, sub_props, filter_groups=_fg)
     if not subs:
-        st.warning(f"No submission records found for {', '.join(events)}.")
+        st.warning("No submission records found for the chosen filters.")
         report_header_close(); st.stop()
-    st.caption(f"Matched on submission field `{event_prop}`")
+    st.caption(("All events" if any_event else f"Matched on submission field `{event_prop}`")
+               + f" · {len(subs):,} submissions")
 
     sub_ids = [str(s["id"]) for s in subs]
     sub_meta = {}
