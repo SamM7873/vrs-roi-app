@@ -119,7 +119,6 @@ email_bounce_page = st.Page("pages/36_Email_Bounce_Report.py",           title="
 ivt_page = st.Page("pages/37_Interactions_vs_Tickets.py",                title="Interactions vs Tickets",      icon="🔀")
 ticket_pipe_page = st.Page("pages/38_Ticket_Pipelines.py",               title="Ticket Pipelines",             icon="🎟️")
 ursa_audit_page = st.Page("pages/39_URSA_Login_Audit.py",                title="URSA Login Audit",             icon="🔍")
-cn_novrs_page = st.Page("pages/40_ConvoNow_No_VRS.py",                   title="Convo Now without VRS",        icon="📱")
 cn_only_page = st.Page("pages/42_ConvoNow_Only.py",                      title="Convo Now Only (No VRS)",      icon="📱")
 cn20_recon_page = st.Page("pages/43_CN20_Reconciliation.py",             title="CN20 Reconciliation",          icon="🔀")
 react_track_page = st.Page("pages/44_Reactivation_Tracker.py",           title="Campaign Reactivation",        icon="🚀")
@@ -129,7 +128,7 @@ deaf_nation_page = st.Page("pages/45_Deaf_Nation.py",                    title="
 pg = st.navigation({
     "Home": [overview_page, this_month_page, weekly_page, daily_page, lookup_page],
     "Numbers": [numbers_page, numfunnel_page, funnel_page, registrations_page, portin_page, winback_page, geo_page, yoy_page],
-    "Customers": [consumer_health_page, ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, vrs_react_page, retention_page, org_ret_page, school_page, cn_novrs_page, cn_only_page, cn20_recon_page, react_track_page, deaf_nation_page],
+    "Customers": [consumer_health_page, ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, vrs_react_page, retention_page, org_ret_page, school_page, cn_only_page, cn20_recon_page, react_track_page, deaf_nation_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page, ivt_page, ticket_pipe_page],
     "Tools": [bulk_page, explorer_page, pendo_page, dq_page, convo360_page, data_health_page, email_bounce_page, ursa_audit_page],
     "Admin": [ticket_audit_page, work_hours_page, audit_page],
