@@ -286,6 +286,22 @@ if run:
     for e, nums in vrs_nums_by_email.items():
         vrs_min_by_email[e] = sum(vrs_num_usage.get(n, 0.0) for n in nums)
 
+    # 5) phone + mobile from the Contact (matched by email)
+    contact_phone = {}   # email(lower) -> (phone, mobile)
+    _clist = sorted(e for e in cn_emails if e)
+    if _clist:
+        with dash_spinner(f"Reading phone numbers for {len(_clist):,} contacts…"):
+            for i in range(0, len(_clist), 100):
+                chunk = _clist[i:i + 100]
+                for c in fetch_all("contacts", ["email", "phone", "mobilephone"],
+                                   filter_groups=[{"filters": [
+                                       {"propertyName": "email", "operator": "IN", "values": chunk}]}]):
+                    cp = c.get("properties", {})
+                    em = (cp.get("email") or "").strip().lower()
+                    if em:
+                        contact_phone.setdefault(em, ((cp.get("phone") or "").strip(),
+                                                      (cp.get("mobilephone") or "").strip()))
+
     rows = []
     for p in cn:
         n = str(p.get("number") or "").strip()
@@ -309,6 +325,8 @@ if run:
             "Convo Now #": n or "—",
             "Account ID": (p.get("account_id") or "").strip() or "—",
             "Email": e or "(none)",
+            "Phone": (contact_phone.get(el, ("", ""))[0]) or "—",
+            "Mobile": (contact_phone.get(el, ("", ""))[1]) or "—",
             "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—",
             "Status": status or "—",
             "Usage Type": (p.get("usage_type") or "").strip() or "—",
