@@ -100,6 +100,31 @@ def _assoc(from_obj, to_obj, from_ids):
     return out
 
 
+def _seek(obj, props, filters):
+    """Seek-paginated search over `obj` (walks past HubSpot's 10k search cap)."""
+    url = f"{_B}/crm/v3/objects/{obj}/search"
+    out, last = [], "0"
+    while True:
+        body = {"limit": 100, "properties": props,
+                "sorts": [{"propertyName": "hs_object_id", "direction": "ASCENDING"}],
+                "filterGroups": [{"filters": filters + [
+                    {"propertyName": "hs_object_id", "operator": "GT", "value": last}]}]}
+        r = None
+        for attempt in range(6):
+            r = requests.post(url, headers=_H, json=body, timeout=60)
+            if r.status_code == 429:
+                time.sleep(1.0 * (attempt + 1)); continue
+            break
+        if r is None or r.status_code != 200:
+            break
+        batch = r.json().get("results", [])
+        out.extend(batch)
+        if len(batch) < 100:
+            break
+        last = str(batch[-1]["id"]); time.sleep(0.06)
+    return out
+
+
 def _batch_read(obj, ids, props):
     """Read objects by ID (batch). Returns {id: properties}."""
     out = {}
@@ -180,9 +205,10 @@ def _count_by_value(field, values):
     return out
 
 
-st.markdown("Reads **event submission** records and follows their **associations**: "
-            "**Submission → Contact → Number → Monthly Values**. VRS numbers are filtered by "
-            "status, and Monthly Values usage is summed over the chosen window.")
+st.markdown("Reads **event submission** records and follows **Submission → Contact → Number → "
+            "Monthly Values**. The contact reaches its VRS **Number** by CRM association *or* by "
+            "matching email. VRS numbers are filtered by status; Monthly Values usage is summed "
+            "over the chosen window.")
 
 # ── all event names from the submission object ────────────────────────────────────
 cat_field, cat_counts = _event_catalog()
@@ -248,20 +274,60 @@ if run:
         all_cids = sorted({c for cids in sub_to_cids.values() for c in cids})
         contact_of = _batch_read("contacts", all_cids, ["email", "firstname", "lastname"])
 
-    # 3) Contact → Number (association); keep VRS numbers matching the status filter
-    with dash_spinner(f"Linking {len(all_cids):,} contacts to Number records…"):
-        cid_to_nids = _assoc("contacts", NUM_OBJECT, all_cids)
-        all_nids = sorted({n for nids in cid_to_nids.values() for n in nids})
-        num_of = _batch_read(NUM_OBJECT, all_nids,
-                             ["number", "service_type", "account_status", "number_status"])
+    # resolve one email + name per submission (contact first, else the record's own email)
+    sub_person = {}
+    for sid, meta in sub_meta.items():
+        email, name = meta["email"], meta["name"]
+        for cid in sub_to_cids.get(sid, []):
+            cm = contact_of.get(cid, {})
+            if cm.get("email"):
+                email = (cm.get("email") or "").strip().lower()
+                name = name or f"{(cm.get('firstname') or '').strip()} {(cm.get('lastname') or '').strip()}".strip()
+                break
+        sub_person[sid] = {"event": meta["event"], "email": email, "name": name}
+
+    # 3) reach the Number object two ways and union them:
+    #    (a) Contact → Number CRM association, and
+    #    (b) email match — the Number object carries the customer email (case-insensitive).
+    num_of = {}          # number-record-id -> properties
+    cid_to_nids = _assoc("contacts", NUM_OBJECT, all_cids)   # (a) may be empty in this portal
+    assoc_nids = sorted({n for nids in cid_to_nids.values() for n in nids})
+    if assoc_nids:
+        num_of.update(_batch_read(NUM_OBJECT, assoc_nids,
+                      ["number", "email", "service_type", "account_status", "number_status"]))
+
+    # (b) pull all VRS numbers once, index by lowercased email
+    want_emails = {p["email"] for p in sub_person.values() if p["email"]}
+    email_to_nids = defaultdict(list)
+    if want_emails:
+        with dash_spinner("Matching contacts to VRS numbers by email…"):
+            for rr in _seek(NUM_OBJECT, ["number", "email", "service_type",
+                                         "account_status", "number_status"],
+                            [{"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]):
+                pp = rr.get("properties", {})
+                em = (pp.get("email") or "").strip().lower()
+                if em in want_emails:
+                    nid = str(rr["id"])
+                    num_of[nid] = pp
+                    email_to_nids[em].append(nid)
+
+    def _is_vrs_ok(nid):
+        p = num_of.get(nid, {})
+        if (p.get("service_type") or "").strip().lower() != "vrs":
+            return False
+        stt = (p.get("account_status") or p.get("number_status") or "").strip()
+        return (not status_filter) or (stt in status_filter)
+
+    # number ids reached by each submission (association ∪ email)
+    sub_to_nids = {}
+    for sid, p in sub_person.items():
+        nids = {n for cid in sub_to_cids.get(sid, []) for n in cid_to_nids.get(cid, [])}
+        nids |= set(email_to_nids.get(p["email"], []))
+        sub_to_nids[sid] = sorted(nids)
+
+    vrs_nids = sorted({n for nids in sub_to_nids.values() for n in nids if _is_vrs_ok(n)})
 
     # 4) Number → Monthly Values (association); sum VRS usage in the window
-    #    Pull MV for the VRS numbers we care about, keyed by MV record id via association.
-    vrs_nids = [nid for nid in all_nids
-                if (num_of.get(nid, {}).get("service_type") or "").strip().lower() == "vrs"
-                and (not status_filter
-                     or (num_of.get(nid, {}).get("account_status")
-                         or num_of.get(nid, {}).get("number_status") or "").strip() in status_filter)]
     nid_usage = defaultdict(float)
     if vrs_nids:
         with dash_spinner(f"Linking {len(vrs_nids):,} VRS numbers to Monthly Values…"):
@@ -283,19 +349,11 @@ if run:
                         pass
                     nid_usage[nid] += to_float(mp.get("usage_minutes")) or 0.0
 
+    vrs_set = set(vrs_nids)
     rows = []
-    for sid, meta in sub_meta.items():
-        cids = sub_to_cids.get(sid, [])
-        email, name = meta["email"], meta["name"]
-        for cid in cids:
-            cm = contact_of.get(cid, {})
-            if cm.get("email"):
-                email = (cm.get("email") or "").strip().lower()
-                name = name or f"{(cm.get('firstname') or '').strip()} {(cm.get('lastname') or '').strip()}".strip()
-                break
-        # VRS numbers reached via this submission's contacts
-        nids = sorted({n for cid in cids for n in cid_to_nids.get(cid, [])})
-        vnids = [n for n in nids if n in set(vrs_nids)]
+    for sid, p in sub_person.items():
+        email, name = p["email"], p["name"]
+        vnids = [n for n in sub_to_nids.get(sid, []) if n in vrs_set]
         numbers = [str(num_of.get(n, {}).get("number") or "").strip() for n in vnids]
         numbers = [x for x in numbers if x]
         statuses = sorted({(num_of.get(n, {}).get("account_status")
@@ -304,7 +362,7 @@ if run:
         statuses = [s for s in statuses if s]
         mins = round(sum(nid_usage.get(n, 0.0) for n in vnids), 1)
         rows.append({
-            "Event": meta["event"] or "—",
+            "Event": p["event"] or "—",
             "Name": name or "—",
             "Email": email or "—",
             "VRS Number(s)": ", ".join(numbers) or "—",
