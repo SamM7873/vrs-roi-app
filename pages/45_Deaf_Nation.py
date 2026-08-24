@@ -90,8 +90,9 @@ def _assoc_contacts(sub_ids):
     return out
 
 
-def _seek_mv(props, filters):
-    url = f"{_B}/crm/v3/objects/{MV_OBJECT}/search"
+def _seek(obj, props, filters):
+    """Seek-paginated search over `obj` (walks past HubSpot's 10k search cap)."""
+    url = f"{_B}/crm/v3/objects/{obj}/search"
     out, last = [], "0"
     ph = st.empty()
     while True:
@@ -212,23 +213,23 @@ if run:
         people.append({"sub": sid, "event": meta["event"], "email": email, "name": name})
 
     # 3) email → VRS Number (with status)
-    emails = sorted({p["email"] for p in people if p["email"]})
-    vrs_by_email = defaultdict(list)   # email -> list of (number, status)
-    if emails:
-        with dash_spinner(f"Matching {len(emails):,} emails to VRS numbers…"):
-            for i in range(0, len(emails), 100):
-                chunk = emails[i:i + 100]
-                for rr in fetch_all(NUM_OBJECT, ["number", "email", "account_status", "number_status"],
-                                    filter_groups=[{"filters": [
-                                        {"propertyName": "email", "operator": "IN", "values": chunk},
-                                        {"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]}]):
-                    pp = rr.get("properties", {})
-                    em = (pp.get("email") or "").strip().lower()
-                    num = str(pp.get("number") or "").strip()
-                    stt = (pp.get("account_status") or pp.get("number_status") or "").strip()
-                    if em and num:
-                        if not status_filter or stt in status_filter:
-                            vrs_by_email[em].append((num, stt))
+    #    Pull ALL VRS numbers once and match email case-insensitively in Python — the
+    #    Number object's `email` isn't guaranteed lowercase, so a server-side IN filter
+    #    on lowercased emails silently misses. (Same approach as Convo Now Only page.)
+    want = {p["email"] for p in people if p["email"]}   # already lowercased
+    vrs_by_email = defaultdict(list)   # email(lower) -> list of (number, status)
+    if want:
+        with dash_spinner("Loading VRS numbers to match by email…"):
+            for rr in _seek(NUM_OBJECT, ["number", "email", "account_status", "number_status"],
+                            [{"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]):
+                pp = rr.get("properties", {})
+                em = (pp.get("email") or "").strip().lower()
+                if em not in want:
+                    continue
+                num = str(pp.get("number") or "").strip()
+                stt = (pp.get("account_status") or pp.get("number_status") or "").strip()
+                if em and num and (not status_filter or stt in status_filter):
+                    vrs_by_email[em].append((num, stt))
 
     # 4) Monthly Values usage for those VRS numbers in the window
     all_nums = sorted({n for lst in vrs_by_email.values() for n, _ in lst})
@@ -237,7 +238,7 @@ if run:
         with dash_spinner(f"Pulling Monthly Values for {len(all_nums):,} VRS numbers…"):
             for i in range(0, len(all_nums), 100):
                 chunk = all_nums[i:i + 100]
-                for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
+                for o in _seek(MV_OBJECT, ["number", "usage_minutes", "service_type", "month_date"],
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
                                    {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                                    {"propertyName": "month_date", "operator": "GTE", "value": floor_ms}]):
