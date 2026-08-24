@@ -360,12 +360,13 @@ if run:
                     num_of[nid] = pp
                     email_to_nids[em].append(nid)
 
+    _status_want = {s.strip().lower() for s in status_filter}   # values are stored lowercase
     def _is_vrs_ok(nid):
         p = num_of.get(nid, {})
         if (p.get("service_type") or "").strip().lower() != "vrs":
             return False
-        stt = (p.get("account_status") or p.get("number_status") or "").strip()
-        return (not status_filter) or (stt in status_filter)
+        stt = (p.get("account_status") or p.get("number_status") or "").strip().lower()
+        return (not _status_want) or (stt in _status_want)
 
     # number ids reached by each submission (association ∪ email)
     sub_to_nids = {}
@@ -407,7 +408,7 @@ if run:
         numbers = [str(num_of.get(n, {}).get("number") or "").strip() for n in vnids]
         numbers = [x for x in numbers if x]
         statuses = sorted({(num_of.get(n, {}).get("account_status")
-                            or num_of.get(n, {}).get("number_status") or "").strip()
+                            or num_of.get(n, {}).get("number_status") or "").strip().title()
                            for n in vnids if num_of.get(n)})
         statuses = [s for s in statuses if s]
         mins = round(sum(_nid_min(n) for n in vnids), 1)
