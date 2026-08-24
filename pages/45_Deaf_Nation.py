@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta, time as dtime
 from collections import defaultdict
 import requests
 from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
@@ -268,6 +268,28 @@ with c2:
 
 status_filter = st.multiselect("Number status (VRS)", ["Live", "Suspended", "Cancelled", "Ported Out"],
                                default=["Live"], help="Which VRS number statuses to include.")
+
+# ── submission date/time filter (hs_createdate, Central Time) ──────────────────────
+use_created = st.checkbox("Filter submissions by created date/time (hs_createdate)", value=False,
+                          help="Limit to submissions created within a custom date & time range (Central Time).")
+created_lo = created_hi = None
+if use_created:
+    d1, t1, d2, t2 = st.columns(4)
+    _today = date.today()
+    sd = d1.date_input("From date", value=_today.replace(day=1))
+    stime = t1.time_input("From time", value=dtime(0, 0))
+    ed = d2.date_input("To date", value=_today)
+    etime = t2.time_input("To time", value=dtime(23, 59))
+
+    def _ct_to_ms(d, t):
+        # interpret the entered wall-clock as US Central (CDT Mar–Nov, else CST), return epoch ms
+        off = -5 if 3 <= d.month <= 11 else -6
+        dt = datetime(d.year, d.month, d.day, t.hour, t.minute, tzinfo=timezone(timedelta(hours=off)))
+        return str(int(dt.timestamp() * 1000))
+    created_lo = _ct_to_ms(sd, stime)
+    created_hi = _ct_to_ms(ed, etime)
+    st.caption(f"Submissions created {sd} {stime.strftime('%H:%M')} → {ed} {etime.strftime('%H:%M')} (Central)")
+
 run = st.button("▶ Run", type="primary", disabled=(not events))
 
 if run:
@@ -281,11 +303,15 @@ if run:
                    "Double-check the event name spelling.")
         report_header_close(); st.stop()
 
-    # 1) submission records for the selected event(s)
-    sub_props = [event_prop] + [p for p in ("email", "firstname", "lastname", "createdate") if p in prop_names]
+    # 1) submission records for the selected event(s), optionally within a created-date range
+    sub_props = [event_prop, "hs_createdate"] + [p for p in ("email", "firstname", "lastname") if p in prop_names]
+    _sub_filters = [{"propertyName": event_prop, "operator": "IN", "values": events}]
+    if created_lo:
+        _sub_filters.append({"propertyName": "hs_createdate", "operator": "GTE", "value": created_lo})
+    if created_hi:
+        _sub_filters.append({"propertyName": "hs_createdate", "operator": "LTE", "value": created_hi})
     with dash_spinner("Reading event submissions…"):
-        subs = fetch_all(SUB_OBJECT, sub_props, filter_groups=[{"filters": [
-            {"propertyName": event_prop, "operator": "IN", "values": events}]}])
+        subs = fetch_all(SUB_OBJECT, sub_props, filter_groups=[{"filters": _sub_filters}])
     if not subs:
         st.warning(f"No submission records found for {', '.join(events)}.")
         report_header_close(); st.stop()
@@ -422,8 +448,12 @@ if run:
             "VRS Min (window)": mins,
         })
     df = pd.DataFrame(rows)
+    _created_note = ""
+    if use_created:
+        _created_note = f"{sd} {stime.strftime('%H:%M')} → {ed} {etime.strftime('%H:%M')} CT"
     save_report(_key, {"df": df, "events": events, "window": window_label,
-                       "status": status_filter, "event_prop": event_prop})
+                       "status": status_filter, "event_prop": event_prop,
+                       "created_range": _created_note})
 
 saved = load_report(_key)
 if saved is None:
@@ -432,8 +462,10 @@ if saved is None:
 
 df = saved["df"]
 if saved.get("saved_at"):
+    _cr = saved.get("created_range")
     st.caption(f"📌 Saved {saved_at_label(saved)} · events: {', '.join(saved.get('events', []))} · "
-               f"{saved.get('window','')} · statuses: {', '.join(saved.get('status', [])) or 'all'}")
+               f"{saved.get('window','')} · statuses: {', '.join(saved.get('status', [])) or 'all'}"
+               + (f" · created: {_cr}" if _cr else ""))
 if df.empty:
     st.warning("No rows."); report_header_close(); st.stop()
 
