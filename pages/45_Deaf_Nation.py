@@ -510,15 +510,18 @@ def _card(col, t, v, s, c):
 # ── filters drive the WHOLE dashboard (cards + breakdown + table all react) ─────────
 f1, f2, f3 = st.columns([1.4, 1.2, 2])
 evpick = f1.multiselect("Event", sorted(df["Event"].unique()), default=[])
+_NO_STATE = "(No state)"
 _states = sorted(s for s in df["State"].unique() if s and s != "—") if "State" in df.columns else []
-stpick = f2.multiselect("State", _states, default=[])
+_state_opts = _states + ([_NO_STATE] if "State" in df.columns and (df["State"] == "—").any() else [])
+stpick = f2.multiselect("State", _state_opts, default=[])
 search = f3.text_input("Search name / email / number").strip().lower()
 
 view = df.copy()
 if evpick:
     view = view[view["Event"].isin(evpick)]
 if stpick:
-    view = view[view["State"].isin(stpick)]
+    _sel = [("—" if s == _NO_STATE else s) for s in stpick]
+    view = view[view["State"].isin(_sel)]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
 
