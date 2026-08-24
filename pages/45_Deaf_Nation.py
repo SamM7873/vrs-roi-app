@@ -48,6 +48,22 @@ def _list_props(obj):
     return []
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _prop_options(obj):
+    """{prop_name: [option values]} for enumeration properties (their defined choices)."""
+    out = {}
+    try:
+        r = requests.get(f"{_B}/crm/v3/properties/{obj}", headers=_H, timeout=30)
+        if r.status_code == 200:
+            for p in r.json().get("results", []):
+                opts = [o.get("value") for o in (p.get("options") or []) if o.get("value")]
+                if opts:
+                    out[p.get("name")] = opts
+    except Exception:
+        pass
+    return out
+
+
 def _count_matches(prop, values):
     """How many submission records have `prop` IN the given event values (server-side total)."""
     try:
@@ -123,10 +139,21 @@ def _find_event_field(values):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _event_catalog():
-    """Discover the event field and every distinct event name (with submission counts)."""
-    field = _find_event_field(EVENTS_DEFAULT)
-    if not field:
-        field = next((n for n, l, t in props if t == "enumeration"), None) or (_cands[0] if _cands else None)
+    """Discover the event field and every distinct event name (with submission counts).
+
+    Prefer an enumeration property whose defined options include the known event
+    names — that gives the full list cheaply. Fall back to scanning records.
+    """
+    opt_map = _prop_options(SUB_OBJECT)
+    # 1) enumeration property that contains our known Deaf Nation events
+    field = next((n for n, opts in opt_map.items()
+                  if any(e in opts for e in EVENTS_DEFAULT)), None)
+    if field:
+        vals = opt_map[field]
+        counts = _count_by_value(field, vals) if len(vals) <= 200 else {}
+        return field, {v: counts.get(v, 0) for v in vals}
+    # 2) otherwise locate the field by value match, then scan records for distinct values
+    field = _find_event_field(EVENTS_DEFAULT) or (_cands[0] if _cands else None)
     counts = {}
     if field:
         for s in fetch_all(SUB_OBJECT, [field]):
@@ -136,6 +163,23 @@ def _event_catalog():
     return field, counts
 
 
+def _count_by_value(field, values):
+    """Per-value submission counts via cheap server-side totals (limit-1 searches)."""
+    out = {}
+    for v in values:
+        try:
+            r = requests.post(f"{_B}/crm/v3/objects/{SUB_OBJECT}/search", headers=_H,
+                              json={"limit": 1, "properties": ["hs_object_id"],
+                                    "filterGroups": [{"filters": [
+                                        {"propertyName": field, "operator": "EQ", "value": v}]}]},
+                              timeout=20)
+            if r.status_code == 200:
+                out[v] = r.json().get("total", 0)
+        except Exception:
+            pass
+    return out
+
+
 st.markdown("Reads **event submission** records and follows their **associations**: "
             "**Submission → Contact → Number → Monthly Values**. VRS numbers are filtered by "
             "status, and Monthly Values usage is summed over the chosen window.")
@@ -143,7 +187,7 @@ st.markdown("Reads **event submission** records and follows their **associations
 # ── all event names from the submission object ────────────────────────────────────
 cat_field, cat_counts = _event_catalog()
 _all_event_names = sorted(cat_counts, key=lambda k: (-cat_counts[k], k.lower()))
-with st.expander(f"📋 All event names in the submission object ({len(_all_event_names):,})", expanded=False):
+with st.expander(f"📋 All event names in the submission object ({len(_all_event_names):,})", expanded=True):
     if cat_field:
         st.caption(f"From field `{cat_field}` · {sum(cat_counts.values()):,} submissions total")
         st.dataframe(pd.DataFrame({"Event name": _all_event_names,
