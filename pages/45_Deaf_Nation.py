@@ -327,27 +327,28 @@ if run:
 
     vrs_nids = sorted({n for nids in sub_to_nids.values() for n in nids if _is_vrs_ok(n)})
 
-    # 4) Number → Monthly Values (association); sum VRS usage in the window
-    nid_usage = defaultdict(float)
-    if vrs_nids:
-        with dash_spinner(f"Linking {len(vrs_nids):,} VRS numbers to Monthly Values…"):
-            nid_to_mvids = _assoc(NUM_OBJECT, MV_OBJECT, vrs_nids)
-            all_mvids = sorted({m for mids in nid_to_mvids.values() for m in mids})
-            mv_of = _batch_read(MV_OBJECT, all_mvids,
-                                ["usage_minutes", "service_type", "month_date"])
-            floor = int(floor_ms)
-            for nid, mvids in nid_to_mvids.items():
-                for mid in mvids:
-                    mp = mv_of.get(mid, {})
-                    if (mp.get("service_type") or "").strip().lower() != "vrs":
-                        continue
-                    md = mp.get("month_date")
-                    try:
-                        if md is not None and int(md) < floor:
-                            continue
-                    except (TypeError, ValueError):
-                        pass
-                    nid_usage[nid] += to_float(mp.get("usage_minutes")) or 0.0
+    # 4) Monthly Values usage for those VRS numbers, matched by the `number` field
+    #    (same approach as the Convo Now / Reactivation pages — MV joins on number).
+    def _dig(v):
+        d = "".join(ch for ch in str(v or "") if ch.isdigit())
+        return d[-10:] if len(d) >= 10 else d
+
+    vrs_numbers = sorted({str(num_of.get(n, {}).get("number") or "").strip()
+                          for n in vrs_nids if str(num_of.get(n, {}).get("number") or "").strip()})
+    usage_by_dig = defaultdict(float)
+    if vrs_numbers:
+        with dash_spinner(f"Pulling Monthly Values for {len(vrs_numbers):,} VRS numbers…"):
+            for i in range(0, len(vrs_numbers), 100):
+                chunk = vrs_numbers[i:i + 100]
+                for o in _seek(MV_OBJECT, ["number", "usage_minutes", "service_type", "month_date"],
+                               [{"propertyName": "number", "operator": "IN", "values": chunk},
+                                {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
+                                {"propertyName": "month_date", "operator": "GTE", "value": floor_ms}]):
+                    op = o.get("properties", {})
+                    usage_by_dig[_dig(op.get("number"))] += to_float(op.get("usage_minutes")) or 0.0
+
+    def _nid_min(nid):
+        return usage_by_dig.get(_dig(num_of.get(nid, {}).get("number")), 0.0)
 
     vrs_set = set(vrs_nids)
     rows = []
@@ -360,7 +361,7 @@ if run:
                             or num_of.get(n, {}).get("number_status") or "").strip()
                            for n in vnids if num_of.get(n)})
         statuses = [s for s in statuses if s]
-        mins = round(sum(nid_usage.get(n, 0.0) for n in vnids), 1)
+        mins = round(sum(_nid_min(n) for n in vnids), 1)
         rows.append({
             "Event": p["event"] or "—",
             "Name": name or "—",
