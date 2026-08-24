@@ -372,20 +372,21 @@ if run:
             if cid and cid not in sub_to_cids[sid]:
                 sub_to_cids[sid].append(cid)
         all_cids = sorted({c for cids in sub_to_cids.values() for c in cids})
-        contact_of = _batch_read("contacts", all_cids, ["email", "firstname", "lastname"])
+        contact_of = _batch_read("contacts", all_cids, ["email", "firstname", "lastname", "state"])
 
-    # resolve one email + name per submission (contact first, else the record's own email)
+    # resolve one email + name + state per submission (contact first, else the record's own email)
     sub_person = {}
     for sid, meta in sub_meta.items():
-        email, name = meta["email"], meta["name"]
+        email, name, state = meta["email"], meta["name"], ""
         for cid in sub_to_cids.get(sid, []):
             cm = contact_of.get(cid, {})
+            state = state or (cm.get("state") or "").strip()
             if cm.get("email"):
                 email = (cm.get("email") or "").strip().lower()
                 name = name or f"{(cm.get('firstname') or '').strip()} {(cm.get('lastname') or '').strip()}".strip()
                 break
         sub_person[sid] = {"event": meta["event"], "email": email, "name": name,
-                           "created": meta["created"]}
+                           "created": meta["created"], "state": state}
 
     # 3) Contact → Number via CRM association (the email lives on the Contact, the number
     #    is linked to the contact — the Number's own email may be blank). Also try an
@@ -467,6 +468,7 @@ if run:
         rows.append({
             "Event": p["event"] or "—",
             "Created": p["created"] or "—",
+            "State": p["state"] or "—",
             "Name": name or "—",
             "Email": email or "—",
             "VRS Number(s)": ", ".join(numbers) or "—",
@@ -525,12 +527,16 @@ st.dataframe(be, use_container_width=True, hide_index=True)
 
 # records
 st.markdown("##### Records")
-f1, f2 = st.columns([1.4, 2])
+f1, f2, f3 = st.columns([1.4, 1.2, 2])
 evpick = f1.multiselect("Event", sorted(df["Event"].unique()), default=[])
-search = f2.text_input("Search name / email / number").strip().lower()
+_states = sorted(s for s in df["State"].unique() if s and s != "—") if "State" in df.columns else []
+stpick = f2.multiselect("State", _states, default=[])
+search = f3.text_input("Search name / email / number").strip().lower()
 view = df.copy()
 if evpick:
     view = view[view["Event"].isin(evpick)]
+if stpick:
+    view = view[view["State"].isin(stpick)]
 if search:
     view = view[view.apply(lambda r: search in " ".join(str(x).lower() for x in r.values), axis=1)]
 view = view.sort_values("VRS Min (window)", ascending=False)
