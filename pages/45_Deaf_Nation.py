@@ -121,15 +121,46 @@ def _find_event_field(values):
     return None
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _event_catalog():
+    """Discover the event field and every distinct event name (with submission counts)."""
+    field = _find_event_field(EVENTS_DEFAULT)
+    if not field:
+        field = next((n for n, l, t in props if t == "enumeration"), None) or (_cands[0] if _cands else None)
+    counts = {}
+    if field:
+        for s in fetch_all(SUB_OBJECT, [field]):
+            v = (s.get("properties", {}).get(field) or "").strip()
+            if v:
+                counts[v] = counts.get(v, 0) + 1
+    return field, counts
+
+
 st.markdown("Reads **event submission** records and follows their **associations**: "
             "**Submission → Contact → Number → Monthly Values**. VRS numbers are filtered by "
             "status, and Monthly Values usage is summed over the chosen window.")
 
+# ── all event names from the submission object ────────────────────────────────────
+cat_field, cat_counts = _event_catalog()
+_all_event_names = sorted(cat_counts, key=lambda k: (-cat_counts[k], k.lower()))
+with st.expander(f"📋 All event names in the submission object ({len(_all_event_names):,})", expanded=False):
+    if cat_field:
+        st.caption(f"From field `{cat_field}` · {sum(cat_counts.values()):,} submissions total")
+        st.dataframe(pd.DataFrame({"Event name": _all_event_names,
+                                   "Submissions": [cat_counts[e] for e in _all_event_names]}),
+                     use_container_width=True, hide_index=True, height=320)
+    else:
+        st.warning("Couldn't identify the event-name field on the submission object.")
+
+# default the picker to the two Deaf Nation events if present, else nothing
+_opts = _all_event_names or EVENTS_DEFAULT
+_default = [e for e in EVENTS_DEFAULT if e in _opts] or []
+
 c1, c2 = st.columns([1.8, 1.2])
 with c1:
-    events = st.multiselect("Event(s)", EVENTS_DEFAULT, default=EVENTS_DEFAULT,
+    events = st.multiselect("Event(s)", _opts, default=_default,
                             accept_new_options=True,
-                            help="Add another event name if it isn't listed.")
+                            help="Pick from the events found above, or type another name.")
 with c2:
     window_label = st.selectbox("Usage window", list(WINDOWS.keys()), index=0)
 
