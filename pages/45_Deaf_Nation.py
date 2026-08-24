@@ -313,9 +313,10 @@ if run:
         _sub_filters.append({"propertyName": "hs_createdate", "operator": "GTE", "value": created_lo})
     if created_hi:
         _sub_filters.append({"propertyName": "hs_createdate", "operator": "LTE", "value": created_hi})
-    _fg = [{"filters": _sub_filters}] if _sub_filters else None
+    if not _sub_filters:   # "Any event" with no date range → catch-all so search returns all
+        _sub_filters = [{"propertyName": "hs_object_id", "operator": "HAS_PROPERTY"}]
     with dash_spinner("Reading event submissions…"):
-        subs = fetch_all(SUB_OBJECT, sub_props, filter_groups=_fg)
+        subs = fetch_all(SUB_OBJECT, sub_props, filter_groups=[{"filters": _sub_filters}])
     if not subs:
         st.warning("No submission records found for the chosen filters.")
         report_header_close(); st.stop()
