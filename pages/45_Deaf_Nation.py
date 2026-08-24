@@ -268,9 +268,26 @@ if run:
             "email": (p.get("email") or "").strip().lower(),
             "name": f"{(p.get('firstname') or '').strip()} {(p.get('lastname') or '').strip()}".strip()}
 
-    # 2) submission → Contact (association) → email/name
+    # 2) submission → Contact. Use the association, and also resolve contacts by the
+    #    submission's email (some submissions aren't associated to a contact record).
     with dash_spinner(f"Linking {len(sub_ids):,} submissions to Contacts…"):
         sub_to_cids = _assoc(SUB_OBJECT, "contacts", sub_ids)
+        # find contacts by email for the submission emails we have
+        sub_emails = sorted({m["email"] for m in sub_meta.values() if m["email"]})
+        email_to_cid = {}
+        for i in range(0, len(sub_emails), 100):
+            chunk = sub_emails[i:i + 100]
+            for c in fetch_all("contacts", ["email", "firstname", "lastname"],
+                               filter_groups=[{"filters": [
+                                   {"propertyName": "email", "operator": "IN", "values": chunk}]}]):
+                em = (c.get("properties", {}).get("email") or "").strip().lower()
+                if em:
+                    email_to_cid.setdefault(em, str(c["id"]))
+        # merge email-resolved contacts into each submission's contact set
+        for sid, m in sub_meta.items():
+            cid = email_to_cid.get(m["email"])
+            if cid and cid not in sub_to_cids[sid]:
+                sub_to_cids[sid].append(cid)
         all_cids = sorted({c for cids in sub_to_cids.values() for c in cids})
         contact_of = _batch_read("contacts", all_cids, ["email", "firstname", "lastname"])
 
@@ -286,23 +303,23 @@ if run:
                 break
         sub_person[sid] = {"event": meta["event"], "email": email, "name": name}
 
-    # 3) reach the Number object two ways and union them:
-    #    (a) Contact → Number CRM association, and
-    #    (b) email match — the Number object carries the customer email (case-insensitive).
+    # 3) Contact → Number via CRM association (the email lives on the Contact, the number
+    #    is linked to the contact — the Number's own email may be blank). Also try an
+    #    email match against the Number object in case that field is populated.
     num_of = {}          # number-record-id -> properties
-    cid_to_nids = _assoc("contacts", NUM_OBJECT, all_cids)   # (a) may be empty in this portal
+    nprops = ["number", "email", "service_type", "account_status", "number_status"]
+    cid_to_nids = _assoc("contacts", NUM_OBJECT, all_cids)
     assoc_nids = sorted({n for nids in cid_to_nids.values() for n in nids})
     if assoc_nids:
-        num_of.update(_batch_read(NUM_OBJECT, assoc_nids,
-                      ["number", "email", "service_type", "account_status", "number_status"]))
+        with dash_spinner(f"Reading {len(assoc_nids):,} associated Number records…"):
+            num_of.update(_batch_read(NUM_OBJECT, assoc_nids, nprops))
 
-    # (b) pull all VRS numbers once, index by lowercased email
+    # email fallback: pull VRS numbers whose own email matches (skips if field is blank)
     want_emails = {p["email"] for p in sub_person.values() if p["email"]}
     email_to_nids = defaultdict(list)
     if want_emails:
-        with dash_spinner("Matching contacts to VRS numbers by email…"):
-            for rr in _seek(NUM_OBJECT, ["number", "email", "service_type",
-                                         "account_status", "number_status"],
+        with dash_spinner("Matching numbers by email (fallback)…"):
+            for rr in _seek(NUM_OBJECT, nprops,
                             [{"propertyName": "service_type", "operator": "EQ", "value": "VRS"}]):
                 pp = rr.get("properties", {})
                 em = (pp.get("email") or "").strip().lower()
