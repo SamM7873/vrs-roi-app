@@ -73,7 +73,11 @@ def _metric_cards(items):
 
 def _bar(label, mx, color="#4C8DFF", fmt="%d"):
     """A NumberColumn rendered as an in-cell progress bar."""
-    return st.column_config.ProgressColumn(label, min_value=0, max_value=int(mx) if mx else 1,
+    try:
+        _mx = int(mx)
+    except (TypeError, ValueError):
+        _mx = 0                       # handles NaN / None (e.g. empty table)
+    return st.column_config.ProgressColumn(label, min_value=0, max_value=_mx if _mx > 0 else 1,
                                            format=fmt, help=None)
 
 
