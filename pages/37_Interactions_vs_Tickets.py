@@ -53,7 +53,8 @@ def _pipeline_map(with_stages=False):
     return (out, stages) if with_stages else out
 
 def _metric_cards(items):
-    """items = list of (title, value, subtitle, hex_color). Renders a row of styled cards."""
+    """items = list of (title, value, subtitle, hex_color). Renders a row of styled cards,
+    plus a compact table beneath them when 'Show metrics as tables' is on."""
     cols = st.columns(len(items))
     for col, (t, v, s, c) in zip(cols, items):
         col.markdown(
@@ -64,6 +65,9 @@ def _metric_cards(items):
             <div style="font-size:2rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
             <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""",
             unsafe_allow_html=True)
+    if st.session_state.get("ivt_metrics_as_table"):
+        st.dataframe(pd.DataFrame([{"Metric": t, "Value": v, "Detail": s} for t, v, s, _ in items]),
+                     use_container_width=True, hide_index=True)
     st.markdown("")
 
 
@@ -176,6 +180,8 @@ with c3:
     _ret_label = st.selectbox("Keep report for", list(RETENTION_OPTS.keys()), index=1, key="ivt_ret",
                               help="How long the uploaded comparison stays saved before it expires.")
 TTL = RETENTION_OPTS[_ret_label] * 3600
+st.checkbox("📋 Show metrics as tables", key="ivt_metrics_as_table",
+            help="Render every metric-card row as a compact table too.")
 run = st.button("▶ Run comparison", type="primary", disabled=(up_conv is None or up_tick is None))
 
 
