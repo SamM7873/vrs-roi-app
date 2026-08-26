@@ -516,6 +516,23 @@ _queue_summary = pd.DataFrame([
 ])
 st.dataframe(_queue_summary, use_container_width=True, hide_index=True)
 
+# who actually waited the longest (the interactions behind the LWT number)
+_waited = cvf.copy()
+_waited["_w"] = pd.to_numeric(_waited["_wait_sec"], errors="coerce")
+_waited = _waited[_waited["_w"].notna() & (_waited["_w"] > 0)]
+if not _waited.empty:
+    with st.expander(f"⏳ Who waited longest (LWT = {_ms_lbl(_lwt_sec)}) — top 15", expanded=True):
+        _top = _waited.sort_values("_w", ascending=False).head(15).copy()
+        _top["Wait"] = _top["_w"].map(_ms_lbl)
+        _top["Agent"] = _top["_agent"].map(lambda a: str(a).split("@")[0])
+        _top["Status"] = _top["_missed"].map(lambda m: "📵 Missed" if bool(m) else "✅ Connected")
+        _top["Customer"] = _top["_customer"].replace("", "—")
+        _top = _top.rename(columns={"_day": "Day", "_source": "Source"})
+        st.dataframe(_top[["Day", "Customer", "Agent", "Source", "Wait", "Status"]],
+                     use_container_width=True, hide_index=True)
+        st.caption("The single longest is the **LWT**. 📵 Missed = the caller hung up / was dropped "
+                   "before connecting; ✅ Connected = they waited this long, then were answered.")
+
 if queue.empty:
     st.info("No connected interactions with duration/wait data in range "
             "(check the Convo360 export has Duration and Wait Time columns).")
