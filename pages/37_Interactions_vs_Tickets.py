@@ -551,6 +551,37 @@ else:
     st.caption("🔴 AHT = handle time > 1.5× the team average · 🟠 wait = callers waited longer than "
                f"{_ms_lbl(_lwt_hi)}. (Agents with < 5 handled are not flagged.)")
 
+    # everything-in-one: connected + missed + AHT + waits per agent
+    st.markdown("##### 📊 Agent — connected · missed · AHT (everything)")
+    _ag = cvf.copy()
+    _ag["_is_missed"] = _ag["_missed"].fillna(False)
+    _ag["_is_conn"] = (~_ag["_is_missed"]) & (_ag["_agent"] != "Missed (no agent)")
+    full = _ag.groupby("_agent").agg(
+        Connected=("_is_conn", "sum"),
+        Missed=("_is_missed", "sum"),
+        _aht=("_dur_min", lambda s: pd.to_numeric(s, errors="coerce").mean() * 60),
+        _avgwait=("_wait_sec", lambda s: pd.to_numeric(s, errors="coerce").mean()),
+        _lwt=("_wait_sec", lambda s: pd.to_numeric(s, errors="coerce").max()),
+    ).reset_index().rename(columns={"_agent": "Agent"})
+    full["Total"] = full["Connected"] + full["Missed"]
+    full["Answer %"] = full.apply(
+        lambda r: f"{r['Connected'] / r['Total'] * 100:.0f}%" if r["Total"] else "—", axis=1)
+    full["AHT"] = full["_aht"].map(_ms_lbl)
+    full["Avg wait (ASA)"] = full["_avgwait"].map(_ms_lbl)
+    full["Longest wait (LWT)"] = full["_lwt"].map(_ms_lbl)
+    full["Agent"] = full["Agent"].map(lambda a: a.split("@")[0])
+    full = full.sort_values(["Connected", "Total"], ascending=False)
+    _fcols = ["Agent", "Connected", "Missed", "Total", "Answer %",
+              "AHT", "Avg wait (ASA)", "Longest wait (LWT)"]
+    st.dataframe(full[_fcols], use_container_width=True, hide_index=True, height=380,
+                 column_config={"Connected": _bar("Connected", int(full["Connected"].max() or 1)),
+                                "Missed": _bar("Missed", int(full["Missed"].max() or 1), color="#E5484D")})
+    st.download_button("📥 Export agent connected/missed (CSV)", full[_fcols].to_csv(index=False),
+                       "agent_connected_missed_aht.csv", "text/csv", key="ivt_full_csv")
+    st.caption("**Connected** = handled interactions · **Missed** = dropped/unanswered · "
+               "**Answer %** = connected ÷ total · **AHT/waits** are over that agent's interactions. "
+               "Misses with no agent assigned appear on the **Missed (no agent)** row.")
+
 # ── missed calls — when are they dropped? ───────────────────────────────────────
 st.markdown("##### 📵 Missed calls — when are they dropped?")
 _miss = cvf[cvf["_missed"].fillna(False) | (cvf["_agent"] == "Missed (no agent)")].copy()
