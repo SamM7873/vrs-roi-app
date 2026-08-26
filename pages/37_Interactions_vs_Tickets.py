@@ -373,8 +373,30 @@ d_lo, d_hi = max(d_lo, ov_lo), min(d_hi, ov_hi)
 st.caption(f"Window: **{d_lo:%b %d}–{d_hi:%b %d, %Y}** (data overlap {ov_lo:%b %d}–{ov_hi:%b %d, %Y}).")
 cvf = cvf[(cvf["_day"] >= d_lo) & (cvf["_day"] <= d_hi)]
 tkf = tk[(tk["_day"] >= d_lo) & (tk["_day"] <= d_hi)]
+
+# ── coverage window: weekday business hours vs weekends ─────────────────────────────
+COVERAGE = {
+    "All interactions": None,
+    "Weekday business hours (Mon–Fri 8am–6pm CST)": "biz",
+    "Weekends (Sat–Sun, all day)": "weekend",
+    "Weekdays (Mon–Fri, all hours)": "weekday_all",
+}
+_cov = st.radio("Coverage window", list(COVERAGE.keys()), horizontal=True, key="ivt_coverage")
+_mode = COVERAGE[_cov]
+if _mode and not cvf.empty:
+    _wd = pd.to_datetime(cvf["_day"]).dt.weekday          # 0=Mon … 6=Sun
+    _hr = pd.to_numeric(cvf["_hour"], errors="coerce")
+    if _mode == "biz":
+        cvf = cvf[(_wd <= 4) & (_hr >= 8) & (_hr < 18)]
+    elif _mode == "weekend":
+        cvf = cvf[_wd >= 5]
+    elif _mode == "weekday_all":
+        cvf = cvf[_wd <= 4]
+    st.caption(f"Showing **{_cov}** · {len(cvf):,} interactions. "
+               "(Times use the timestamps in the Convo360 export.)")
+
 if cvf.empty and tkf.empty:
-    st.warning("No data in the selected date range.")
+    st.warning("No data in the selected date range / coverage window.")
     report_header_close(); st.stop()
 
 n_int = len(cvf)
