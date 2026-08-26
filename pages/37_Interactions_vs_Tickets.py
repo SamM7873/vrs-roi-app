@@ -504,18 +504,6 @@ st.caption("**AHT** = average handle time (talk/handle duration) · **ASA** = av
            "answer (wait before connect) · **LWT** = longest a caller waited · **Answer rate** = "
            "handled ÷ (handled + missed). Computed on **connected** interactions only.")
 
-# same numbers as the cards above, as a compact table
-_queue_summary = pd.DataFrame([
-    {"Metric": "✅ Handled (connected)", "Value": f"{_n_handled:,}"},
-    {"Metric": "📵 Missed", "Value": f"{_n_missed:,}"},
-    {"Metric": "Answer rate", "Value": f"{_answer_rate:.0f}%" if _answer_rate is not None else "—"},
-    {"Metric": "⏱️ AHT (avg handle time)", "Value": _ms_lbl(_aht_sec)},
-    {"Metric": "ASA (avg speed of answer)", "Value": _ms_lbl(_asa_sec)},
-    {"Metric": "Median wait", "Value": _ms_lbl(_med_sec)},
-    {"Metric": "⏳ LWT (longest wait)", "Value": _ms_lbl(_lwt_sec)},
-])
-st.dataframe(_queue_summary, use_container_width=True, hide_index=True)
-
 # who actually waited the longest (the interactions behind the LWT number)
 _waited = cvf.copy()
 _waited["_w"] = pd.to_numeric(_waited["_wait_sec"], errors="coerce")
