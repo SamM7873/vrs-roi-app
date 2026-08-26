@@ -381,7 +381,8 @@ COVERAGE = {
     "Weekends (Sat–Sun, all day)": "weekend",
     "Weekdays (Mon–Fri, all hours)": "weekday_all",
 }
-_cov = st.radio("Coverage window", list(COVERAGE.keys()), horizontal=True, key="ivt_coverage")
+_cov = st.radio("Coverage window", list(COVERAGE.keys()), horizontal=True, key="ivt_coverage",
+                index=1)  # default: Weekday business hours (Mon–Fri 8am–6pm CST)
 _mode = COVERAGE[_cov]
 if _mode and not cvf.empty:
     _wd = pd.to_datetime(cvf["_day"]).dt.weekday          # 0=Mon … 6=Sun
