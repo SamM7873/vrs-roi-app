@@ -40,6 +40,10 @@ with c2:
     st.markdown("<div style='margin-top:1.7rem;'></div>", unsafe_allow_html=True)
     refresh = st.button("🔄 Load / refresh data", use_container_width=False)
 
+wow = st.checkbox("📊 Compare to previous period (e.g. this week vs last week)", key="regfun_wow",
+                  help="Compares the selected window to the equal-length window right before it. "
+                       "Pick a rolling window (not All time) to use this.")
+
 if refresh:
     records = list_all(
         "2-58833629",
@@ -154,6 +158,40 @@ st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap
     <div style="font-size:0.7rem;color:#9CA3AF;">{pct(cancelled_count)}</div>
   </div>
 </div>""", unsafe_allow_html=True)
+
+# ── week-over-week / previous-period comparison ─────────────────────────────
+if wow:
+    if not _days:
+        st.info("Pick a rolling window (not **All time**) to compare against the previous period.")
+    else:
+        _now = datetime.now(timezone.utc)
+        _cur_lo = _now - timedelta(days=_days)
+        _prev_lo = _now - timedelta(days=_days * 2)
+        _sd = df_all["Submitted"].map(_asdt)
+        _prev = df_all[_sd.map(lambda d: d is not None and _prev_lo <= d < _cur_lo)]
+        p_sub = len(_prev)
+        p_lex = int(_prev["LEX Done ✓"].sum()) if p_sub else 0
+        p_urd = int(_prev["URD Done ✓"].sum()) if p_sub else 0
+        p_act = int(_prev["Active ✓"].sum()) if p_sub else 0
+
+        def _chg(cur, prev):
+            d = cur - prev
+            return f"{d:+,}" + (f" ({d/prev*100:+.0f}%)" if prev else "")
+
+        st.markdown("##### 📊 vs previous period")
+        st.caption(f"Current **{_cur_lo:%b %d}–{_now:%b %d}** vs previous "
+                   f"**{_prev_lo:%b %d}–{_cur_lo:%b %d, %Y}** (last {_days} days each)")
+        cmp = pd.DataFrame([
+            {"Step": "Submitted", "This period": submitted, "Previous": p_sub,
+             "Change": _chg(submitted, p_sub)},
+            {"Step": "LEX Verified", "This period": int(lex_done_count), "Previous": p_lex,
+             "Change": _chg(int(lex_done_count), p_lex)},
+            {"Step": "URD Completed", "This period": int(urd_done_count), "Previous": p_urd,
+             "Change": _chg(int(urd_done_count), p_urd)},
+            {"Step": "Active", "This period": int(active_count), "Previous": p_act,
+             "Change": _chg(int(active_count), p_act)},
+        ])
+        st.dataframe(cmp, use_container_width=True, hide_index=True)
 
 # Funnel chart
 funnel_df = pd.DataFrame({
