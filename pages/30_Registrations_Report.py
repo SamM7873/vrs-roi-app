@@ -174,6 +174,8 @@ def _range(preset, today=None):
         y = t - timedelta(days=1); return y, y
     if preset == "This Week":
         s = t - timedelta(days=t.weekday()); return s, t
+    if preset == "Last Week":
+        s = t - timedelta(days=t.weekday() + 7); return s, s + timedelta(days=6)
     if preset == "This Month":
         return t.replace(day=1), t
     if preset == "This Quarter":
@@ -194,8 +196,8 @@ def _range(preset, today=None):
     return t.replace(day=1), t
 
 
-PRESETS = ["Today", "Yesterday", "This Week", "This Month", "This Quarter", "This Year",
-           "Last Month", "Last Quarter", "Last Year", "Custom"]
+PRESETS = ["Today", "Yesterday", "This Week", "Last Week", "This Month", "This Quarter",
+           "This Year", "Last Month", "Last Quarter", "Last Year", "Custom"]
 
 _valfields, _dfields = _resolve_fields()
 _dlabels = [lb for _n, lb in _dfields]
@@ -216,27 +218,44 @@ with c3:
     st.markdown("<div style='margin-top:1.7rem;'></div>", unsafe_allow_html=True)
     run = st.button("Run", type="primary", use_container_width=True)
 
+wow = st.checkbox("📊 Compare week-over-week (vs the same days 7 days earlier)", key="reg_wow",
+                  help="Also pull the equivalent window one week earlier and show the change.")
+prev_start, prev_end = start_d - timedelta(days=7), end_d - timedelta(days=7)
+
 st.caption(f"Showing registrations where **{_basis_label}** is between "
-           f"**{start_d:%b %d, %Y}** and **{end_d:%b %d, %Y}**.")
+           f"**{start_d:%b %d, %Y}** and **{end_d:%b %d, %Y}**."
+           + (f" · WoW vs **{prev_start:%b %d}–{prev_end:%b %d, %Y}**" if wow else ""))
 
-_key = f"registrations_{date_prop}_{start_d:%Y%m%d}_{end_d:%Y%m%d}"
+_key = f"registrations_{date_prop}_{start_d:%Y%m%d}_{end_d:%Y%m%d}_wow{int(wow)}"
 
-if run:
-    props = [nm for nm, _lb in _valfields]
-    with dash_spinner("Fetching registrations…"):
-        recs = _seek(date_prop, props, _ms(start_d), _ms(end_d, end=True), "Loaded")
-    _labels = {nm: lb for nm, lb in _valfields}
-    rows = []
+
+def _build_rows(recs, props, labels):
+    out = []
     for r in recs:
         p = r.get("properties", {})
         dt = _parse(p.get(date_prop))
         row = {"Date": dt.strftime("%Y-%m-%d") if dt else ""}
         for cand in props:
-            row[_labels[cand]] = (p.get(cand) or "—")
-        rows.append(row)
-    df = pd.DataFrame(rows)
+            row[labels[cand]] = (p.get(cand) or "—")
+        out.append(row)
+    return pd.DataFrame(out)
+
+
+if run:
+    props = [nm for nm, _lb in _valfields]
+    _labels = {nm: lb for nm, lb in _valfields}
+    with dash_spinner("Fetching registrations…"):
+        recs = _seek(date_prop, props, _ms(start_d), _ms(end_d, end=True), "Loaded")
+    df = _build_rows(recs, props, _labels)
+    prev_df = None
+    if wow:
+        with dash_spinner("Fetching last week…"):
+            precs = _seek(date_prop, props, _ms(prev_start), _ms(prev_end, end=True), "Loaded (prev)")
+        prev_df = _build_rows(precs, props, _labels)
     save_report(_key, {"df": df, "start": str(start_d), "end": str(end_d),
-                       "date_prop": date_prop, "v": REPORT_VERSION})
+                       "date_prop": date_prop, "v": REPORT_VERSION,
+                       "wow": wow, "prev_df": prev_df,
+                       "prev_start": str(prev_start), "prev_end": str(prev_end)})
 
 saved = load_report(_key)
 if saved is None or saved.get("v") != REPORT_VERSION:
@@ -281,6 +300,42 @@ k3.metric("❌ Not verified", f"{total - _verified:,}")
 k3.caption("Lex not_verified (and any blanks)")
 k4.metric("✍️ Manually verified", f"{_manual_n:,}")
 k4.caption("manual_success / has Manually Verified At")
+
+# ── week-over-week comparison ────────────────────────────────────────────────
+_pdf = saved.get("prev_df")
+if saved.get("wow") and _pdf is not None:
+    def _verified_count(d):
+        if d.empty:
+            return 0
+        lx = d["Lex Status"].astype(str).str.strip().str.lower() if "Lex Status" in d.columns \
+            else pd.Series("", index=d.index)
+        man = pd.Series(False, index=d.index)
+        if "Manually Verified At" in d.columns:
+            man = ~d["Manually Verified At"].astype(str).str.strip().isin(["", "—", "nan", "None"])
+        return int((lx.isin(VERIFIED_STATUSES) | man | lx.eq("manual_success")).sum())
+
+    _pt, _pv = len(_pdf), _verified_count(_pdf)
+    _ps, _pe = saved.get("prev_start", ""), saved.get("prev_end", "")
+
+    def _delta(cur, prev):
+        d = cur - prev
+        pct = f" ({d/prev*100:+.0f}%)" if prev else ""
+        return f"{d:+,}{pct}"
+
+    st.markdown("##### 📊 Week over week")
+    st.caption(f"This period vs **{_ps} → {_pe}**")
+    w1, w2 = st.columns(2)
+    w1.metric("Total registrations", f"{total:,}", _delta(total, _pt),
+              help=f"Last week: {_pt:,}")
+    w2.metric("✅ Verified", f"{_verified:,}", _delta(_verified, _pv),
+              help=f"Last week: {_pv:,}")
+    _cmp = pd.DataFrame([
+        {"Metric": "Total registrations", "This period": total, "Last week": _pt,
+         "Change": total - _pt, "% change": (f"{(total-_pt)/_pt*100:+.0f}%" if _pt else "—")},
+        {"Metric": "Verified", "This period": _verified, "Last week": _pv,
+         "Change": _verified - _pv, "% change": (f"{(_verified-_pv)/_pv*100:+.0f}%" if _pv else "—")},
+    ])
+    st.dataframe(_cmp, use_container_width=True, hide_index=True)
 
 # breakdown helper
 def _breakdown(col, title):
