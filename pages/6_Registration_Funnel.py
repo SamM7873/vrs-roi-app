@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime, timezone, timedelta
-from utils import dash_spinner, require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
+from utils import (dash_spinner, require_auth, list_all, norm, COMMON_CSS,
+                   report_header, report_header_close,
+                   save_report, load_report, saved_at_label)
 
 st.set_page_config(page_title="Registration Funnel", layout="wide", page_icon="📋")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -10,11 +12,10 @@ require_auth()
 
 report_header("Registration Funnel", "Step-by-step conversion from Submitted → LEX → URD → Active", section="Analytics")
 
+_KEY = "registration_funnel_v1"
 ROLLING = {"All time": None, "Last 7 days": 7, "Last 14 days": 14, "Last 28 days": 28,
            "Last 30 days": 30, "Last 56 days": 56, "Last 60 days": 60,
            "Last 84 days": 84, "Last 90 days": 90}
-_win = st.selectbox("Rolling window (by submitted date)", list(ROLLING.keys()), index=0,
-                    help="Count only registrations submitted within this many days back from today.")
 
 
 def _asdt(v):
@@ -30,7 +31,16 @@ def _asdt(v):
         return None
 
 
-if st.button("Load Registration Funnel", use_container_width=False):
+c1, c2 = st.columns([1.4, 1])
+with c1:
+    _win = st.selectbox("Rolling window (by submitted date)", list(ROLLING.keys()), index=0,
+                        help="Count only registrations submitted within this many days back from today. "
+                             "Changing this re-filters the saved data — no need to reload.")
+with c2:
+    st.markdown("<div style='margin-top:1.7rem;'></div>", unsafe_allow_html=True)
+    refresh = st.button("🔄 Load / refresh data", use_container_width=False)
+
+if refresh:
     records = list_all(
         "2-58833629",
         [
@@ -44,10 +54,9 @@ if st.button("Load Registration Funnel", use_container_width=False):
         ],
         progress_label="Fetching registration records",
     )
-
     if not records:
         st.warning("No registration records found.")
-        st.stop()
+        report_header_close(); st.stop()
 
     rows = []
     for r in records:
@@ -58,7 +67,6 @@ if st.button("Load Registration Funnel", use_container_width=False):
         lex_done = lex in ("automatic_success", "manual_success")
         urd_done = urd == "completed"
         active = lex_done and urd_done and not cancelled
-
         rows.append({
             "Registration ID": p.get("registration_id") or r.get("id", ""),
             "Type": (p.get("registration_type") or "").replace("_", " ").title(),
@@ -79,35 +87,47 @@ if st.button("Load Registration Funnel", use_container_width=False):
             "URD Done ✓": urd_done,
             "Active ✓": active,
         })
+    save_report(_KEY, {"df": pd.DataFrame(rows)})
 
-    df = pd.DataFrame(rows)
+# ── load saved data (persists across reloads; no re-run needed) ──────────────
+saved = load_report(_KEY)
+if saved is None:
+    st.info("Click **🔄 Load / refresh data** once to fetch registrations. "
+            "After that it stays saved — reopen the page and just pick a rolling window.")
+    report_header_close(); st.stop()
 
-    # rolling-window filter on submitted date
-    _days = ROLLING[_win]
-    if _days:
-        _cut = datetime.now(timezone.utc) - timedelta(days=_days)
-        _sub_dt = df["Submitted"].map(_asdt)
-        df = df[_sub_dt.map(lambda d: d is not None and d >= _cut)].reset_index(drop=True)
-        st.caption(f"**{_win}** · submitted on/after {_cut:%b %d, %Y} · {len(df):,} registrations")
-    else:
-        st.caption(f"**All time** · {len(df):,} registrations")
+df_all = saved["df"]
+if saved.get("saved_at"):
+    st.caption(f"📌 Saved {saved_at_label(saved)} · click **Load / refresh data** to pull fresh records.")
 
-    if df.empty:
-        st.warning("No registrations in this window."); report_header_close(); st.stop()
+# rolling-window filter on submitted date (reactive — recomputes without refetching)
+_days = ROLLING[_win]
+if _days:
+    _cut = datetime.now(timezone.utc) - timedelta(days=_days)
+    _sub_dt = df_all["Submitted"].map(_asdt)
+    df = df_all[_sub_dt.map(lambda d: d is not None and d >= _cut)].reset_index(drop=True)
+    st.caption(f"**{_win}** · submitted on/after {_cut:%b %d, %Y} · {len(df):,} registrations")
+else:
+    df = df_all.copy()
+    st.caption(f"**All time** · {len(df):,} registrations")
 
-    total = len(df)
+if df.empty:
+    st.warning("No registrations in this window."); report_header_close(); st.stop()
 
-    submitted = total
-    lex_done_count = df["LEX Done ✓"].sum()
-    urd_done_count = df["URD Done ✓"].sum()
-    active_count   = df["Active ✓"].sum()
-    cancelled_count = df["Cancelled"].sum()
+total = len(df)
+submitted = total
+lex_done_count = df["LEX Done ✓"].sum()
+urd_done_count = df["URD Done ✓"].sum()
+active_count = df["Active ✓"].sum()
+cancelled_count = df["Cancelled"].sum()
 
-    def pct(n):
-        return f"{n/total*100:.1f}%" if total else "—"
 
-    # Funnel tiles
-    st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin:1rem 0 1.5rem;">
+def pct(n):
+    return f"{n/total*100:.1f}%" if total else "—"
+
+
+# Funnel tiles
+st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.85rem;margin:1rem 0 1.5rem;">
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
     <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">Submitted</div>
     <div style="font-size:1.4rem;font-weight:800;color:#1F2937;">{submitted:,}</div>
@@ -135,66 +155,66 @@ if st.button("Load Registration Funnel", use_container_width=False):
   </div>
 </div>""", unsafe_allow_html=True)
 
-    # Funnel chart
-    funnel_df = pd.DataFrame({
-        "Step": ["Submitted", "LEX Verified", "URD Completed", "Active"],
-        "Count": [submitted, int(lex_done_count), int(urd_done_count), int(active_count)],
-        "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#00A651"],
-    })
-    funnel_chart = alt.Chart(funnel_df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-        x=alt.X("Step:N", sort=["Submitted", "LEX Verified", "URD Completed", "Active"], axis=alt.Axis(title=None)),
-        y=alt.Y("Count:Q", title="Registrations"),
-        color=alt.Color("Color:N", scale=None, legend=None),
-        tooltip=["Step", "Count"],
-    ).properties(height=300)
-    st.altair_chart(funnel_chart, use_container_width=True)
+# Funnel chart
+funnel_df = pd.DataFrame({
+    "Step": ["Submitted", "LEX Verified", "URD Completed", "Active"],
+    "Count": [submitted, int(lex_done_count), int(urd_done_count), int(active_count)],
+    "Color": ["#6B7280", "#3B82F6", "#8B5CF6", "#00A651"],
+})
+funnel_chart = alt.Chart(funnel_df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+    x=alt.X("Step:N", sort=["Submitted", "LEX Verified", "URD Completed", "Active"], axis=alt.Axis(title=None)),
+    y=alt.Y("Count:Q", title="Registrations"),
+    color=alt.Color("Color:N", scale=None, legend=None),
+    tooltip=["Step", "Count"],
+).properties(height=300)
+st.altair_chart(funnel_chart, use_container_width=True)
 
-    # Breakdown by type
-    tab_type, tab_lex, tab_stuck, tab_full = st.tabs(["By Type", "LEX Status", "Stuck Records", "Full Table"])
+# Breakdown by type
+tab_type, tab_lex, tab_stuck, tab_full = st.tabs(["By Type", "LEX Status", "Stuck Records", "Full Table"])
 
-    with tab_type:
-        type_df = df.groupby("Type").agg(
-            Total=("Registration ID", "count"),
-            LEX_Done=("LEX Done ✓", "sum"),
-            URD_Done=("URD Done ✓", "sum"),
-            Active=("Active ✓", "sum"),
-            Cancelled=("Cancelled", "sum"),
-        ).reset_index().sort_values("Total", ascending=False)
-        type_df["Active %"] = (type_df["Active"] / type_df["Total"] * 100).round(1)
-        st.dataframe(type_df, use_container_width=True, hide_index=True)
+with tab_type:
+    type_df = df.groupby("Type").agg(
+        Total=("Registration ID", "count"),
+        LEX_Done=("LEX Done ✓", "sum"),
+        URD_Done=("URD Done ✓", "sum"),
+        Active=("Active ✓", "sum"),
+        Cancelled=("Cancelled", "sum"),
+    ).reset_index().sort_values("Total", ascending=False)
+    type_df["Active %"] = (type_df["Active"] / type_df["Total"] * 100).round(1)
+    st.dataframe(type_df, use_container_width=True, hide_index=True)
 
-    with tab_lex:
-        lex_df = df.groupby("LEX Status").size().reset_index(name="Count").sort_values("Count", ascending=False)
-        bar2 = alt.Chart(lex_df).mark_bar(color="#3B82F6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-            x=alt.X("Count:Q"),
-            y=alt.Y("LEX Status:N", sort="-x"),
-            tooltip=["LEX Status", "Count"],
-        ).properties(height=250)
-        st.altair_chart(bar2, use_container_width=True)
-        st.dataframe(lex_df, use_container_width=True, hide_index=True)
+with tab_lex:
+    lex_df = df.groupby("LEX Status").size().reset_index(name="Count").sort_values("Count", ascending=False)
+    bar2 = alt.Chart(lex_df).mark_bar(color="#3B82F6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+        x=alt.X("Count:Q"),
+        y=alt.Y("LEX Status:N", sort="-x"),
+        tooltip=["LEX Status", "Count"],
+    ).properties(height=250)
+    st.altair_chart(bar2, use_container_width=True)
+    st.dataframe(lex_df, use_container_width=True, hide_index=True)
 
-    with tab_stuck:
-        stuck = df[df["LEX Done ✓"] & ~df["URD Done ✓"] & ~df["Cancelled"]]
-        st.markdown(f"**{len(stuck)} registrations** passed LEX verification but have not completed URD.")
-        def _fmt(v):
-            if not v: return "—"
-            try: return datetime.fromisoformat(v.replace("Z", "+00:00")).strftime("%b %d, %Y")
-            except Exception: return v
-        stuck_show = stuck[["Registration ID", "Number", "Name", "Email", "Type", "LEX Status", "URD Status", "Submitted"]].copy()
-        stuck_show["Submitted"] = stuck_show["Submitted"].apply(_fmt)
-        st.dataframe(stuck_show.reset_index(drop=True), use_container_width=True, hide_index=True)
+with tab_stuck:
+    stuck = df[df["LEX Done ✓"] & ~df["URD Done ✓"] & ~df["Cancelled"]]
+    st.markdown(f"**{len(stuck)} registrations** passed LEX verification but have not completed URD.")
+    def _fmt(v):
+        if not v: return "—"
+        try: return datetime.fromisoformat(v.replace("Z", "+00:00")).strftime("%b %d, %Y")
+        except Exception: return v
+    stuck_show = stuck[["Registration ID", "Number", "Name", "Email", "Type", "LEX Status", "URD Status", "Submitted"]].copy()
+    stuck_show["Submitted"] = stuck_show["Submitted"].apply(_fmt)
+    st.dataframe(stuck_show.reset_index(drop=True), use_container_width=True, hide_index=True)
 
-    with tab_full:
-        show_cols = ["Registration ID", "Type", "Number", "Name", "Email", "State",
-                     "LEX Status", "URD Status", "Active ✓", "Cancelled", "Port-In Status"]
-        st.dataframe(df[show_cols].reset_index(drop=True), use_container_width=True, hide_index=True)
-        st.download_button("Download CSV", df.to_csv(index=False),
-                           f"registration_funnel_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
-        from utils import pdf_download_button
-        _pdf_metrics = [(str(r.Step), f"{int(r.Count):,}") for r in funnel_df.itertuples()][:4]
-        _pdf_charts = [{"data": funnel_df[["Step", "Count"]], "kind": "bar",
-                        "x": "Step", "y": "Count", "title": "Registration funnel"}]
-        pdf_download_button(df, "registration_funnel.pdf", "Registration Funnel",
-                            metrics=_pdf_metrics, charts=_pdf_charts, key="regfun")
+with tab_full:
+    show_cols = ["Registration ID", "Type", "Number", "Name", "Email", "State",
+                 "LEX Status", "URD Status", "Active ✓", "Cancelled", "Port-In Status"]
+    st.dataframe(df[show_cols].reset_index(drop=True), use_container_width=True, hide_index=True)
+    st.download_button("Download CSV", df.to_csv(index=False),
+                       f"registration_funnel_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+    from utils import pdf_download_button
+    _pdf_metrics = [(str(r.Step), f"{int(r.Count):,}") for r in funnel_df.itertuples()][:4]
+    _pdf_charts = [{"data": funnel_df[["Step", "Count"]], "kind": "bar",
+                    "x": "Step", "y": "Count", "title": "Registration funnel"}]
+    pdf_download_button(df, "registration_funnel.pdf", "Registration Funnel",
+                        metrics=_pdf_metrics, charts=_pdf_charts, key="regfun")
 
 report_header_close()
