@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from utils import dash_spinner, require_auth, list_all, norm, COMMON_CSS, report_header, report_header_close
 
 st.set_page_config(page_title="Registration Funnel", layout="wide", page_icon="📋")
@@ -9,6 +9,26 @@ st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
 
 report_header("Registration Funnel", "Step-by-step conversion from Submitted → LEX → URD → Active", section="Analytics")
+
+ROLLING = {"All time": None, "Last 7 days": 7, "Last 14 days": 14, "Last 28 days": 28,
+           "Last 30 days": 30, "Last 56 days": 56, "Last 60 days": 60,
+           "Last 84 days": 84, "Last 90 days": 90}
+_win = st.selectbox("Rolling window (by submitted date)", list(ROLLING.keys()), index=0,
+                    help="Count only registrations submitted within this many days back from today.")
+
+
+def _asdt(v):
+    """Parse an ISO/epoch value to an aware UTC datetime, else None."""
+    if not v:
+        return None
+    try:
+        s = str(v)
+        if s.isdigit():
+            return datetime.fromtimestamp(int(s) / 1000, tz=timezone.utc)
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
 
 if st.button("Load Registration Funnel", use_container_width=False):
     records = list_all(
@@ -61,6 +81,20 @@ if st.button("Load Registration Funnel", use_container_width=False):
         })
 
     df = pd.DataFrame(rows)
+
+    # rolling-window filter on submitted date
+    _days = ROLLING[_win]
+    if _days:
+        _cut = datetime.now(timezone.utc) - timedelta(days=_days)
+        _sub_dt = df["Submitted"].map(_asdt)
+        df = df[_sub_dt.map(lambda d: d is not None and d >= _cut)].reset_index(drop=True)
+        st.caption(f"**{_win}** · submitted on/after {_cut:%b %d, %Y} · {len(df):,} registrations")
+    else:
+        st.caption(f"**All time** · {len(df):,} registrations")
+
+    if df.empty:
+        st.warning("No registrations in this window."); report_header_close(); st.stop()
+
     total = len(df)
 
     submitted = total
