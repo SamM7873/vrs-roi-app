@@ -116,17 +116,17 @@ PRESETS = [
 
 TICKET_NAME_OPTIONS = [
     "All",
-    "VRS Registration",
+    "VRS Registration Completed",
     "🧊 AT RISK",
     "⚠️ DECLINING",
     "🧊⚠️ AT RISK + DECLINING",
     "Churn | Non-Migrated",
-    "VRS Registration + Churn",
+    "VRS Registration Completed + Churn",
     "Port-Out Winback",
 ]
 
 TICKET_NAME_MULTI = {
-    "VRS Registration + Churn": ["vrs registration", "churn | non-migrated"],
+    "VRS Registration Completed + Churn": ["vrs registration completed", "churn | non-migrated"],
     "🧊⚠️ AT RISK + DECLINING": ["at risk", "declining"],
 }
 
