@@ -294,7 +294,14 @@ with tab_lex:
     _err = df[df["LEX Error Message"].astype(str).str.strip() != ""] if _has_err_col else df.iloc[0:0]
     st.markdown(f"##### ⚠️ Top LEX error messages — {len(_err):,} with an error")
     if not _LEX_ERR_FIELD:
-        st.caption("No LEX error-message property was found on the registration object.")
+        st.caption("No LEX error-message property was auto-detected on the registration object.")
+        _cands = sorted(n for n in _REG_PROPS
+                        if any(k in (n or "").lower() for k in ("lex", "error", "message", "reason", "fail")))
+        if _cands:
+            st.caption("Candidate properties found — tell me which one is the error message:")
+            st.write(_cands)
+        else:
+            st.caption("Could not read the registration object's properties (token/scope).")
     elif not _has_err_col:
         st.caption("Click **🔄 Load / refresh data** to pull the error messages (new field).")
     else:
