@@ -226,9 +226,23 @@ with tab_lex:
 
     # LEX status breakdown as cards
     _LEX_LABELS = {"": "(blank)", "not_verified": "Not verified",
-                   "automatic_success": "Automatic success", "manual_success": "Manual success"}
+                   "automatic_success": "Automatic success", "manual_success": "Manual success",
+                   "automatic_error": "Automatic error", "manual_error": "Manual error",
+                   "automatic_failure": "Automatic error", "manual_failure": "Manual error",
+                   "error": "Error", "failed": "Error"}
     _LEX_COLORS = {"automatic_success": "#2DB84B", "manual_success": "#0FB5AE",
-                   "not_verified": "#E5484D", "": "#8792A2"}
+                   "not_verified": "#E5484D", "": "#8792A2",
+                   "automatic_error": "#E8952A", "manual_error": "#E8952A",
+                   "automatic_failure": "#E8952A", "manual_failure": "#E8952A",
+                   "error": "#E8952A", "failed": "#E8952A"}
+
+    def _lex_clr(raw):
+        ll = raw.lower()
+        if ll in _LEX_COLORS:
+            return _LEX_COLORS[ll]
+        if "error" in ll or "fail" in ll:
+            return "#E8952A"
+        return "#4C8DFF"
     _lex_total = int(lex_df["Count"].sum())
     _lex_items = list(lex_df.itertuples(index=False))
     st.markdown(f"##### 🔐 LEX verification — {_lex_total:,} total")
@@ -238,7 +252,7 @@ with tab_lex:
         for _col, _row in zip(_cols, _chunk):
             _raw = str(_row[0] or "")
             _lbl = _LEX_LABELS.get(_raw.lower(), _raw.replace("_", " ").title() or "(blank)")
-            _clr = _LEX_COLORS.get(_raw.lower(), "#4C8DFF")
+            _clr = _lex_clr(_raw)
             _cnt = int(_row[1])
             _pct = f"{_cnt / _lex_total * 100:.0f}% of registrations" if _lex_total else "—"
             _col.markdown(
