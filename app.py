@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 st.set_page_config(page_title="VRS Lookup", layout="wide", page_icon="🔍")
 
-from utils import get_secret
+from utils import get_secret, is_app_admin
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 _headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 BASE_URL = "https://api.hubapi.com"
@@ -124,14 +124,18 @@ cn20_recon_page = st.Page("pages/43_CN20_Reconciliation.py",             title="
 react_track_page = st.Page("pages/44_Reactivation_Tracker.py",           title="Campaign Reactivation",        icon="🚀")
 deaf_nation_page = st.Page("pages/45_Deaf_Nation.py",                    title="Deaf Nation",                  icon="🎪")
 
-# Grouped sidebar navigation (sections keep the 24 pages organized).
-pg = st.navigation({
+# Grouped sidebar navigation (sections keep the pages organized).
+# Every signed-in user gets all sections; the Admin section is shown only to
+# app admins (APP_ADMINS secret). Non-admins never see the Admin pages.
+_nav = {
     "Home": [overview_page, this_month_page, weekly_page, daily_page, lookup_page],
     "Numbers": [numbers_page, numfunnel_page, funnel_page, registrations_page, portin_page, winback_page, geo_page, yoy_page],
     "Customers": [consumer_health_page, ursa_page, journey_page, age_demo_page, churn_page, vrs_zero_page, vrs_react_page, retention_page, org_ret_page, school_page, cn_only_page, cn20_recon_page, react_track_page, deaf_nation_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page, ivt_page, ticket_pipe_page],
     "Tools": [bulk_page, explorer_page, pendo_page, dq_page, convo360_page, data_health_page, email_bounce_page, ursa_audit_page],
-    "Admin": [ticket_audit_page, work_hours_page, audit_page],
-})
+}
+if is_app_admin():
+    _nav["Admin"] = [ticket_audit_page, work_hours_page, audit_page]
+pg = st.navigation(_nav)
 render_sync_widget()
 pg.run()
