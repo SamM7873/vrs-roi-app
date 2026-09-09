@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import requests
 from datetime import datetime, timezone, timedelta
 from utils import (dash_spinner, require_auth, list_all, norm, COMMON_CSS,
-                   report_header, report_header_close,
+                   report_header, report_header_close, headers as _H, BASE_URL as _B,
                    save_report, load_report, saved_at_label)
 
 st.set_page_config(page_title="Registration Funnel", layout="wide", page_icon="📋")
@@ -11,6 +12,27 @@ st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
 
 report_header("Registration Funnel", "Step-by-step conversion from Submitted → LEX → URD → Active", section="Analytics")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _reg_prop_names():
+    try:
+        r = requests.get(f"{_B}/crm/v3/properties/2-58833629", headers=_H, timeout=30)
+        if r.status_code == 200:
+            return {p.get("name") for p in r.json().get("results", [])}
+    except Exception:
+        pass
+    return set()
+
+
+_REG_PROPS = _reg_prop_names()
+# resolve the LEX error-message field (name varies by portal)
+_LEX_ERR_FIELD = next(
+    (n for n in ("lex_error_message", "lex_error", "lex_failure_reason", "lex_error_reason",
+                 "lex_verification_error", "lex_message")
+     if n in _REG_PROPS),
+    next((n for n in _REG_PROPS if "lex" in (n or "").lower()
+          and any(k in (n or "").lower() for k in ("error", "message", "reason", "fail"))), None))
 
 _KEY = "registration_funnel_v1"
 ROLLING = {"All time": None, "Last 7 days": 7, "Last 14 days": 14, "Last 28 days": 28,
@@ -51,7 +73,8 @@ if refresh:
             "registration_id", "registration_type", "usage_type",
             "email", "first_name", "last_name", "number",
             "submitted_at", "registered_at",
-            "lex_verification_status", "lex_verified_at", "lex_error_message",
+            "lex_verification_status", "lex_verified_at",
+            *( [_LEX_ERR_FIELD] if _LEX_ERR_FIELD else [] ),
             "urd_status", "urd_registration_created_at",
             "is_cancelled", "registration_created_at",
             "portin_status", "state",
@@ -82,7 +105,7 @@ if refresh:
             "Submitted": p.get("submitted_at") or "",
             "Registered": p.get("registered_at") or "",
             "LEX Status": lex,
-            "LEX Error Message": (p.get("lex_error_message") or "").strip(),
+            "LEX Error Message": (p.get(_LEX_ERR_FIELD) or "").strip() if _LEX_ERR_FIELD else "",
             "LEX Verified At": p.get("lex_verified_at") or "",
             "URD Status": urd,
             "Cancelled": cancelled,
@@ -267,9 +290,15 @@ with tab_lex:
     st.markdown("")
 
     # Top 10 LEX error messages
-    if "LEX Error Message" in df.columns:
-        _err = df[df["LEX Error Message"].astype(str).str.strip() != ""]
-        st.markdown(f"##### ⚠️ Top LEX error messages — {len(_err):,} with an error")
+    _has_err_col = "LEX Error Message" in df.columns
+    _err = df[df["LEX Error Message"].astype(str).str.strip() != ""] if _has_err_col else df.iloc[0:0]
+    st.markdown(f"##### ⚠️ Top LEX error messages — {len(_err):,} with an error")
+    if not _LEX_ERR_FIELD:
+        st.caption("No LEX error-message property was found on the registration object.")
+    elif not _has_err_col:
+        st.caption("Click **🔄 Load / refresh data** to pull the error messages (new field).")
+    else:
+        st.caption(f"Field: `{_LEX_ERR_FIELD}`")
         if _err.empty:
             st.caption("No LEX error messages in this window.")
         else:
