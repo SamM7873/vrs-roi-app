@@ -841,7 +841,16 @@ if run_clicked or _use_cache:
     _STAGE_COLORS = ["#7A5CFF", "#0FB5AE", "#4C8DFF", "#2DB84B", "#E8952A",
                      "#E5484D", "#8B5CF6", "#0EA5E9", "#F59E0B", "#10B981"]
     _tot_tk = int(_stage_counts.sum())
-    _items = list(_stage_counts.items())
+    # preferred display order (matched case-insensitively; unknown statuses go last)
+    _ORDER = ["new", "waiting on csm", "waiting on consumer", "incomplete", "closed"]
+
+    def _rank(label):
+        ll = (label or "").strip().lower()
+        for i, key in enumerate(_ORDER):
+            if key in ll:
+                return i
+        return len(_ORDER)
+    _items = sorted(_stage_counts.items(), key=lambda kv: (_rank(kv[0]), kv[0].lower()))
     for _r0 in range(0, len(_items), 4):
         _chunk = _items[_r0:_r0 + 4]
         _cols = st.columns(len(_chunk))
