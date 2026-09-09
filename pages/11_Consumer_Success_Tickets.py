@@ -926,12 +926,15 @@ if run_clicked or _use_cache:
             return 0
         return 5
     _items = sorted(_stage_counts.items(), key=lambda kv: (_rank(kv[0]), kv[0].lower()))
+    # lead with a Total card, then each status
+    _items = [("TOTAL TICKETS", _tot_tk)] + _items
     for _r0 in range(0, len(_items), 4):
         _chunk = _items[_r0:_r0 + 4]
         _cols = st.columns(len(_chunk))
-        for _col, (_s, _c) in zip(_cols, _chunk):
-            _clr = _STAGE_COLORS[(_r0 + _chunk.index((_s, _c))) % len(_STAGE_COLORS)]
-            _pctv = f"{_c / _tot_tk * 100:.0f}% of tickets" if _tot_tk else "—"
+        for _idx, (_col, (_s, _c)) in enumerate(zip(_cols, _chunk)):
+            _is_total = (_r0 == 0 and _idx == 0)
+            _clr = "#1A2234" if _is_total else _STAGE_COLORS[(_r0 + _idx - 1) % len(_STAGE_COLORS)]
+            _pctv = "all tickets" if _is_total else (f"{_c / _tot_tk * 100:.0f}% of tickets" if _tot_tk else "—")
             _col.markdown(
                 f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {_clr};border-radius:12px;
                     padding:12px 14px 10px;background:rgba(127,127,127,0.03);">
