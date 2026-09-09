@@ -841,15 +841,21 @@ if run_clicked or _use_cache:
     st.markdown(f"##### 🎫 Tickets by status — {_tot_tk:,} total")
     _STAGE_COLORS = ["#7A5CFF", "#0FB5AE", "#4C8DFF", "#2DB84B", "#E8952A",
                      "#E5484D", "#8B5CF6", "#0EA5E9", "#F59E0B", "#10B981"]
-    # preferred display order (matched case-insensitively; unknown statuses go last)
-    _ORDER = ["new", "waiting on csm", "waiting on consumer", "incomplete", "closed"]
-
+    # preferred display order: New, Waiting on CSM, Waiting on Consumer, Incomplete, Closed.
+    # Match on distinctive tokens so label variations ("Waiting on/for CSM") still sort right.
     def _rank(label):
         ll = (label or "").strip().lower()
-        for i, key in enumerate(_ORDER):
-            if key in ll:
-                return i
-        return len(_ORDER)
+        if "closed" in ll or "resolved" in ll:
+            return 4
+        if "incomplete" in ll:
+            return 3
+        if "consumer" in ll:
+            return 2
+        if "csm" in ll:
+            return 1
+        if "new" in ll:
+            return 0
+        return 5
     _items = sorted(_stage_counts.items(), key=lambda kv: (_rank(kv[0]), kv[0].lower()))
     for _r0 in range(0, len(_items), 4):
         _chunk = _items[_r0:_r0 + 4]
