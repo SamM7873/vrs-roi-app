@@ -257,7 +257,7 @@ def _is_closed(status_label):
 run_clicked = st.button("Run Consumer Success Tickets", use_container_width=False)
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
-_CS_PIPELINE_VERSION = "v7-status-from-filtered"  # bump to invalidate old cached costs
+_CS_PIPELINE_VERSION = "v8-phone-match"  # bump to invalidate old cached costs
 _sig = [_CS_PIPELINE_VERSION, preset, str(filter_start), str(filter_end), date_field,
         status_filter, ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
 _CS_CACHE_VARS = [
@@ -440,20 +440,25 @@ if run_clicked or _use_cache:
                 )
 
             unique_cids = list({cid for cids in tid_to_cids.values() for cid in cids})
+            contact_phone_map = {}   # cid → contact phone (last 10 digits)
             if unique_cids:
                 contact_email_map = {}
                 for i in range(0, len(unique_cids), 100):
                     chunk = unique_cids[i:i+100]
                     br = _post_retry(
                         f"{BASE_URL}/crm/v3/objects/contacts/batch/read",
-                        {"inputs": [{"id": c} for c in chunk], "properties": ["email"]},
+                        {"inputs": [{"id": c} for c in chunk], "properties": ["email", "phone"]},
                     )
                     if br.status_code in (200, 207):
                         for c in br.json().get("results", []):
                             cid = str(c["id"])
-                            email = (c.get("properties", {}).get("email") or "").strip().lower()
+                            _cp = c.get("properties", {})
+                            email = (_cp.get("email") or "").strip().lower()
                             if email:
                                 contact_email_map[cid] = email
+                            _ph = "".join(ch for ch in str(_cp.get("phone") or "") if ch.isdigit())
+                            if len(_ph) >= 10:
+                                contact_phone_map[cid] = _ph[-10:]
                 for tid, cids in tid_to_cids.items():
                     for cid in cids:
                         if cid in contact_email_map:
@@ -740,6 +745,56 @@ if run_clicked or _use_cache:
                 cm = tid_to_close_month.get(r["ID"])
                 if cm and em in email_to_nids:
                     for nid in email_to_nids[em]:
+                        nid_to_close_months[nid].add(cm)
+
+        # Phone fallback: contact.phone → Number.number (VRS, Live). Catches numbers
+        # with no contact→number association AND whose Number.email doesn't match the
+        # contact's email (email often lives on the contact, not the number).
+        _phone_map = locals().get("contact_phone_map") or {}
+        phone_to_nid = {}
+        _phones = sorted({d for d in _phone_map.values() if d})
+        if _phones:
+            with dash_spinner(f"Matching numbers by phone for {len(_phones):,} contact(s)..."):
+                for i in range(0, len(_phones), 100):
+                    chunk = _phones[i:i+100]
+                    ph_recs = fetch_all(
+                        "2-40974683",
+                        ["number", "email", "service_type", "number_status",
+                         "language_preference"] + URSA_PROPS,
+                        filter_groups=[{"filters": [
+                            {"propertyName": "number",        "operator": "IN", "values": chunk},
+                            {"propertyName": "service_type",  "operator": "EQ", "value": "VRS"},
+                            {"propertyName": "number_status", "operator": "EQ", "value": "Live"},
+                        ]}]
+                    )
+                    for obj in ph_recs:
+                        p = obj.get("properties", {})
+                        if not _lang_ok(p.get("language_preference")):
+                            continue
+                        nid = str(obj["id"])
+                        num = str(p.get("number") or "").strip()
+                        dig = "".join(ch for ch in num if ch.isdigit())[-10:]
+                        if dig:
+                            phone_to_nid[dig] = nid
+                            num_id_to_number.setdefault(nid, num)
+                            num_id_meta.setdefault(nid, {
+                                "status": (p.get("number_status") or "").strip(),
+                                "language": (p.get("language_preference") or "").strip(),
+                                **_ursa_meta(p),
+                            })
+            # attach phone-matched numbers to their contacts, then propagate close months
+            for cid, dig in _phone_map.items():
+                nid = phone_to_nid.get(dig)
+                if nid and nid not in cid_to_nids[cid]:
+                    cid_to_nids[cid].append(nid)
+            for r in rows:
+                cm = tid_to_close_month.get(r["ID"])
+                if not cm:
+                    continue
+                for cid in tid_to_cids.get(r["ID"], []):
+                    dig = _phone_map.get(cid)
+                    nid = phone_to_nid.get(dig) if dig else None
+                    if nid:
                         nid_to_close_months[nid].add(cm)
 
         vrs_num_ids = list(num_id_to_number.keys())  # all associated number object IDs
