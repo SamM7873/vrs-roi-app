@@ -250,7 +250,7 @@ def _is_closed(status_label):
 run_clicked = st.button("Run Consumer Success Tickets", use_container_width=False)
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
-_CS_PIPELINE_VERSION = "v4-ursa-outbound"  # bump to invalidate old cached costs
+_CS_PIPELINE_VERSION = "v5-pipeline-stage-counts"  # bump to invalidate old cached costs
 _sig = [_CS_PIPELINE_VERSION, preset, str(filter_start), str(filter_end), date_field,
         status_filter, ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
 _CS_CACHE_VARS = [
@@ -262,6 +262,7 @@ _CS_CACHE_VARS = [
     "nid_to_close_months",
     "range_label", "mv_floor", "stage_labels", "owner_names",
     "ticket_contact_email", "filtered_ticket_ids", "vrs_reg_pipeline_id",
+    "pipeline_stage_counts",
 ]
 _report_key_cs = "cs_tickets_" + "_".join(str(x) for x in _sig).replace(" ", "").replace("/", "-")[:120]
 _cs_cache = st.session_state.get("_cs_cache")
@@ -290,6 +291,7 @@ if run_clicked or _use_cache:
         with dash_spinner("Loading pipeline configuration..."):
             # Fetch pipeline and stage metadata
             stage_labels = {}
+            cs_stage_labels = {}
             pipeline_names = {}
             cs_pipeline_id = None
             vrs_reg_pipeline_id = None
@@ -309,8 +311,10 @@ if run_clicked or _use_cache:
                             sid = stage["id"]
                             slabel = stage.get("label", sid)
                             stage_labels[sid] = slabel
-                            if "consumer success" in plabel.lower() and _is_closed(slabel):
-                                closed_stage_ids.add(sid)
+                            if "consumer success" in plabel.lower():
+                                cs_stage_labels[sid] = slabel
+                                if _is_closed(slabel):
+                                    closed_stage_ids.add(sid)
             except Exception as e:
                 st.error(f"Failed to load pipelines: {e}")
                 st.stop()
@@ -318,6 +322,22 @@ if run_clicked or _use_cache:
         if not cs_pipeline_id:
             st.warning("Could not find a 'Consumer Success' pipeline in HubSpot.")
             st.stop()
+
+        # Whole-pipeline stage counts (ignores the date filter) so the status cards
+        # match the HubSpot board, which shows every ticket currently in each stage.
+        pipeline_stage_counts = {}
+        with dash_spinner("Counting tickets per stage…"):
+            for _sid, _slabel in cs_stage_labels.items():
+                try:
+                    _cr = _post_retry(f"{BASE_URL}/crm/v3/objects/tickets/search", {
+                        "filterGroups": [{"filters": [
+                            {"propertyName": "hs_pipeline", "operator": "EQ", "value": cs_pipeline_id},
+                            {"propertyName": "hs_pipeline_stage", "operator": "EQ", "value": _sid}]}],
+                        "properties": ["hs_pipeline_stage"], "limit": 1})
+                    if _cr.status_code == 200:
+                        pipeline_stage_counts[_slabel] = _cr.json().get("total", 0)
+                except requests.exceptions.RequestException:
+                    pass
 
         # Build search filters
         TICKET_PROPS = [
@@ -835,10 +855,16 @@ if run_clicked or _use_cache:
         except Exception:
             pass
 
-    _stage_counts = pd.Series([r["Status"] for r in rows]).value_counts()
+    # Whole-pipeline stage counts (match the HubSpot board — ignores the date filter).
+    # Fall back to the date-filtered rows if the count query returned nothing.
+    _psc = locals().get("pipeline_stage_counts") or {}
+    if _psc:
+        _stage_counts = pd.Series({k: v for k, v in _psc.items() if v})
+    else:
+        _stage_counts = pd.Series([r["Status"] for r in rows]).value_counts()
     # ── ticket status cards ────────────────────────────────────────────────────
     _tot_tk = int(_stage_counts.sum())
-    st.markdown(f"##### 🎫 Tickets by status — {_tot_tk:,} total")
+    st.markdown(f"##### 🎫 Tickets by status — {_tot_tk:,} total (whole pipeline)")
     _STAGE_COLORS = ["#7A5CFF", "#0FB5AE", "#4C8DFF", "#2DB84B", "#E8952A",
                      "#E5484D", "#8B5CF6", "#0EA5E9", "#F59E0B", "#10B981"]
     # preferred display order: New, Waiting on CSM, Waiting on Consumer, Incomplete, Closed.
