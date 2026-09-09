@@ -837,10 +837,10 @@ if run_clicked or _use_cache:
 
     _stage_counts = pd.Series([r["Status"] for r in rows]).value_counts()
     # ── ticket status cards ────────────────────────────────────────────────────
-    st.markdown("##### 🎫 Tickets by status")
+    _tot_tk = int(_stage_counts.sum())
+    st.markdown(f"##### 🎫 Tickets by status — {_tot_tk:,} total")
     _STAGE_COLORS = ["#7A5CFF", "#0FB5AE", "#4C8DFF", "#2DB84B", "#E8952A",
                      "#E5484D", "#8B5CF6", "#0EA5E9", "#F59E0B", "#10B981"]
-    _tot_tk = int(_stage_counts.sum())
     # preferred display order (matched case-insensitively; unknown statuses go last)
     _ORDER = ["new", "waiting on csm", "waiting on consumer", "incomplete", "closed"]
 
