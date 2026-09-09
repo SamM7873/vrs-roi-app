@@ -32,6 +32,48 @@ HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
 BASE_URL = "https://api.hubapi.com"
 _headers = {"Authorization": f"Bearer {HUBSPOT_TOKEN}", "Content-Type": "application/json"}
 
+# ── URSA field discovery (Number object) ───────────────────────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def _num_prop_names():
+    try:
+        r = requests.get(f"{BASE_URL}/crm/v3/properties/2-40974683", headers=_headers, timeout=30)
+        if r.status_code == 200:
+            return {p.get("name") for p in r.json().get("results", [])}
+    except Exception:
+        pass
+    return set()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _resolve_ursa_fields():
+    """Resolve the actual URSA login / outbound property names on the Number object."""
+    names = _num_prop_names()
+
+    def pick(*subs, prefer="ursa"):
+        cand = [n for n in names if all(s in (n or "").lower() for s in subs)]
+        cand.sort(key=lambda n: (0 if prefer in (n or "").lower() else 1, len(n)))
+        return cand[0] if cand else None
+
+    return {
+        "login": "ursa_first_login" if "ursa_first_login" in names else pick("first", "login"),
+        "first_out": pick("first", "outbound"),
+        "second_out": pick("second", "outbound"),
+    }
+
+
+URSA = _resolve_ursa_fields()
+URSA_PROPS = [v for v in (URSA.get("login"), URSA.get("first_out"), URSA.get("second_out")) if v]
+
+
+def _ursa_meta(p):
+    """Extract the resolved URSA date fields from a Number-object properties dict."""
+    return {
+        "ursa_first_login": (p.get(URSA["login"]) or "").strip() if URSA.get("login") else "",
+        "ursa_first_outbound": (p.get(URSA["first_out"]) or "").strip() if URSA.get("first_out") else "",
+        "ursa_second_outbound": (p.get(URSA["second_out"]) or "").strip() if URSA.get("second_out") else "",
+    }
+
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _parse_dt(v):
@@ -208,7 +250,7 @@ def _is_closed(status_label):
 run_clicked = st.button("Run Consumer Success Tickets", use_container_width=False)
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
-_CS_PIPELINE_VERSION = "v3-date-filter"  # bump to invalidate old cached costs
+_CS_PIPELINE_VERSION = "v4-ursa-outbound"  # bump to invalidate old cached costs
 _sig = [_CS_PIPELINE_VERSION, preset, str(filter_start), str(filter_end), date_field,
         status_filter, ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
 _CS_CACHE_VARS = [
@@ -622,7 +664,7 @@ if run_clicked or _use_cache:
                         f"{BASE_URL}/crm/v3/objects/2-40974683/batch/read",
                         {"inputs": [{"id": n} for n in chunk],
                          "properties": ["number", "service_type", "number_status",
-                                        "language_preference", "ursa_first_login"]},
+                                        "language_preference"] + URSA_PROPS},
                     )
                     if br.status_code in (200, 207):
                         for obj in br.json().get("results", []):
@@ -640,7 +682,7 @@ if run_clicked or _use_cache:
                                 num_id_meta[nid] = {
                                     "status": (p.get("number_status") or "").strip(),
                                     "language": (p.get("language_preference") or "").strip(),
-                                    "ursa_first_login": (p.get("ursa_first_login") or "").strip(),
+                                    **_ursa_meta(p),
                                 }
 
         # Email fallback path: ticket/contact email → Number.email → number.
@@ -658,7 +700,7 @@ if run_clicked or _use_cache:
                     em_recs = fetch_all(
                         "2-40974683",
                         ["number", "email", "service_type", "number_status",
-                         "language_preference", "ursa_first_login"],
+                         "language_preference"] + URSA_PROPS,
                         filter_groups=[{"filters": [
                             {"propertyName": "email",         "operator": "IN", "values": chunk},
                             {"propertyName": "service_type",  "operator": "EQ", "value": "VRS"},
@@ -678,7 +720,7 @@ if run_clicked or _use_cache:
                             num_id_meta.setdefault(nid, {
                                 "status": (p.get("number_status") or "").strip(),
                                 "language": (p.get("language_preference") or "").strip(),
-                                "ursa_first_login": (p.get("ursa_first_login") or "").strip(),
+                                **_ursa_meta(p),
                             })
 
             # Propagate close months from tickets to email-matched numbers
@@ -794,7 +836,27 @@ if run_clicked or _use_cache:
             pass
 
     _stage_counts = pd.Series([r["Status"] for r in rows]).value_counts()
-    st.caption("Stage breakdown: " + " · ".join(f"**{s}**: {c:,}" for s, c in _stage_counts.items()))
+    # ── ticket status cards ────────────────────────────────────────────────────
+    st.markdown("##### 🎫 Tickets by status")
+    _STAGE_COLORS = ["#7A5CFF", "#0FB5AE", "#4C8DFF", "#2DB84B", "#E8952A",
+                     "#E5484D", "#8B5CF6", "#0EA5E9", "#F59E0B", "#10B981"]
+    _tot_tk = int(_stage_counts.sum())
+    _items = list(_stage_counts.items())
+    for _r0 in range(0, len(_items), 4):
+        _chunk = _items[_r0:_r0 + 4]
+        _cols = st.columns(len(_chunk))
+        for _col, (_s, _c) in zip(_cols, _chunk):
+            _clr = _STAGE_COLORS[(_r0 + _chunk.index((_s, _c))) % len(_STAGE_COLORS)]
+            _pctv = f"{_c / _tot_tk * 100:.0f}% of tickets" if _tot_tk else "—"
+            _col.markdown(
+                f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {_clr};border-radius:12px;
+                    padding:12px 14px 10px;background:rgba(127,127,127,0.03);">
+                    <div style="font-size:.70rem;font-weight:700;text-transform:uppercase;color:#667085;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{_s}</div>
+                    <div style="font-size:1.7rem;font-weight:800;color:{_clr};line-height:1.1;margin:3px 0 2px;">{_c:,}</div>
+                    <div style="font-size:.70rem;color:#8792A2;">{_pctv}</div></div>""",
+                unsafe_allow_html=True)
+    st.markdown("")
 
     # ── Association table: ticket → contact → number → monthly values ─────────
     # One row per link in the chain, with a status showing where it breaks.
@@ -900,6 +962,21 @@ if run_clicked or _use_cache:
                 })
 
     assoc_df = pd.DataFrame(assoc_rows)
+
+    # add URSA first/second outbound (from the Number object) next to First Login
+    if not assoc_df.empty and "Number ID" in assoc_df.columns:
+        def _ursa_date(nid, key):
+            return (num_id_meta.get(str(nid), {}).get(key, "") or "")[:10]
+        assoc_df["URSA First Outbound"] = assoc_df["Number ID"].map(lambda n: _ursa_date(n, "ursa_first_outbound"))
+        assoc_df["URSA Second Outbound"] = assoc_df["Number ID"].map(lambda n: _ursa_date(n, "ursa_second_outbound"))
+        # place the two new columns right after "URSA First Login"
+        if "URSA First Login" in assoc_df.columns:
+            _cols = list(assoc_df.columns)
+            for _c in ("URSA First Outbound", "URSA Second Outbound"):
+                _cols.remove(_c)
+            _i = _cols.index("URSA First Login") + 1
+            _cols[_i:_i] = ["URSA First Outbound", "URSA Second Outbound"]
+            assoc_df = assoc_df[_cols]
 
     # ── Port-Out → VRS Registration (winback flag, read-only) ──────────────────
     # A CLOSED Port-Out ticket whose number is a currently-Live VRS number means
