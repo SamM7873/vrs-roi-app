@@ -223,6 +223,34 @@ with tab_type:
 
 with tab_lex:
     lex_df = df.groupby("LEX Status").size().reset_index(name="Count").sort_values("Count", ascending=False)
+
+    # LEX status breakdown as cards
+    _LEX_LABELS = {"": "(blank)", "not_verified": "Not verified",
+                   "automatic_success": "Automatic success", "manual_success": "Manual success"}
+    _LEX_COLORS = {"automatic_success": "#2DB84B", "manual_success": "#0FB5AE",
+                   "not_verified": "#E5484D", "": "#8792A2"}
+    _lex_total = int(lex_df["Count"].sum())
+    _lex_items = list(lex_df.itertuples(index=False))
+    st.markdown(f"##### 🔐 LEX verification — {_lex_total:,} total")
+    for _r0 in range(0, len(_lex_items), 4):
+        _chunk = _lex_items[_r0:_r0 + 4]
+        _cols = st.columns(len(_chunk))
+        for _col, _row in zip(_cols, _chunk):
+            _raw = str(_row[0] or "")
+            _lbl = _LEX_LABELS.get(_raw.lower(), _raw.replace("_", " ").title() or "(blank)")
+            _clr = _LEX_COLORS.get(_raw.lower(), "#4C8DFF")
+            _cnt = int(_row[1])
+            _pct = f"{_cnt / _lex_total * 100:.0f}% of registrations" if _lex_total else "—"
+            _col.markdown(
+                f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {_clr};border-radius:12px;
+                    padding:12px 14px 10px;background:rgba(127,127,127,0.03);">
+                    <div style="font-size:.70rem;font-weight:700;text-transform:uppercase;color:#667085;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{_lbl}</div>
+                    <div style="font-size:1.7rem;font-weight:800;color:{_clr};line-height:1.1;margin:3px 0 2px;">{_cnt:,}</div>
+                    <div style="font-size:.70rem;color:#8792A2;">{_pct}</div></div>""",
+                unsafe_allow_html=True)
+    st.markdown("")
+
     bar2 = alt.Chart(lex_df).mark_bar(color="#3B82F6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
         x=alt.X("Count:Q"),
         y=alt.Y("LEX Status:N", sort="-x"),
