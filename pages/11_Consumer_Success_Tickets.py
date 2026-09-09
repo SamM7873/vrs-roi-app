@@ -250,7 +250,7 @@ def _is_closed(status_label):
 run_clicked = st.button("Run Consumer Success Tickets", use_container_width=False)
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
-_CS_PIPELINE_VERSION = "v5-pipeline-stage-counts"  # bump to invalidate old cached costs
+_CS_PIPELINE_VERSION = "v6-stage-counts-dated"  # bump to invalidate old cached costs
 _sig = [_CS_PIPELINE_VERSION, preset, str(filter_start), str(filter_end), date_field,
         status_filter, ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
 _CS_CACHE_VARS = [
@@ -323,8 +323,20 @@ if run_clicked or _use_cache:
             st.warning("Could not find a 'Consumer Success' pipeline in HubSpot.")
             st.stop()
 
-        # Whole-pipeline stage counts (ignores the date filter) so the status cards
-        # match the HubSpot board, which shows every ticket currently in each stage.
+        # Per-stage counts within the selected date window (server-side totals, so the
+        # status cards match the HubSpot board's stage counts for the same period and
+        # don't lose tickets to row-level drops). Uses the same date field + range.
+        _date_filter = []
+        if filter_start and filter_end:
+            _ctc = timezone(timedelta(hours=-5 if 3 <= filter_start.month <= 11 else -6))
+            _lo_ms = str(int(datetime(filter_start.year, filter_start.month, filter_start.day,
+                                      0, 0, 0, tzinfo=_ctc).timestamp() * 1000))
+            _hi_ms = str(int(datetime(filter_end.year, filter_end.month, filter_end.day,
+                                      23, 59, 59, tzinfo=_ctc).timestamp() * 1000))
+            _date_filter = [
+                {"propertyName": date_field, "operator": "GTE", "value": _lo_ms},
+                {"propertyName": date_field, "operator": "LTE", "value": _hi_ms},
+            ]
         pipeline_stage_counts = {}
         with dash_spinner("Counting tickets per stage…"):
             for _sid, _slabel in cs_stage_labels.items():
@@ -332,7 +344,8 @@ if run_clicked or _use_cache:
                     _cr = _post_retry(f"{BASE_URL}/crm/v3/objects/tickets/search", {
                         "filterGroups": [{"filters": [
                             {"propertyName": "hs_pipeline", "operator": "EQ", "value": cs_pipeline_id},
-                            {"propertyName": "hs_pipeline_stage", "operator": "EQ", "value": _sid}]}],
+                            {"propertyName": "hs_pipeline_stage", "operator": "EQ", "value": _sid}]
+                            + _date_filter}],
                         "properties": ["hs_pipeline_stage"], "limit": 1})
                     if _cr.status_code == 200:
                         pipeline_stage_counts[_slabel] = _cr.json().get("total", 0)
@@ -864,7 +877,7 @@ if run_clicked or _use_cache:
         _stage_counts = pd.Series([r["Status"] for r in rows]).value_counts()
     # ── ticket status cards ────────────────────────────────────────────────────
     _tot_tk = int(_stage_counts.sum())
-    st.markdown(f"##### 🎫 Tickets by status — {_tot_tk:,} total (whole pipeline)")
+    st.markdown(f"##### 🎫 Tickets by status — {_tot_tk:,} total")
     _STAGE_COLORS = ["#7A5CFF", "#0FB5AE", "#4C8DFF", "#2DB84B", "#E8952A",
                      "#E5484D", "#8B5CF6", "#0EA5E9", "#F59E0B", "#10B981"]
     # preferred display order: New, Waiting on CSM, Waiting on Consumer, Incomplete, Closed.
