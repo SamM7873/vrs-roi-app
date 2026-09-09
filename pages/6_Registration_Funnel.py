@@ -51,7 +51,7 @@ if refresh:
             "registration_id", "registration_type", "usage_type",
             "email", "first_name", "last_name", "number",
             "submitted_at", "registered_at",
-            "lex_verification_status", "lex_verified_at",
+            "lex_verification_status", "lex_verified_at", "lex_error_message",
             "urd_status", "urd_registration_created_at",
             "is_cancelled", "registration_created_at",
             "portin_status", "state",
@@ -82,6 +82,7 @@ if refresh:
             "Submitted": p.get("submitted_at") or "",
             "Registered": p.get("registered_at") or "",
             "LEX Status": lex,
+            "LEX Error Message": (p.get("lex_error_message") or "").strip(),
             "LEX Verified At": p.get("lex_verified_at") or "",
             "URD Status": urd,
             "Cancelled": cancelled,
@@ -264,6 +265,21 @@ with tab_lex:
                     <div style="font-size:.70rem;color:#8792A2;">{_pct}</div></div>""",
                 unsafe_allow_html=True)
     st.markdown("")
+
+    # Top 10 LEX error messages
+    if "LEX Error Message" in df.columns:
+        _err = df[df["LEX Error Message"].astype(str).str.strip() != ""]
+        st.markdown(f"##### ⚠️ Top LEX error messages — {len(_err):,} with an error")
+        if _err.empty:
+            st.caption("No LEX error messages in this window.")
+        else:
+            _top_err = (_err.groupby("LEX Error Message").size().reset_index(name="Count")
+                        .sort_values("Count", ascending=False).head(10))
+            _top_err["%"] = (_top_err["Count"] / len(_err) * 100).round(1).astype(str) + "%"
+            st.dataframe(_top_err, use_container_width=True, hide_index=True,
+                         column_config={"Count": st.column_config.ProgressColumn(
+                             "Count", min_value=0, max_value=int(_top_err["Count"].max()), format="%d")})
+        st.markdown("")
 
     bar2 = alt.Chart(lex_df).mark_bar(color="#3B82F6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
         x=alt.X("Count:Q"),
