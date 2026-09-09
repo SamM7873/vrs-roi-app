@@ -103,10 +103,11 @@ def _month_sort(k):
 
 # ── date presets ──────────────────────────────────────────────────────────────
 
+ROLLING_DAYS = [7, 14, 28, 30, 56, 60, 84, 90]
 PRESETS = [
     "Jun 2026–Present",
     "All Time", "Today", "Yesterday",
-    "Last 7 Days", "Last 30 Days",
+] + [f"Rolling {d}d" for d in ROLLING_DAYS] + [
     "This Week (Mon–Sun)", "Last Week",
     "This Month", "Last Month", "Last 3 Months",
     "This Quarter", "Last Quarter",
@@ -133,6 +134,12 @@ TICKET_NAME_MULTI = {
 def _date_range(preset):
     today = date.today()
     if preset == "Jun 2026–Present":  return date(2026, 6, 1), today
+    if preset.startswith("Rolling ") and preset.endswith("d"):
+        try:
+            _n = int(preset[len("Rolling "):-1])
+            return today - timedelta(days=_n - 1), today
+        except ValueError:
+            pass
     if preset == "Today":             return today, today
     if preset == "Yesterday":         d = today - timedelta(days=1); return d, d
     if preset == "Last 7 Days":       return today - timedelta(days=6), today
