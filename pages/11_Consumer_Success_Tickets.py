@@ -1145,6 +1145,28 @@ if run_clicked or _use_cache:
 
     st.markdown("#### Association Table — Ticket → Contact → Number → Monthly Values")
     if not assoc_df.empty:
+        # URSA milestone cards — how many distinct numbers reached each step
+        _u = assoc_df[assoc_df["Number ID"].astype(str) != ""].drop_duplicates("Number ID")
+        _n_numbers = len(_u)
+
+        def _has(col):
+            return int((_u[col].astype(str).str.strip() != "").sum()) if col in _u.columns else 0
+        _u1, _u2, _u3 = _has("URSA First Login"), _has("URSA First Outbound"), _has("URSA Second Outbound")
+        _uc = st.columns(3)
+        for _col, (_t, _v, _clr) in zip(_uc, [
+                ("URSA First Login", _u1, "#0FB5AE"),
+                ("URSA First Outbound", _u2, "#4C8DFF"),
+                ("URSA Second Outbound", _u3, "#7A5CFF")]):
+            _sub = f"{_v/_n_numbers*100:.0f}% of {_n_numbers:,} numbers" if _n_numbers else "—"
+            _col.markdown(
+                f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {_clr};border-radius:12px;
+                    padding:12px 14px 10px;background:rgba(127,127,127,0.03);">
+                    <div style="font-size:.70rem;font-weight:700;text-transform:uppercase;color:#667085;">{_t}</div>
+                    <div style="font-size:1.7rem;font-weight:800;color:{_clr};line-height:1.1;margin:3px 0 2px;">{_v:,}</div>
+                    <div style="font-size:.70rem;color:#8792A2;">{_sub}</div></div>""",
+                unsafe_allow_html=True)
+        st.markdown("")
+
         chain_counts = assoc_df["Chain"].value_counts()
         st.caption(" · ".join(f"**{k}**: {v:,}" for k, v in chain_counts.items())
                    + f" · URSA total in table: {assoc_df.drop_duplicates('Number ID')['URSA Min'].sum():,.1f} min")
