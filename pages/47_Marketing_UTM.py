@@ -108,6 +108,11 @@ _group_opts = [c for c in ([camp_field] + [f for f in _field_choices if f != cam
 group_by = st.selectbox("Break down by", _group_opts, index=0,
                         help="Which UTM/source field to group the breakdown on.")
 
+n1, n2 = st.columns([1.4, 1.4])
+num_after = n1.checkbox("Only count numbers created after", value=True,
+                        help="Count a VRS number only if number_created_at is on/after this date.")
+num_after_d = n2.date_input("Number created on/after", value=date(2026, 9, 1), disabled=not num_after)
+
 run = st.button("▶ Run", type="primary", disabled=(not campaigns))
 
 if run:
@@ -132,20 +137,38 @@ if run:
     with dash_spinner(f"Checking {len(cids):,} contacts for a VRS number…"):
         cid_to_nids = _assoc("contacts", NUM_OBJECT, cids)
         all_nids = sorted({n for ns in cid_to_nids.values() for n in ns})
-        num_of = _batch_read(NUM_OBJECT, all_nids, ["number", "service_type", "number_status"])
+        num_of = _batch_read(NUM_OBJECT, all_nids,
+                             ["number", "service_type", "number_status", "number_created_at"])
+
+    def _created_ok(v):
+        if not num_after:
+            return True
+        if not v:
+            return False
+        try:
+            s = str(v)
+            dt = (datetime.fromtimestamp(int(s) / 1000, tz=timezone.utc) if s.isdigit()
+                  else datetime.fromisoformat(s.replace("Z", "+00:00")))
+            return dt.date() >= num_after_d
+        except (ValueError, TypeError):
+            return False
 
     rows = []
     for c in contacts:
         cid = str(c["id"])
         p = c.get("properties", {})
-        vrs_nums, statuses = [], []
+        vrs_nums, statuses, created = [], [], []
         for nid in cid_to_nids.get(cid, []):
             np = num_of.get(nid, {})
-            if (np.get("service_type") or "").strip().lower() == "vrs":
-                num = str(np.get("number") or "").strip()
-                if num:
-                    vrs_nums.append(num)
-                    statuses.append((np.get("number_status") or "").strip().title())
+            if (np.get("service_type") or "").strip().lower() != "vrs":
+                continue
+            if not _created_ok(np.get("number_created_at")):
+                continue
+            num = str(np.get("number") or "").strip()
+            if num:
+                vrs_nums.append(num)
+                statuses.append((np.get("number_status") or "").strip().title())
+                created.append((str(np.get("number_created_at") or ""))[:10])
         rows.append({
             "Campaign": (p.get(camp_field) or "").strip() or "—",
             "Group": (p.get(group_by) or "").strip() or "—",
@@ -155,11 +178,13 @@ if run:
             "Has VRS #": "Yes" if vrs_nums else "No",
             "VRS Number(s)": ", ".join(vrs_nums) or "—",
             "VRS Status": ", ".join(sorted(set(s for s in statuses if s))) or "—",
+            "Number Created": ", ".join(sorted(set(x for x in created if x))) or "—",
         })
     df = pd.DataFrame(rows)
     save_report(_key, {"df": df, "campaigns": campaigns, "camp_field": camp_field,
                        "group_by": group_by,
-                       "date": (f"{start_d} → {end_d}" if use_date else "all dates")})
+                       "date": (f"{start_d} → {end_d}" if use_date else "all dates"),
+                       "num_after": (str(num_after_d) if num_after else None)})
 
 saved = load_report(_key)
 if saved is None:
@@ -168,8 +193,10 @@ if saved is None:
 
 df = saved["df"]
 if saved.get("saved_at"):
+    _na = saved.get("num_after")
     st.caption(f"📌 Saved {saved_at_label(saved)} · field `{saved.get('camp_field','')}` · "
-               f"{len(saved.get('campaigns', []))} campaign(s) · {saved.get('date','')}")
+               f"{len(saved.get('campaigns', []))} campaign(s) · {saved.get('date','')}"
+               + (f" · number created ≥ {_na}" if _na else ""))
 if df.empty:
     st.warning("No contacts."); report_header_close(); st.stop()
 
