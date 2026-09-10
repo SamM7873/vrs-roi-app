@@ -138,7 +138,8 @@ if run:
         cid_to_nids = _assoc("contacts", NUM_OBJECT, cids)
         all_nids = sorted({n for ns in cid_to_nids.values() for n in ns})
         num_of = _batch_read(NUM_OBJECT, all_nids,
-                             ["number", "service_type", "number_status", "number_created_at"])
+                             ["number", "service_type", "number_status", "number_created_at",
+                              "registration_type"])
 
     def _created_ok(v):
         if not num_after:
@@ -157,7 +158,7 @@ if run:
     for c in contacts:
         cid = str(c["id"])
         p = c.get("properties", {})
-        vrs_nums, statuses, created = [], [], []
+        vrs_nums, statuses, created, regtypes = [], [], [], []
         for nid in cid_to_nids.get(cid, []):
             np = num_of.get(nid, {})
             if (np.get("service_type") or "").strip().lower() != "vrs":
@@ -169,6 +170,9 @@ if run:
                 vrs_nums.append(num)
                 statuses.append((np.get("number_status") or "").strip().title())
                 created.append((str(np.get("number_created_at") or ""))[:10])
+                _rt = (np.get("registration_type") or "").strip().replace("_", " ").title()
+                if _rt:
+                    regtypes.append(_rt)
         rows.append({
             "Campaign": (p.get(camp_field) or "").strip() or "—",
             "Group": (p.get(group_by) or "").strip() or "—",
@@ -178,6 +182,7 @@ if run:
             "Has VRS #": "Yes" if vrs_nums else "No",
             "VRS Number(s)": ", ".join(vrs_nums) or "—",
             "VRS Status": ", ".join(sorted(set(s for s in statuses if s))) or "—",
+            "Registration Type": ", ".join(sorted(set(regtypes))) or "—",
             "Number Created": ", ".join(sorted(set(x for x in created if x))) or "—",
         })
     df = pd.DataFrame(rows)
@@ -227,6 +232,15 @@ g["No VRS"] = g["Contacts"] - g["Have VRS"]
 g["Conversion"] = (g["Have VRS"] / g["Contacts"] * 100).round(0).astype(int).astype(str) + "%"
 g = g.sort_values("Contacts", ascending=False)
 st.dataframe(g, use_container_width=True, hide_index=True)
+
+# registration-type breakdown (contacts that have a VRS number)
+if "Registration Type" in df.columns:
+    _rt = df[df["Has VRS #"] == "Yes"]
+    if not _rt.empty and (_rt["Registration Type"] != "—").any():
+        st.markdown("##### By registration type (contacts with a VRS number)")
+        rt = (_rt.groupby("Registration Type").size().reset_index(name="Contacts")
+              .sort_values("Contacts", ascending=False))
+        st.dataframe(rt, use_container_width=True, hide_index=True)
 
 # records
 st.markdown("##### Contacts")
