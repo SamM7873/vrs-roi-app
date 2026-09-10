@@ -340,11 +340,12 @@ else:
         m[1].metric("Avg handle time", _fmt_span(_avg_span))
         m[2].metric("Median handle time", _fmt_span(_med_span))
         m[3].metric("Avg events / ticket", f"{_avg_ev:.1f}")
+        _n_incomplete = int(tdet["Stage"].astype(str).str.strip().str.lower().str.contains("incomplete").sum())
         m2 = st.columns(4)
         m2[0].metric("Closed tickets", f"{_n_closed:,}")
         m2[1].metric("Avg time to close", _fmt_span(_closed.mean() if _n_closed else pd.NaT))
         m2[2].metric("Median time to close", _fmt_span(_closed.median() if _n_closed else pd.NaT))
-        m2[3].metric("", "")
+        m2[3].metric("Incomplete", f"{_n_incomplete:,}")
         st.caption("**Handle time** = first → last audit activity on the ticket (from the export). "
                    "**Time to close** = HubSpot create → closed date (closed tickets only). "
                    "**Average** is pulled up by a few long tickets; **median** is the typical ticket — "
