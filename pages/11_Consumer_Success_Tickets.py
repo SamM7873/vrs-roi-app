@@ -257,7 +257,7 @@ def _is_closed(status_label):
 run_clicked = st.button("Run Consumer Success Tickets", use_container_width=False)
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
-_CS_PIPELINE_VERSION = "v8-phone-match"  # bump to invalidate old cached costs
+_CS_PIPELINE_VERSION = "v9-assoc-any-status"  # bump to invalidate old cached costs
 _sig = [_CS_PIPELINE_VERSION, preset, str(filter_start), str(filter_end), date_field,
         status_filter, ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
 _CS_CACHE_VARS = [
@@ -687,8 +687,10 @@ if run_clicked or _use_cache:
                             p = obj.get("properties", {})
                             if norm(p.get("service_type") or "") != "vrs":
                                 continue
-                            if norm(p.get("number_status") or "") != "live":
-                                continue
+                            # A ticket/contact is genuinely associated to this VRS Number
+                            # object, so recognize it regardless of number_status (Live,
+                            # Suspended, etc.) — otherwise a valid VRS ticket shows
+                            # "No VRS number". Status is still recorded and shown.
                             if not _lang_ok(p.get("language_preference")):
                                 continue
                             num = str(p.get("number") or "").strip()
