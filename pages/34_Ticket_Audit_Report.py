@@ -8,6 +8,20 @@ from utils import (require_auth, is_app_admin, COMMON_CSS,
                    headers as _H, BASE_URL as _B)
 
 
+def _cards(items):
+    """Render a row of polished metric cards. items = [(title, value, subtitle, hex)]."""
+    cols = st.columns(len(items))
+    for col, (t, v, s, c) in zip(cols, items):
+        col.markdown(
+            f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:14px;
+                padding:16px 18px 13px;background:rgba(127,127,127,0.03);height:100%;">
+                <div style="font-size:.70rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+                    color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{t}</div>
+                <div style="font-size:1.9rem;font-weight:800;color:{c};line-height:1.05;margin:5px 0 3px;">{v}</div>
+                <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""",
+            unsafe_allow_html=True)
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def _owner_names():
     """{owner_id: display name} for ticket owners."""
@@ -327,29 +341,41 @@ else:
         if _name_q:
             tdet = tdet[tdet.apply(lambda r: _name_q in f"{r['Ticket Name']} {r['Ticket ID']}".lower(), axis=1)]
 
-        # averages — how much handling each ticket takes
+        # metrics — grouped, styled cards
         _nt = len(tdet)
         _avg_ev = tdet["Events"].mean() if _nt else 0
-        _avg_up = tdet["Updates"].mean() if _nt else 0
         _avg_span = tdet["_span"].mean() if _nt else pd.NaT
         _med_span = tdet["_span"].median() if _nt else pd.NaT
         _closed = tdet["_ttc"].dropna()
         _n_closed = len(_closed)
-        m = st.columns(4)
-        m[0].metric("Tickets (filtered)", f"{_nt:,}")
-        m[1].metric("Avg handle time", _fmt_span(_avg_span))
-        m[2].metric("Median handle time", _fmt_span(_med_span))
-        m[3].metric("Avg events / ticket", f"{_avg_ev:.1f}")
         _n_incomplete = int(tdet["Stage"].astype(str).str.strip().str.lower().str.contains("incomplete").sum())
-        m2 = st.columns(4)
-        m2[0].metric("Closed tickets", f"{_n_closed:,}")
-        m2[1].metric("Avg time to close", _fmt_span(_closed.mean() if _n_closed else pd.NaT))
-        m2[2].metric("Median time to close", _fmt_span(_closed.median() if _n_closed else pd.NaT))
-        m2[3].metric("Incomplete", f"{_n_incomplete:,}")
+        _open = _nt - _n_closed
+
+        st.markdown("###### 📦 Volume")
+        _cards([
+            ("🎫 Tickets (filtered)", f"{_nt:,}", "in current view", "#1A2234"),
+            ("✅ Closed", f"{_n_closed:,}", f"{_n_closed/_nt*100:.0f}% of tickets" if _nt else "—", "#2DB84B"),
+            ("🕗 Open", f"{_open:,}", f"{_open/_nt*100:.0f}% of tickets" if _nt else "—", "#4C8DFF"),
+            ("⚠️ Incomplete", f"{_n_incomplete:,}", f"{_n_incomplete/_nt*100:.0f}% of tickets" if _nt else "—", "#E8952A"),
+        ])
+        st.markdown("###### ⏱️ Handle time · from the audit log")
+        _cards([
+            ("Avg handle time", _fmt_span(_avg_span), "first → last activity", "#0FB5AE"),
+            ("Median handle time", _fmt_span(_med_span), "the typical ticket", "#0FB5AE"),
+            ("Avg events / ticket", f"{_avg_ev:.1f}", "log actions per ticket", "#7A5CFF"),
+        ])
+        st.markdown("###### 🏁 Time to close · from HubSpot")
+        _cards([
+            ("Avg time to close", _fmt_span(_closed.mean() if _n_closed else pd.NaT),
+             f"over {_n_closed:,} closed", "#4C8DFF"),
+            ("Median time to close", _fmt_span(_closed.median() if _n_closed else pd.NaT),
+             "the typical closed ticket", "#4C8DFF"),
+        ])
         st.caption("**Handle time** = first → last audit activity on the ticket (from the export). "
                    "**Time to close** = HubSpot create → closed date (closed tickets only). "
                    "**Average** is pulled up by a few long tickets; **median** is the typical ticket — "
                    "when average ≫ median you have outliers.")
+        st.markdown("")
         cols_t = ["Ticket ID", "Ticket Name", "Owner", "Pipeline", "Stage", "Category", "Ticket Created",
                   "Closed", "Time to close", "Handle span", "Events", "Created", "Updates",
                   "Agents", "Last activity"]
