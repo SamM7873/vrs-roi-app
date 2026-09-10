@@ -1232,11 +1232,12 @@ if run_clicked or _use_cache:
             return int((_u[col].astype(str).str.strip() != "").sum()) if col in _u.columns else 0
         _u1, _u2, _u3 = _has("URSA First Login"), _has("URSA First Outbound"), _has("URSA Second Outbound")
         _uc = st.columns(3)
-        for _col, (_t, _v, _clr) in zip(_uc, [
-                ("URSA First Login", _u1, "#0FB5AE"),
-                ("URSA First Outbound", _u2, "#4C8DFF"),
-                ("URSA Second Outbound", _u3, "#7A5CFF")]):
-            _sub = f"{_v/_n_numbers*100:.0f}% of {_n_numbers:,} numbers" if _n_numbers else "—"
+        # funnel denominators: login of numbers, first-out of login, second-out of first-out
+        for _col, (_t, _v, _den, _dlbl, _clr) in zip(_uc, [
+                ("URSA First Login", _u1, _n_numbers, "numbers", "#0FB5AE"),
+                ("URSA First Outbound", _u2, _u1, "first logins", "#4C8DFF"),
+                ("URSA Second Outbound", _u3, _u2, "first outbounds", "#7A5CFF")]):
+            _sub = f"{_v/_den*100:.0f}% of {_den:,} {_dlbl}" if _den else "—"
             _col.markdown(
                 f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {_clr};border-radius:12px;
                     padding:12px 14px 10px;background:rgba(127,127,127,0.03);">
