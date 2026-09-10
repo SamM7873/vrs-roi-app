@@ -1,9 +1,27 @@
 import streamlit as st
 import pandas as pd
 import time
+import requests
 from utils import (require_auth, is_app_admin, COMMON_CSS,
                    report_header, report_header_close, log_report_view,
-                   save_report, load_report, saved_at_label, fetch_all, dash_spinner)
+                   save_report, load_report, saved_at_label, fetch_all, dash_spinner,
+                   headers as _H, BASE_URL as _B)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _ticket_pipeline_labels():
+    """{pipeline_id: label} and {stage_id: label} for the tickets object."""
+    pl, sl = {}, {}
+    try:
+        r = requests.get(f"{_B}/crm/v3/pipelines/tickets", headers=_H, timeout=15)
+        if r.status_code == 200:
+            for pipe in r.json().get("results", []):
+                pl[pipe["id"]] = pipe.get("label", pipe["id"])
+                for stg in pipe.get("stages", []):
+                    sl[stg["id"]] = stg.get("label", stg["id"])
+    except Exception:
+        pass
+    return pl, sl
 
 st.set_page_config(page_title="Ticket Audit Report", layout="wide", page_icon="🎫")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -207,13 +225,14 @@ else:
     enrich = st.checkbox("🔗 Load ticket name & description from HubSpot", key="tk_enrich")
     if enrich:
         ids = tdet["Ticket ID"].tolist()
+        _pl, _sl = _ticket_pipeline_labels()
         info = {}
         with dash_spinner(f"Fetching {len(ids):,} tickets from HubSpot…"):
             for i in range(0, len(ids), 100):
                 chunk = ids[i:i + 100]
                 for rec in fetch_all("tickets",
                                      ["hs_object_id", "subject", "content", "createdate",
-                                      "hs_pipeline", "hs_pipeline_stage"],
+                                      "hs_pipeline", "hs_pipeline_stage", "hs_ticket_category"],
                                      filter_groups=[{"filters": [
                                          {"propertyName": "hs_object_id",
                                           "operator": "IN", "values": chunk}]}]):
@@ -229,13 +248,28 @@ else:
                             cd = cd[:10] or "—"
                         info[hid] = {"Ticket Name": (p.get("subject") or "").strip() or "—",
                                      "Description": (desc[:200] + "…") if len(desc) > 200 else (desc or "—"),
-                                     "Ticket Created": cd}
-        tdet["Ticket Name"] = tdet["Ticket ID"].map(lambda x: info.get(x, {}).get("Ticket Name", "—"))
-        tdet["Description"] = tdet["Ticket ID"].map(lambda x: info.get(x, {}).get("Description", "—"))
-        tdet["Ticket Created"] = tdet["Ticket ID"].map(lambda x: info.get(x, {}).get("Ticket Created", "—"))
-        cols_t = ["Ticket ID", "Ticket Name", "Description", "Ticket Created", "Events", "Created",
-                  "Updates", "Agents", "Last activity"]
+                                     "Ticket Created": cd,
+                                     "Pipeline": _pl.get(p.get("hs_pipeline"), (p.get("hs_pipeline") or "—")),
+                                     "Stage": _sl.get(p.get("hs_pipeline_stage"), (p.get("hs_pipeline_stage") or "—")),
+                                     "Category": (p.get("hs_ticket_category") or "—")}
+        for _c in ("Ticket Name", "Description", "Ticket Created", "Pipeline", "Stage", "Category"):
+            tdet[_c] = tdet["Ticket ID"].map(lambda x, _c=_c: info.get(x, {}).get(_c, "—"))
+
+        # Pipeline + Category filters
+        _fp, _fc = st.columns(2)
+        _pipes = sorted(v for v in tdet["Pipeline"].unique() if v and v != "—")
+        _cats = sorted(v for v in tdet["Category"].unique() if v and v != "—")
+        _pipe_sel = _fp.multiselect("Pipeline", _pipes, default=[])
+        _cat_sel = _fc.multiselect("Category", _cats, default=[])
+        if _pipe_sel:
+            tdet = tdet[tdet["Pipeline"].isin(_pipe_sel)]
+        if _cat_sel:
+            tdet = tdet[tdet["Category"].isin(_cat_sel)]
+        st.caption(f"{len(tdet):,} tickets after Pipeline/Category filters.")
+        cols_t = ["Ticket ID", "Ticket Name", "Pipeline", "Stage", "Category", "Ticket Created",
+                  "Events", "Created", "Updates", "Agents", "Last activity"]
     else:
+        st.caption("Enable **Load ticket name & description** above to filter by Pipeline and Category.")
         cols_t = ["Ticket ID", "Events", "Created", "Updates", "Agents", "Last activity"]
     st.dataframe(tdet[cols_t], use_container_width=True, hide_index=True, height=460)
     st.download_button("📥 Download ticket detail (CSV)", tdet[cols_t].to_csv(index=False),
