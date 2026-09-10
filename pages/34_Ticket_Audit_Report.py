@@ -186,13 +186,14 @@ else:
     deleted = int(acts.get("Delete", 0))
     n_created_ids = tickets[tickets["Action"] == "Create"]["Target object id"].replace("", pd.NA).nunique()
 
-    k = st.columns(6)
-    k[0].metric("Ticket events", f"{len(tickets):,}")
-    k[1].metric("Unique tickets touched", f"{n_touch:,}")
-    k[2].metric("Tickets created", f"{n_created_ids:,}")
-    k[3].metric("Updates", f"{updated:,}")
-    k[4].metric("Merged", f"{merged:,}")
-    k[5].metric("Deleted", f"{deleted:,}")
+    _cards([
+        ("🎫 Ticket events", f"{len(tickets):,}", "audit events", "#1A2234"),
+        ("🔢 Unique tickets", f"{n_touch:,}", "distinct touched", "#4C8DFF"),
+        ("🆕 Created", f"{n_created_ids:,}", "new tickets", "#2DB84B"),
+        ("✏️ Updates", f"{updated:,}", "update actions", "#0FB5AE"),
+        ("🔀 Merged", f"{merged:,}", "merge actions", "#7A5CFF"),
+        ("🗑️ Deleted", f"{deleted:,}", "delete actions", "#E5484D"),
+    ])
 
     # per-day trend
     st.markdown("##### Ticket events per day")
@@ -382,10 +383,11 @@ else:
     else:
         st.caption("Enable **Load ticket name & description** above to filter by Pipeline and Category.")
         _nt = len(tdet)
-        m = st.columns(3)
-        m[0].metric("Tickets", f"{_nt:,}")
-        m[1].metric("Avg handle time", _fmt_span(tdet["_span"].mean() if _nt else pd.NaT))
-        m[2].metric("Median handle time", _fmt_span(tdet["_span"].median() if _nt else pd.NaT))
+        _cards([
+            ("🎫 Tickets", f"{_nt:,}", "in current view", "#1A2234"),
+            ("Avg handle time", _fmt_span(tdet["_span"].mean() if _nt else pd.NaT), "first → last activity", "#0FB5AE"),
+            ("Median handle time", _fmt_span(tdet["_span"].median() if _nt else pd.NaT), "the typical ticket", "#0FB5AE"),
+        ])
         st.caption("Handle time = first → last audit activity on the ticket (from the export).")
         cols_t = ["Ticket ID", "Handle span", "Events", "Created", "Updates", "Agents", "Last activity"]
     st.dataframe(tdet[cols_t], use_container_width=True, hide_index=True, height=460)
@@ -415,9 +417,10 @@ else:
                  Median=("span_h", "median"), Longest=("span_h", "max"),
                  Total=("span_h", "sum"))
             .reset_index().sort_values("Avg", ascending=False))
-    cols = st.columns(min(len(summ), 6))
-    for col, (_, r) in zip(cols, summ.iterrows()):
-        col.metric(r["_u"].split("@")[0], _hm(r["Avg"]), _tag(r["Avg"]))
+    def _tag_clr(h):
+        return "#2DB84B" if h >= 8 else ("#E8952A" if h >= 6.5 else "#E5484D")
+    _cards([(r["_u"].split("@")[0], _hm(r["Avg"]), _tag(r["Avg"]), _tag_clr(r["Avg"]))
+            for _, r in summ.head(6).iterrows()])
 
     show = summ.copy()
     show["Agent"] = show["_u"].map(_agent)
