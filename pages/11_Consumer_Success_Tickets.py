@@ -257,7 +257,7 @@ def _is_closed(status_label):
 run_clicked = st.button("Run Consumer Success Tickets", use_container_width=False)
 
 # Cache the report so other widgets (e.g. Ticket Inspector) don't wipe it.
-_CS_PIPELINE_VERSION = "v9-assoc-any-status"  # bump to invalidate old cached costs
+_CS_PIPELINE_VERSION = "v10-salesmsg-optin"  # bump to invalidate old cached costs
 _sig = [_CS_PIPELINE_VERSION, preset, str(filter_start), str(filter_end), date_field,
         status_filter, ticket_name_filter, bool(mv_all_months), bool(mv_close_month), lang_filter]
 _CS_CACHE_VARS = [
@@ -265,7 +265,7 @@ _CS_CACHE_VARS = [
     "total_ursa_min", "total_cfz_min", "total_usage_min", "total_vrs_fcc",
     "vrs_numbers", "vrs_num_ids", "num_id_to_number", "num_id_meta", "num_to_nid",
     "tid_to_cids", "cid_to_nids", "tid_to_nids", "email_to_nids",
-    "contact_email_map", "unique_cids", "tid_to_close_month", "cid_to_close_months",
+    "contact_email_map", "contact_optin_map", "unique_cids", "tid_to_close_month", "cid_to_close_months",
     "nid_to_close_months",
     "range_label", "mv_floor", "stage_labels", "owner_names",
     "ticket_contact_email", "filtered_ticket_ids", "vrs_reg_pipeline_id",
@@ -441,13 +441,15 @@ if run_clicked or _use_cache:
 
             unique_cids = list({cid for cids in tid_to_cids.values() for cid in cids})
             contact_phone_map = {}   # cid → contact phone (last 10 digits)
+            contact_optin_map = {}   # cid → Salesmsg opt-in status
             if unique_cids:
                 contact_email_map = {}
                 for i in range(0, len(unique_cids), 100):
                     chunk = unique_cids[i:i+100]
                     br = _post_retry(
                         f"{BASE_URL}/crm/v3/objects/contacts/batch/read",
-                        {"inputs": [{"id": c} for c in chunk], "properties": ["email", "phone"]},
+                        {"inputs": [{"id": c} for c in chunk],
+                         "properties": ["email", "phone", "salesmsg_opt_in_status"]},
                     )
                     if br.status_code in (200, 207):
                         for c in br.json().get("results", []):
@@ -459,6 +461,9 @@ if run_clicked or _use_cache:
                             _ph = "".join(ch for ch in str(_cp.get("phone") or "") if ch.isdigit())
                             if len(_ph) >= 10:
                                 contact_phone_map[cid] = _ph[-10:]
+                            _oi = (_cp.get("salesmsg_opt_in_status") or "").strip()
+                            if _oi:
+                                contact_optin_map[cid] = _oi
                 for tid, cids in tid_to_cids.items():
                     for cid in cids:
                         if cid in contact_email_map:
@@ -1068,6 +1073,12 @@ if run_clicked or _use_cache:
             _cols[_i:_i] = ["URSA First Outbound", "URSA Second Outbound"]
             assoc_df = assoc_df[_cols]
 
+    # Salesmsg opt-in status (contact level)
+    if not assoc_df.empty and "Contact ID" in assoc_df.columns:
+        _optin = locals().get("contact_optin_map") or {}
+        assoc_df["Opt-in Status"] = assoc_df["Contact ID"].map(
+            lambda c: _optin.get(str(c), "—") if str(c) else "—")
+
     # ── Port-Out → VRS Registration (winback flag, read-only) ──────────────────
     # A CLOSED Port-Out ticket whose number is a currently-Live VRS number means
     # the number came back (port-in winback) or is a new registration → it belongs
@@ -1251,6 +1262,32 @@ if run_clicked or _use_cache:
                    f"Number IDs). The **Numbers Matched** card above may be higher (all numbers matched "
                    "by association, email, or phone — a few don't appear as their own table row).")
         st.markdown("")
+
+        # ── Salesmsg opt-in status (per distinct contact) ──────────────────────
+        if "Opt-in Status" in assoc_df.columns and "Contact ID" in assoc_df.columns:
+            _oc = assoc_df[assoc_df["Contact ID"].astype(str) != ""].drop_duplicates("Contact ID")
+            _n_contacts = len(_oc)
+            if _n_contacts:
+                st.markdown(f"##### 💬 Salesmsg opt-in status — {_n_contacts:,} contacts")
+                _oi_counts = _oc["Opt-in Status"].replace("", "—").value_counts()
+                _OI_COLORS = {"opted in": "#2DB84B", "opted out": "#E5484D",
+                              "pending": "#E8952A", "—": "#8792A2"}
+                _oi_items = list(_oi_counts.items())
+                for _r0 in range(0, len(_oi_items), 4):
+                    _chunk = _oi_items[_r0:_r0 + 4]
+                    _cols = st.columns(len(_chunk))
+                    for _col, (_s, _c) in zip(_cols, _chunk):
+                        _clr = _OI_COLORS.get(str(_s).strip().lower(), "#4C8DFF")
+                        _pct = f"{_c/_n_contacts*100:.0f}% of contacts" if _n_contacts else "—"
+                        _col.markdown(
+                            f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {_clr};border-radius:12px;
+                                padding:12px 14px 10px;background:rgba(127,127,127,0.03);">
+                                <div style="font-size:.70rem;font-weight:700;text-transform:uppercase;color:#667085;
+                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{_s or '—'}</div>
+                                <div style="font-size:1.7rem;font-weight:800;color:{_clr};line-height:1.1;margin:3px 0 2px;">{_c:,}</div>
+                                <div style="font-size:.70rem;color:#8792A2;">{_pct}</div></div>""",
+                            unsafe_allow_html=True)
+                st.markdown("")
 
         chain_counts = assoc_df["Chain"].value_counts()
         st.caption(" · ".join(f"**{k}**: {v:,}" for k, v in chain_counts.items())
