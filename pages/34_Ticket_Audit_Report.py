@@ -265,7 +265,7 @@ else:
                 for rec in fetch_all("tickets",
                                      ["hs_object_id", "subject", "content", "createdate",
                                       "hs_pipeline", "hs_pipeline_stage", "hs_ticket_category",
-                                      "hubspot_owner_id"],
+                                      "hubspot_owner_id", "time_to_close", "closed_date"],
                                      filter_groups=[{"filters": [
                                          {"propertyName": "hs_object_id",
                                           "operator": "IN", "values": chunk}]}]):
@@ -285,9 +285,22 @@ else:
                                      "Pipeline": _pl.get(p.get("hs_pipeline"), (p.get("hs_pipeline") or "—")),
                                      "Stage": _sl.get(p.get("hs_pipeline_stage"), (p.get("hs_pipeline_stage") or "—")),
                                      "Category": (p.get("hs_ticket_category") or "—"),
-                                     "Owner": _own.get(str(p.get("hubspot_owner_id") or ""), "—")}
-        for _c in ("Ticket Name", "Description", "Ticket Created", "Pipeline", "Stage", "Category", "Owner"):
+                                     "Owner": _own.get(str(p.get("hubspot_owner_id") or ""), "—"),
+                                     "_ttc_ms": p.get("time_to_close"),
+                                     "Closed": (str(p.get("closed_date") or "")[:10] or "—")}
+        for _c in ("Ticket Name", "Description", "Ticket Created", "Pipeline", "Stage", "Category",
+                   "Owner", "Closed"):
             tdet[_c] = tdet["Ticket ID"].map(lambda x, _c=_c: info.get(x, {}).get(_c, "—"))
+
+        # true time-to-close from HubSpot (create → closed), in ms → timedelta
+        def _ttc(x):
+            v = info.get(x, {}).get("_ttc_ms")
+            try:
+                return pd.to_timedelta(int(v), unit="ms") if v not in (None, "", "0") else pd.NaT
+            except (ValueError, TypeError):
+                return pd.NaT
+        tdet["_ttc"] = tdet["Ticket ID"].map(_ttc)
+        tdet["Time to close"] = tdet["_ttc"].map(_fmt_span)
 
         # exclude the "HubSpot Request(s)" pipeline from the ticket detail
         _before = len(tdet)
@@ -320,14 +333,25 @@ else:
         _avg_up = tdet["Updates"].mean() if _nt else 0
         _avg_span = tdet["_span"].mean() if _nt else pd.NaT
         _med_span = tdet["_span"].median() if _nt else pd.NaT
+        _closed = tdet["_ttc"].dropna()
+        _n_closed = len(_closed)
         m = st.columns(4)
         m[0].metric("Tickets (filtered)", f"{_nt:,}")
         m[1].metric("Avg handle time", _fmt_span(_avg_span))
         m[2].metric("Median handle time", _fmt_span(_med_span))
         m[3].metric("Avg events / ticket", f"{_avg_ev:.1f}")
-        st.caption("Handle time = first → last audit activity on the ticket (from the export).")
+        m2 = st.columns(4)
+        m2[0].metric("Closed tickets", f"{_n_closed:,}")
+        m2[1].metric("Avg time to close", _fmt_span(_closed.mean() if _n_closed else pd.NaT))
+        m2[2].metric("Median time to close", _fmt_span(_closed.median() if _n_closed else pd.NaT))
+        m2[3].metric("", "")
+        st.caption("**Handle time** = first → last audit activity on the ticket (from the export). "
+                   "**Time to close** = HubSpot create → closed date (closed tickets only). "
+                   "**Average** is pulled up by a few long tickets; **median** is the typical ticket — "
+                   "when average ≫ median you have outliers.")
         cols_t = ["Ticket ID", "Ticket Name", "Owner", "Pipeline", "Stage", "Category", "Ticket Created",
-                  "Handle span", "Events", "Created", "Updates", "Agents", "Last activity"]
+                  "Closed", "Time to close", "Handle span", "Events", "Created", "Updates",
+                  "Agents", "Last activity"]
     else:
         st.caption("Enable **Load ticket name & description** above to filter by Pipeline and Category.")
         _nt = len(tdet)
