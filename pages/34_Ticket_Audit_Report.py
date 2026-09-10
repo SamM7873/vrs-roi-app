@@ -229,10 +229,26 @@ else:
                  Created=("Action", lambda s: "Yes" if (s == "Create").any() else ""),
                  Updates=("Action", lambda s: int((s == "Update").sum())),
                  Agents=("_u", lambda s: ", ".join(sorted({x.split("@")[0] for x in s}))),
+                 First_activity=("_t", "min"),
                  Last_activity=("_t", "max"))
-            .reset_index().rename(columns={"Target object id": "Ticket ID",
-                                           "Last_activity": "Last activity"}))
-    tdet["Last activity"] = pd.to_datetime(tdet["Last activity"]).dt.strftime("%b %d, %I:%M %p")
+            .reset_index().rename(columns={"Target object id": "Ticket ID"}))
+    # handling span = first → last audit activity on the ticket
+    tdet["_span"] = (pd.to_datetime(tdet["Last_activity"]) - pd.to_datetime(tdet["First_activity"]))
+
+    def _fmt_span(td):
+        if pd.isna(td):
+            return "—"
+        secs = int(td.total_seconds())
+        d, rem = divmod(secs, 86400)
+        h, rem = divmod(rem, 3600)
+        m = rem // 60
+        if d:
+            return f"{d}d {h}h"
+        if h:
+            return f"{h}h {m}m"
+        return f"{m}m"
+    tdet["Handle span"] = tdet["_span"].map(_fmt_span)
+    tdet["Last activity"] = pd.to_datetime(tdet["Last_activity"]).dt.strftime("%b %d, %I:%M %p")
     tdet = tdet.sort_values("Events", ascending=False)
 
     st.caption(f"{len(tdet):,} unique tickets. The audit export has no ticket name/description — "
@@ -295,18 +311,25 @@ else:
         _nt = len(tdet)
         _avg_ev = tdet["Events"].mean() if _nt else 0
         _avg_up = tdet["Updates"].mean() if _nt else 0
-        _avg_ag = (tdet["Agents"].map(lambda s: len([x for x in str(s).split(",") if x.strip()])).mean()
-                   if _nt else 0)
+        _avg_span = tdet["_span"].mean() if _nt else pd.NaT
+        _med_span = tdet["_span"].median() if _nt else pd.NaT
         m = st.columns(4)
         m[0].metric("Tickets (filtered)", f"{_nt:,}")
-        m[1].metric("Avg events / ticket", f"{_avg_ev:.1f}")
-        m[2].metric("Avg updates / ticket", f"{_avg_up:.1f}")
-        m[3].metric("Avg agents / ticket", f"{_avg_ag:.1f}")
+        m[1].metric("Avg handle time", _fmt_span(_avg_span))
+        m[2].metric("Median handle time", _fmt_span(_med_span))
+        m[3].metric("Avg events / ticket", f"{_avg_ev:.1f}")
+        st.caption("Handle time = first → last audit activity on the ticket (from the export).")
         cols_t = ["Ticket ID", "Ticket Name", "Owner", "Pipeline", "Stage", "Category", "Ticket Created",
-                  "Events", "Created", "Updates", "Agents", "Last activity"]
+                  "Handle span", "Events", "Created", "Updates", "Agents", "Last activity"]
     else:
         st.caption("Enable **Load ticket name & description** above to filter by Pipeline and Category.")
-        cols_t = ["Ticket ID", "Events", "Created", "Updates", "Agents", "Last activity"]
+        _nt = len(tdet)
+        m = st.columns(3)
+        m[0].metric("Tickets", f"{_nt:,}")
+        m[1].metric("Avg handle time", _fmt_span(tdet["_span"].mean() if _nt else pd.NaT))
+        m[2].metric("Median handle time", _fmt_span(tdet["_span"].median() if _nt else pd.NaT))
+        st.caption("Handle time = first → last audit activity on the ticket (from the export).")
+        cols_t = ["Ticket ID", "Handle span", "Events", "Created", "Updates", "Agents", "Last activity"]
     st.dataframe(tdet[cols_t], use_container_width=True, hide_index=True, height=460)
     st.download_button("📥 Download ticket detail (CSV)", tdet[cols_t].to_csv(index=False),
                        "ticket_detail.csv", "text/csv", key="tk_detail_csv")
