@@ -255,17 +255,31 @@ else:
         for _c in ("Ticket Name", "Description", "Ticket Created", "Pipeline", "Stage", "Category"):
             tdet[_c] = tdet["Ticket ID"].map(lambda x, _c=_c: info.get(x, {}).get(_c, "—"))
 
-        # Pipeline + Category filters
-        _fp, _fc = st.columns(2)
+        # Pipeline + Category filters + ticket-name search
+        _fp, _fc, _fs = st.columns([1.2, 1.2, 1.6])
         _pipes = sorted(v for v in tdet["Pipeline"].unique() if v and v != "—")
         _cats = sorted(v for v in tdet["Category"].unique() if v and v != "—")
         _pipe_sel = _fp.multiselect("Pipeline", _pipes, default=[])
         _cat_sel = _fc.multiselect("Category", _cats, default=[])
+        _name_q = _fs.text_input("Search ticket name / ID").strip().lower()
         if _pipe_sel:
             tdet = tdet[tdet["Pipeline"].isin(_pipe_sel)]
         if _cat_sel:
             tdet = tdet[tdet["Category"].isin(_cat_sel)]
-        st.caption(f"{len(tdet):,} tickets after Pipeline/Category filters.")
+        if _name_q:
+            tdet = tdet[tdet.apply(lambda r: _name_q in f"{r['Ticket Name']} {r['Ticket ID']}".lower(), axis=1)]
+
+        # averages — how much handling each ticket takes
+        _nt = len(tdet)
+        _avg_ev = tdet["Events"].mean() if _nt else 0
+        _avg_up = tdet["Updates"].mean() if _nt else 0
+        _avg_ag = (tdet["Agents"].map(lambda s: len([x for x in str(s).split(",") if x.strip()])).mean()
+                   if _nt else 0)
+        m = st.columns(4)
+        m[0].metric("Tickets (filtered)", f"{_nt:,}")
+        m[1].metric("Avg events / ticket", f"{_avg_ev:.1f}")
+        m[2].metric("Avg updates / ticket", f"{_avg_up:.1f}")
+        m[3].metric("Avg agents / ticket", f"{_avg_ag:.1f}")
         cols_t = ["Ticket ID", "Ticket Name", "Pipeline", "Stage", "Category", "Ticket Created",
                   "Events", "Created", "Updates", "Agents", "Last activity"]
     else:
