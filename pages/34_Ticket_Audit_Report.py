@@ -289,12 +289,12 @@ else:
         for _c in ("Ticket Name", "Description", "Ticket Created", "Pipeline", "Stage", "Category", "Owner"):
             tdet[_c] = tdet["Ticket ID"].map(lambda x, _c=_c: info.get(x, {}).get(_c, "—"))
 
-        # exclude the "HubSpot Request" pipeline from the ticket detail
+        # exclude the "HubSpot Request(s)" pipeline from the ticket detail
         _before = len(tdet)
-        tdet = tdet[~tdet["Pipeline"].astype(str).str.strip().str.lower().eq("hubspot request")]
+        tdet = tdet[~tdet["Pipeline"].astype(str).str.strip().str.lower().str.contains("hubspot request")]
         _dropped = _before - len(tdet)
         if _dropped:
-            st.caption(f"Excluded {_dropped:,} ticket(s) in the **HubSpot Request** pipeline.")
+            st.caption(f"Excluded {_dropped:,} ticket(s) in the **HubSpot Requests** pipeline.")
 
         # Pipeline + Category filters + ticket-name search
         _fp, _fc, _fs = st.columns([1.2, 1.2, 1.6])
