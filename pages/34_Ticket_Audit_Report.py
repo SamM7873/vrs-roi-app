@@ -9,6 +9,21 @@ from utils import (require_auth, is_app_admin, COMMON_CSS,
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
+def _owner_names():
+    """{owner_id: display name} for ticket owners."""
+    out = {}
+    try:
+        r = requests.get(f"{_B}/crm/v3/owners?limit=500", headers=_H, timeout=15)
+        if r.status_code == 200:
+            for o in r.json().get("results", []):
+                nm = f"{(o.get('firstName') or '').strip()} {(o.get('lastName') or '').strip()}".strip()
+                out[str(o["id"])] = nm or o.get("email", str(o["id"]))
+    except Exception:
+        pass
+    return out
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
 def _ticket_pipeline_labels():
     """{pipeline_id: label} and {stage_id: label} for the tickets object."""
     pl, sl = {}, {}
@@ -226,13 +241,15 @@ else:
     if enrich:
         ids = tdet["Ticket ID"].tolist()
         _pl, _sl = _ticket_pipeline_labels()
+        _own = _owner_names()
         info = {}
         with dash_spinner(f"Fetching {len(ids):,} tickets from HubSpot…"):
             for i in range(0, len(ids), 100):
                 chunk = ids[i:i + 100]
                 for rec in fetch_all("tickets",
                                      ["hs_object_id", "subject", "content", "createdate",
-                                      "hs_pipeline", "hs_pipeline_stage", "hs_ticket_category"],
+                                      "hs_pipeline", "hs_pipeline_stage", "hs_ticket_category",
+                                      "hubspot_owner_id"],
                                      filter_groups=[{"filters": [
                                          {"propertyName": "hs_object_id",
                                           "operator": "IN", "values": chunk}]}]):
@@ -251,8 +268,9 @@ else:
                                      "Ticket Created": cd,
                                      "Pipeline": _pl.get(p.get("hs_pipeline"), (p.get("hs_pipeline") or "—")),
                                      "Stage": _sl.get(p.get("hs_pipeline_stage"), (p.get("hs_pipeline_stage") or "—")),
-                                     "Category": (p.get("hs_ticket_category") or "—")}
-        for _c in ("Ticket Name", "Description", "Ticket Created", "Pipeline", "Stage", "Category"):
+                                     "Category": (p.get("hs_ticket_category") or "—"),
+                                     "Owner": _own.get(str(p.get("hubspot_owner_id") or ""), "—")}
+        for _c in ("Ticket Name", "Description", "Ticket Created", "Pipeline", "Stage", "Category", "Owner"):
             tdet[_c] = tdet["Ticket ID"].map(lambda x, _c=_c: info.get(x, {}).get(_c, "—"))
 
         # Pipeline + Category filters + ticket-name search
@@ -262,10 +280,14 @@ else:
         _pipe_sel = _fp.multiselect("Pipeline", _pipes, default=[])
         _cat_sel = _fc.multiselect("Category", _cats, default=[])
         _name_q = _fs.text_input("Search ticket name / ID").strip().lower()
+        _owners = sorted(v for v in tdet["Owner"].unique() if v and v != "—")
+        _own_sel = st.multiselect("Ticket owner", _owners, default=[])
         if _pipe_sel:
             tdet = tdet[tdet["Pipeline"].isin(_pipe_sel)]
         if _cat_sel:
             tdet = tdet[tdet["Category"].isin(_cat_sel)]
+        if _own_sel:
+            tdet = tdet[tdet["Owner"].isin(_own_sel)]
         if _name_q:
             tdet = tdet[tdet.apply(lambda r: _name_q in f"{r['Ticket Name']} {r['Ticket ID']}".lower(), axis=1)]
 
@@ -280,7 +302,7 @@ else:
         m[1].metric("Avg events / ticket", f"{_avg_ev:.1f}")
         m[2].metric("Avg updates / ticket", f"{_avg_up:.1f}")
         m[3].metric("Avg agents / ticket", f"{_avg_ag:.1f}")
-        cols_t = ["Ticket ID", "Ticket Name", "Pipeline", "Stage", "Category", "Ticket Created",
+        cols_t = ["Ticket ID", "Ticket Name", "Owner", "Pipeline", "Stage", "Category", "Ticket Created",
                   "Events", "Created", "Updates", "Agents", "Last activity"]
     else:
         st.caption("Enable **Load ticket name & description** above to filter by Pipeline and Category.")
