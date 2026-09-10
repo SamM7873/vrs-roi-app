@@ -1245,6 +1245,9 @@ if run_clicked or _use_cache:
                     <div style="font-size:1.7rem;font-weight:800;color:{_clr};line-height:1.1;margin:3px 0 2px;">{_v:,}</div>
                     <div style="font-size:.70rem;color:#8792A2;">{_sub}</div></div>""",
                 unsafe_allow_html=True)
+        st.caption(f"URSA cards are over the **{_n_numbers:,} numbers shown in the table** (distinct "
+                   f"Number IDs). The **Numbers Matched** card above may be higher (all numbers matched "
+                   "by association, email, or phone — a few don't appear as their own table row).")
         st.markdown("")
 
         chain_counts = assoc_df["Chain"].value_counts()
