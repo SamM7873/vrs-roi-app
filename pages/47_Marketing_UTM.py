@@ -117,8 +117,9 @@ run = st.button("▶ Run", type="primary", disabled=(not campaigns))
 
 if run:
     # 1) contacts for the selected campaign value(s), optional created-date window
+    _utm_cols = sorted(set(_utm_all + _source_fields))   # every UTM / original-source field
     props = sorted({camp_field, group_by, "email", "firstname", "lastname", "createdate",
-                    "lifecyclestage"} & _props | {camp_field, group_by})
+                    "lifecyclestage"} & _props | set(_utm_cols) | {camp_field, group_by})
     filters = [{"propertyName": camp_field, "operator": "IN", "values": campaigns}]
     if use_date:
         if start_d > end_d:
@@ -173,18 +174,24 @@ if run:
                 _rt = (np.get("registration_type") or "").strip().replace("_", " ").title()
                 if _rt:
                     regtypes.append(_rt)
-        rows.append({
+        _row = {
             "Campaign": (p.get(camp_field) or "").strip() or "—",
             "Group": (p.get(group_by) or "").strip() or "—",
             "Name": f"{(p.get('firstname') or '').strip()} {(p.get('lastname') or '').strip()}".strip() or "—",
             "Email": (p.get("email") or "").strip() or "—",
             "Lifecycle": (p.get("lifecyclestage") or "").strip().title() or "—",
+        }
+        # every UTM / original-source field as its own column
+        for _uf in _utm_cols:
+            _row[_uf] = (p.get(_uf) or "").strip() or "—"
+        _row.update({
             "Has VRS #": "Yes" if vrs_nums else "No",
             "VRS Number(s)": ", ".join(vrs_nums) or "—",
             "VRS Status": ", ".join(sorted(set(s for s in statuses if s))) or "—",
             "Registration Type": ", ".join(sorted(set(regtypes))) or "—",
             "Number Created": ", ".join(sorted(set(x for x in created if x))) or "—",
         })
+        rows.append(_row)
     df = pd.DataFrame(rows)
     save_report(_key, {"df": df, "campaigns": campaigns, "camp_field": camp_field,
                        "group_by": group_by,
