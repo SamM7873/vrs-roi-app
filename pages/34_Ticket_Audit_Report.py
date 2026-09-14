@@ -92,9 +92,10 @@ def _hm(h):
 
 
 # ── team roster ────────────────────────────────────────────────────────────────
-FULL_TIME = {"heather.garafola"}
+FULL_TIME = {"heather.garafola", "nathaniel.holmes"}
 CONTRACTORS_360 = {"alyssa.vela", "ashley.thurman", "dante.whitty",
-                   "jonah.hazelett", "hannah.puent", "ilan.ben-moshe"}
+                   "jonah.hazelett", "hannah.puent", "ilan.ben-moshe",
+                   "melisa.winston"}
 
 
 def _agent(email):
@@ -431,8 +432,8 @@ else:
     st.dataframe(show[["Agent", "Team", "Days", "Avg", "Median", "Longest", "Total"]],
                  use_container_width=True, hide_index=True)
     st.caption("🟢 ≥ 8h · 🟡 6.5–8h · 🔴 < 6.5h average day. "
-               "Full-time: heather.garafola · 360 Direct (contractor): alyssa, ashley, dante, "
-               "jonah, hannah, ilan.")
+               "Full-time: heather.garafola, nathaniel.holmes · 360 Direct (contractor): alyssa, "
+               "ashley, dante, jonah, hannah, ilan, melisa.")
 
     # ── efficiency: tickets per hour & minutes per ticket ──────────────────────
     if not tickets.empty:
