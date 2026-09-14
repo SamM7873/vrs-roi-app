@@ -134,7 +134,7 @@ _nav = {
     "Numbers": [numbers_page, numfunnel_page, funnel_page, registrations_page, portin_page, winback_page, yoy_page, utm_page],
     "Customers": [ursa_page, journey_page, churn_page, vrs_zero_page, vrs_react_page, retention_page, org_ret_page, school_page, cn_only_page, cn20_recon_page, react_track_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page, ivt_page, ticket_pipe_page],
-    "Tools": [explorer_page, pendo_page, dq_page, convo360_page, data_health_page, email_bounce_page],
+    "Tools": [pendo_page, dq_page, convo360_page, data_health_page],
 }
 if is_app_admin():
     _nav["Admin"] = [ticket_audit_page, work_hours_page, audit_page]
