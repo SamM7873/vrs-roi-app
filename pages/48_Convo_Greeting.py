@@ -6,7 +6,7 @@ from collections import defaultdict
 import requests
 from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
                    headers as _H, BASE_URL as _B, dash_spinner, to_float, vrs_rate_for_month,
-                   save_report, load_report, saved_at_label, log_report_view)
+                   save_report, load_report, saved_at_label, log_report_view, pdf_download_button)
 
 st.set_page_config(page_title="Convo Greeting", layout="wide", page_icon="👋")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -403,6 +403,23 @@ if search:
 st.caption(f"{len(view):,} of {N:,}")
 st.dataframe(view.sort_values("Created", ascending=False), use_container_width=True,
              hide_index=True, height=460)
-st.download_button("📥 Export CSV", view.to_csv(index=False), "convo_greeting.csv", "text/csv")
+_ex1, _ex2 = st.columns(2)
+with _ex1:
+    st.download_button("📥 Export CSV", view.to_csv(index=False), "convo_greeting.csv", "text/csv")
+with _ex2:
+    _pdf_metrics = [
+        ("Tickets", f"{N:,}"),
+        ("Has Contact", f"{hc:,}"),
+        ("Has Number (VRS)", f"{hn:,}"),
+        ("Total VRS minutes", f"{_tot_min:,.0f}"),
+        ("FCC value", f"${_tot_fcc:,.0f}"),
+    ]
+    _pdf_charts = []
+    if _mv is not None and not _mv.empty:
+        _pdf_charts = [{"data": _mv[["Month", "VRS Minutes"]], "kind": "bar",
+                        "x": "Month", "y": "VRS Minutes", "title": "VRS minutes by month"}]
+    pdf_download_button(view, "convo_greeting.pdf", "Convo Greeting",
+                        subtitle=f"Pipeline: {saved.get('pipeline','')}",
+                        metrics=_pdf_metrics, charts=_pdf_charts, key="cg_pdf")
 
 report_header_close()
