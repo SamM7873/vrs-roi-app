@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v5"
+_key = "convo_greeting_v6"
 
 
 def _batch_read(obj, ids, props):
@@ -263,7 +263,21 @@ if run:
     _mrows = [{"Month": mk, "VRS Minutes": round(v["min"], 1), "FCC $": round(v["fcc"], 2)}
               for mk, v in sorted(monthly.items())]
     mv_df = pd.DataFrame(_mrows)
-    save_report(_key, {"df": df, "pipeline": pipe_label, "mv_df": mv_df,
+
+    # per-number monthly detail (each month's value for every VRS number, from close month on)
+    _drows = []
+    for num, since in sorted(num_since.items()):
+        for mk, mins in sorted(num_month.get(num, {}).items()):
+            _drows.append({
+                "VRS Number": num,
+                "Month": mk,
+                "VRS Minutes": round(mins, 1),
+                "FCC $": round(mins * vrs_rate_for_month(mk), 2),
+                "Since close?": "Yes" if mk >= since else "No",
+            })
+    detail_df = pd.DataFrame(_drows)
+
+    save_report(_key, {"df": df, "pipeline": pipe_label, "mv_df": mv_df, "detail_df": detail_df,
                        "tot_min": round(sum(v["min"] for v in monthly.values()), 1),
                        "tot_fcc": round(sum(v["fcc"] for v in monthly.values()), 2)})
 
@@ -328,6 +342,30 @@ _mv = saved.get("mv_df")
 if _mv is not None and not _mv.empty:
     st.markdown("###### Monthly trend")
     st.dataframe(_mv.sort_values("Month"), use_container_width=True, hide_index=True)
+
+_det = saved.get("detail_df")
+if _det is not None and not _det.empty:
+    with st.expander(f"📅 Monthly values by number — each month ({len(_det):,} rows)", expanded=False):
+        _dc1, _dc2 = st.columns([1.6, 1.2])
+        _numsel = _dc1.multiselect("VRS Number", sorted(_det["VRS Number"].unique()), default=[])
+        _sincesel = _dc2.selectbox("Rows", ["All months", "Only since close"], index=0)
+        _dv = _det.copy()
+        if _numsel:
+            _dv = _dv[_dv["VRS Number"].isin(_numsel)]
+        if _sincesel == "Only since close":
+            _dv = _dv[_dv["Since close?"] == "Yes"]
+        st.dataframe(_dv.sort_values(["VRS Number", "Month"]), use_container_width=True,
+                     hide_index=True, height=420)
+        st.download_button("📥 Export monthly detail (CSV)", _dv.to_csv(index=False),
+                           "convo_greeting_monthly_detail.csv", "text/csv", key="cg_detail_csv")
+        # optional wide pivot: months as columns, numbers as rows
+        try:
+            _piv = _det.pivot_table(index="VRS Number", columns="Month",
+                                    values="VRS Minutes", aggfunc="sum", fill_value=0).reset_index()
+            st.markdown("**Pivot — minutes by month**")
+            st.dataframe(_piv, use_container_width=True, hide_index=True)
+        except Exception:
+            pass
 st.caption("VRS minutes = usage on the tickets' associated VRS numbers from the ticket's **closed-date "
            "month → present** (Monthly Values month_date ≥ closed date). FCC value = minutes × the VRS FCC rate.")
 st.markdown("")
