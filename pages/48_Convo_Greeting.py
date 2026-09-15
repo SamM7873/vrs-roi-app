@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v1"
+_key = "convo_greeting_v2"
 
 
 def _batch_read(obj, ids, props):
@@ -145,8 +145,9 @@ _cg_options = {v: k for k, v in _pl.items()}
 _cg_default = next((v for v in _cg_options if "convo greeting" in v.lower()), None)
 _labels = sorted(_cg_options.keys())
 
-st.markdown("Pulls every ticket in the **Convo Greeting** pipeline and checks whether each ticket has "
-            "an associated **Contact** and/or **Number** object.")
+st.markdown("Pulls every ticket in the **Convo Greeting** pipeline, then follows "
+            "**ticket → Contact → Number → Monthly Values**. Shows which tickets have a contact / "
+            "number and the ROI (usage minutes × FCC rate) from those numbers.")
 
 c1, c2 = st.columns([2, 1])
 pipe_label = c1.selectbox("Ticket pipeline", _labels,
@@ -166,9 +167,21 @@ if run:
         st.warning("No tickets in that pipeline."); report_header_close(); st.stop()
 
     tids = [str(t["id"]) for t in tks]
-    with dash_spinner(f"Checking associations for {len(tids):,} tickets…"):
+    # 1) ticket → contact
+    with dash_spinner(f"Linking {len(tids):,} tickets to contacts…"):
         t2c = _assoc("tickets", "contacts", tids)
-        t2n = _assoc("tickets", NUM_OBJECT, tids)
+    # 2) contact → number (the chain: ticket → contact → number)
+    all_cids = sorted({c for cs in t2c.values() for c in cs})
+    with dash_spinner(f"Linking {len(all_cids):,} contacts to Number objects…"):
+        c2n = _assoc("contacts", NUM_OBJECT, all_cids)
+    # also keep any direct ticket → number association (union, so nothing is missed)
+    with dash_spinner("Checking direct ticket → number associations…"):
+        t2n_direct = _assoc("tickets", NUM_OBJECT, tids)
+    # numbers reached by each ticket = via its contacts ∪ direct
+    t2n = {}
+    for tid in tids:
+        via_contact = {n for c in t2c.get(tid, []) for n in c2n.get(c, [])}
+        t2n[tid] = sorted(via_contact | set(t2n_direct.get(tid, [])))
 
     # ── Number objects → Monthly Values → ROI ──────────────────────────────────
     all_nids = sorted({n for ns in t2n.values() for n in ns})
