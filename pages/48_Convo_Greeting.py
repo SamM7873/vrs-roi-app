@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v2"
+_key = "convo_greeting_v3"
 
 
 def _batch_read(obj, ids, props):
@@ -189,10 +189,12 @@ if run:
     if all_nids:
         with dash_spinner(f"Reading {len(all_nids):,} associated Number objects…"):
             num_of = _batch_read(NUM_OBJECT, all_nids, ["number", "service_type"])
-    nid_to_num = {nid: str(p.get("number") or "").strip() for nid, p in num_of.items()
-                  if str(p.get("number") or "").strip()}
-    vrs_numbers = sorted({v for nid, v in nid_to_num.items()
-                          if (num_of.get(nid, {}).get("service_type") or "").strip().lower() == "vrs"})
+    # keep VRS numbers only — do NOT count Convo Now (or other) service types
+    vrs_nid_set = {nid for nid, p in num_of.items()
+                   if (p.get("service_type") or "").strip().lower() == "vrs"}
+    nid_to_num = {nid: str(num_of.get(nid, {}).get("number") or "").strip()
+                  for nid in vrs_nid_set if str(num_of.get(nid, {}).get("number") or "").strip()}
+    vrs_numbers = sorted(set(nid_to_num.values()))
 
     num_usage = defaultdict(float)          # number string → total VRS minutes (all months)
     monthly = defaultdict(lambda: {"min": 0.0, "fcc": 0.0})
@@ -217,7 +219,7 @@ if run:
     for t in tks:
         tid = str(t["id"])
         p = t.get("properties", {})
-        _nids = t2n.get(tid, [])
+        _nids = [n for n in t2n.get(tid, []) if n in vrs_nid_set]   # VRS numbers only
         nc, nn = len(t2c.get(tid, [])), len(_nids)
         _nums = sorted({nid_to_num.get(n, "") for n in _nids} - {""})
         _tmin = round(sum(num_usage.get(x, 0.0) for x in _nums), 1)
@@ -228,7 +230,7 @@ if run:
             "Owner": _own.get(str(p.get("hubspot_owner_id") or ""), "—"),
             "Created": (str(p.get("createdate") or "")[:10]),
             "Contacts": nc,
-            "Numbers": nn,
+            "VRS Numbers": nn,
             "VRS Number(s)": ", ".join(_nums) or "—",
             "VRS Min": _tmin,
             "Has Contact": "Yes" if nc else "No",
