@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v6"
+_key = "convo_greeting_v7"
 
 
 def _batch_read(obj, ids, props):
@@ -233,6 +233,8 @@ if run:
                 monthly[mk]["min"] += mins
                 monthly[mk]["fcc"] += mins * vrs_rate_for_month(mk)
 
+    # every month present in Monthly Values → becomes a column in the tickets table
+    all_months = sorted({mk for nm in num_month.values() for mk in nm})
     rows = []
     for t in tks:
         tid = str(t["id"])
@@ -240,9 +242,13 @@ if run:
         _nums = tid_vrs_nums.get(tid, [])
         nc, nn = len(t2c.get(tid, [])), len(_nums)
         _cm = tclose.get(tid, "")
-        _tmin = round(sum(m for x in _nums for mk, m in num_month.get(x, {}).items()
-                          if _cm and mk >= _cm), 1)
-        rows.append({
+        # this ticket's usage per month (summed over its VRS numbers)
+        _by_month = defaultdict(float)
+        for x in _nums:
+            for mk, m in num_month.get(x, {}).items():
+                _by_month[mk] += m
+        _tmin = round(sum(m for mk, m in _by_month.items() if _cm and mk >= _cm), 1)
+        _row = {
             "Ticket ID": tid,
             "Subject": (p.get("subject") or "—"),
             "Stage": _sl.get(p.get("hs_pipeline_stage"), p.get("hs_pipeline_stage") or "—"),
@@ -258,7 +264,11 @@ if run:
             "Association": ("Contact + Number" if nc and nn else
                             "Contact only" if nc else
                             "Number only" if nn else "None"),
-        })
+        }
+        # one column per month (total minutes that month for this ticket's numbers)
+        for mk in all_months:
+            _row[mk] = round(_by_month.get(mk, 0.0), 1)
+        rows.append(_row)
     df = pd.DataFrame(rows)
     _mrows = [{"Month": mk, "VRS Minutes": round(v["min"], 1), "FCC $": round(v["fcc"], 2)}
               for mk, v in sorted(monthly.items())]
