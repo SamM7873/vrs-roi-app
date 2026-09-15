@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v4"
+_key = "convo_greeting_v5"
 
 
 def _batch_read(obj, ids, props):
@@ -196,21 +196,21 @@ if run:
                   for nid in vrs_nid_set if str(num_of.get(nid, {}).get("number") or "").strip()}
     vrs_numbers = sorted(set(nid_to_num.values()))
 
-    # each ticket's close month, its VRS numbers, and which close months each number belongs to
+    # each ticket's close month, its VRS numbers, and the earliest close month per number
     tclose = {str(t["id"]): (str(t.get("properties", {}).get("closed_date") or "")[:7]) for t in tks}
     tid_vrs_nums = {}
-    num_closemonths = defaultdict(set)
+    num_since = {}   # number → earliest close month among tickets owning it
     for tid in tids:
         nums = sorted({nid_to_num.get(n, "") for n in t2n.get(tid, []) if n in vrs_nid_set} - {""})
         tid_vrs_nums[tid] = nums
         cm = tclose.get(tid)
         if cm:
             for num in nums:
-                num_closemonths[num].add(cm)
+                if num not in num_since or cm < num_since[num]:
+                    num_since[num] = cm
 
-    # Monthly Values keyed by (number, month) — usage ONLY counts when the month
-    # matches the ticket's closed-date month (month_date = closed date).
-    usage_nm = defaultdict(float)   # (number, YYYY-MM) → minutes
+    # Monthly Values per number & month → count usage from the closed-date month onward.
+    num_month = defaultdict(dict)   # number → {YYYY-MM: minutes}
     if vrs_numbers:
         with dash_spinner(f"Pulling Monthly Values for {len(vrs_numbers):,} VRS numbers…"):
             for i in range(0, len(vrs_numbers), 100):
@@ -223,14 +223,15 @@ if run:
                     num = str(op.get("number") or "").strip()
                     mk = str(op.get("month_date") or "")[:7]
                     if num and mk:
-                        usage_nm[(num, mk)] += to_float(op.get("usage_minutes")) or 0.0
+                        num_month[num][mk] = num_month[num].get(mk, 0.0) + (to_float(op.get("usage_minutes")) or 0.0)
 
-    # roll up only close-month usage
+    # roll up usage from each number's earliest close month → present
     monthly = defaultdict(lambda: {"min": 0.0, "fcc": 0.0})
-    for (num, mk), mins in usage_nm.items():
-        if mk in num_closemonths.get(num, set()):
-            monthly[mk]["min"] += mins
-            monthly[mk]["fcc"] += mins * vrs_rate_for_month(mk)
+    for num, since in num_since.items():
+        for mk, mins in num_month.get(num, {}).items():
+            if mk >= since:
+                monthly[mk]["min"] += mins
+                monthly[mk]["fcc"] += mins * vrs_rate_for_month(mk)
 
     rows = []
     for t in tks:
@@ -239,7 +240,8 @@ if run:
         _nums = tid_vrs_nums.get(tid, [])
         nc, nn = len(t2c.get(tid, [])), len(_nums)
         _cm = tclose.get(tid, "")
-        _tmin = round(sum(usage_nm.get((x, _cm), 0.0) for x in _nums), 1) if _cm else 0.0
+        _tmin = round(sum(m for x in _nums for mk, m in num_month.get(x, {}).items()
+                          if _cm and mk >= _cm), 1)
         rows.append({
             "Ticket ID": tid,
             "Subject": (p.get("subject") or "—"),
@@ -250,7 +252,7 @@ if run:
             "Contacts": nc,
             "VRS Numbers": nn,
             "VRS Number(s)": ", ".join(_nums) or "—",
-            "VRS Min (close month)": _tmin,
+            "VRS Min (since close)": _tmin,
             "Has Contact": "Yes" if nc else "No",
             "Has Number": "Yes" if nn else "No",
             "Association": ("Contact + Number" if nc and nn else
@@ -313,9 +315,9 @@ st.markdown("")
 # ── ROI from Monthly Values ─────────────────────────────────────────────────
 _tot_min = saved.get("tot_min", 0.0)
 _tot_fcc = saved.get("tot_fcc", 0.0)
-_vmcol = "VRS Min (close month)"
+_vmcol = "VRS Min (since close)"
 _n_active = int((df.get(_vmcol, pd.Series(dtype=float)) > 0).sum()) if _vmcol in df.columns else 0
-st.markdown("##### 💵 ROI from Monthly Values (close month · associated VRS numbers)")
+st.markdown("##### 💵 ROI from Monthly Values (closed date → present · associated VRS numbers)")
 _cards([
     ("⏱️ Total VRS minutes", f"{_tot_min:,.0f}", "from associated numbers", "#4C8DFF"),
     ("💵 FCC value", f"${_tot_fcc:,.0f}", "minutes × FCC rate", "#2DB84B"),
@@ -326,8 +328,8 @@ _mv = saved.get("mv_df")
 if _mv is not None and not _mv.empty:
     st.markdown("###### Monthly trend")
     st.dataframe(_mv.sort_values("Month"), use_container_width=True, hide_index=True)
-st.caption("VRS minutes = usage on the tickets' associated VRS numbers **in the ticket's closed-date "
-           "month** (Monthly Values month_date = closed date). FCC value = minutes × the VRS FCC rate.")
+st.caption("VRS minutes = usage on the tickets' associated VRS numbers from the ticket's **closed-date "
+           "month → present** (Monthly Values month_date ≥ closed date). FCC value = minutes × the VRS FCC rate.")
 st.markdown("")
 
 # breakdown by association type
