@@ -618,6 +618,21 @@ else:
                "**Answer %** = connected ÷ total · **AHT/waits** are over that agent's interactions. "
                "Misses with no agent assigned appear on the **Missed (no agent)** row.")
 
+    # PDF export — queue performance summary + agent table
+    from utils import pdf_download_button
+    _ivt_metrics = [
+        ("Handled (connected)", f"{_n_handled:,}"),
+        ("Missed", f"{_n_missed:,}"),
+        ("Answer rate", f"{_answer_rate:.0f}%" if _answer_rate is not None else "—"),
+        ("AHT", _ms_lbl(_aht_sec)),
+        ("LWT", _ms_lbl(_lwt_sec)),
+    ]
+    _ivt_charts = [{"data": full[["Agent", "Connected"]].head(12), "kind": "bar",
+                    "x": "Agent", "y": "Connected", "title": "Connected by agent"}]
+    pdf_download_button(full[_fcols], "interactions_vs_tickets.pdf",
+                        "Interactions vs Tickets — Queue performance",
+                        metrics=_ivt_metrics, charts=_ivt_charts, key="ivt_pdf")
+
 # ── missed calls — when are they dropped? ───────────────────────────────────────
 st.markdown("##### 📵 Missed calls — when are they dropped?")
 _miss = cvf[cvf["_missed"].fillna(False) | (cvf["_agent"] == "Missed (no agent)")].copy()
