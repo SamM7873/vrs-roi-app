@@ -746,9 +746,15 @@ if not _ci.empty:
         st.warning("Your Convo360 export's date column has **no time-of-day** (dates only), so "
                    "clock in / out can't be derived. Export with a date-time column to enable this.")
         _ci = _ci.iloc[0:0]
+st.caption("Clock in/out is derived from interaction timestamps: **first interaction = clock in, "
+           "last = clock out**. A day with only 1–2 interactions shows a tiny span — that's low "
+           "volume, not a short shift. Use the filter below to drop those noisy days.")
+_min_ix = st.slider("Ignore days with fewer than N interactions", 1, 10, 3, key="ivt_clock_min")
 if not _ci.empty:
     _cg = (_ci.groupby(["_agent", "_day"]).agg(start=("_ts", "min"), end=("_ts", "max"),
                                                interactions=("_ts", "size")).reset_index())
+    _cg = _cg[_cg["interactions"] >= _min_ix].copy()
+if not _ci.empty and not _cg.empty:
     _cg["span_h"] = (_cg["end"] - _cg["start"]).dt.total_seconds() / 3600.0
     _cg["in_hod"] = _cg["start"].dt.hour + _cg["start"].dt.minute / 60.0
     _cg["out_hod"] = _cg["end"].dt.hour + _cg["end"].dt.minute / 60.0
@@ -816,6 +822,8 @@ if not _ci.empty:
     _ct_m.dataframe(clock_monthly, use_container_width=True, hide_index=True, height=340)
     st.caption("Clock In = first interaction of the period · Clock Out = last interaction · "
                "Hours = sum of daily first→last spans (a span proxy, not payroll hours).")
+elif not _ci.empty:
+    st.info(f"No agent-days with ≥ {_min_ix} interactions — lower the filter to see more.")
 else:
     st.info("No agent-timestamped interactions to compute clock in/out.")
 st.caption("Weekly = week starting Monday · Monthly = calendar month.")
