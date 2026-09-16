@@ -481,12 +481,13 @@ def list_all(object_type_id, properties, progress_label="Loading..."):
     return all_results
 
 
-# report PDF palette
-_PDF_GREEN = "#0D3B26"
-_PDF_BEIGE = "#C9A876"
-_PDF_CREAM = "#F4F1E8"
-_PDF_INK = "#1F2937"
-_PDF_MUTE = "#6B7280"
+# report PDF palette — professional, cohesive
+_PDF_GREEN = "#0E3A2C"   # header band / primary dark
+_PDF_ACCENT = "#2E7D6B"  # charts primary (bars/lines) — refined teal-green
+_PDF_BEIGE = "#B4883F"   # gold hairline + REPORT label
+_PDF_CREAM = "#F6F6F3"   # KPI card background (clean near-white)
+_PDF_INK = "#1B2430"     # primary text
+_PDF_MUTE = "#7A8592"    # muted/secondary text
 
 
 def _pdf_profile(df):
@@ -526,9 +527,9 @@ def _draw_chart_spec(ax, spec):
     xs = [str(v)[:18] for v in d[x].tolist()]
     ys = pd.to_numeric(d[y], errors="coerce").fillna(0).tolist()
     if kind == "pie":
-        # high-contrast, colorblind-friendly palette
-        _pal = ["#2563EB", "#16A34A", "#EA580C", "#9333EA", "#0891B2",
-                "#DC2626", "#CA8A04", "#DB2777", "#4B5563", "#0D9488"]
+        # professional, high-contrast palette led by the brand accent
+        _pal = [_PDF_ACCENT, "#2563EB", "#B4883F", "#9333EA", "#0891B2",
+                "#EA580C", "#16A34A", "#DB2777", "#64748B", "#DC2626"]
         _cols = [_pal[i % len(_pal)] for i in range(len(xs))]
         _tot = sum(ys) or 1
         wedges, _t, _at = ax.pie(
@@ -547,18 +548,22 @@ def _draw_chart_spec(ax, spec):
                   fontsize=10, frameon=False, labelcolor=_PDF_INK)
         return spec.get("title") or f"{y} share"
     if kind == "barh":
-        ax.barh(xs, ys, color=_PDF_BEIGE, edgecolor="white", linewidth=0.5, zorder=3); ax.invert_yaxis()
+        b = ax.barh(xs, ys, color=_PDF_ACCENT, edgecolor="white", linewidth=0.6, zorder=3)
+        ax.invert_yaxis()
+        ax.bar_label(b, labels=[_fmt_num(v) for v in ys], padding=3, fontsize=8, color=_PDF_INK)
         ax.set_xlabel(y, fontsize=9, color=_PDF_MUTE)
     elif kind == "line":
-        ax.plot(xs, ys, color=_PDF_BEIGE, marker="o", markerfacecolor=_PDF_GREEN, linewidth=2.4, zorder=3)
+        ax.plot(xs, ys, color=_PDF_ACCENT, marker="o", markerfacecolor=_PDF_GREEN,
+                markeredgecolor="white", markersize=6, linewidth=2.6, zorder=3)
         ax.set_ylabel(y, fontsize=9, color=_PDF_MUTE)
     elif kind == "area":
-        ax.fill_between(range(len(xs)), ys, color=_PDF_BEIGE, alpha=0.5, zorder=2)
-        ax.plot(range(len(xs)), ys, color=_PDF_GREEN, linewidth=2, zorder=3)
+        ax.fill_between(range(len(xs)), ys, color=_PDF_ACCENT, alpha=0.28, zorder=2)
+        ax.plot(range(len(xs)), ys, color=_PDF_ACCENT, linewidth=2.4, zorder=3)
         ax.set_xticks(range(len(xs))); ax.set_xticklabels(xs); ax.set_ylabel(y, fontsize=9, color=_PDF_MUTE)
     else:
-        bars = ax.bar(xs, ys, color=_PDF_BEIGE, edgecolor="white", linewidth=0.5, zorder=3)
-        ax.bar_label(bars, labels=[_fmt_num(v) for v in ys], padding=2, fontsize=7, color=_PDF_INK)
+        bars = ax.bar(xs, ys, color=_PDF_ACCENT, edgecolor="white", linewidth=0.6, zorder=3)
+        ax.bar_label(bars, labels=[_fmt_num(v) for v in ys], padding=2, fontsize=7.5,
+                     fontweight="bold", color=_PDF_INK)
         ax.set_ylabel(y, fontsize=9, color=_PDF_MUTE)
     ax.grid(axis=("x" if kind == "barh" else "y"), color="#E5E1D6", linewidth=0.7, zorder=0)
     ax.set_axisbelow(True)
