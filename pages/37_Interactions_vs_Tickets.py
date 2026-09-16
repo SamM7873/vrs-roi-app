@@ -1255,4 +1255,51 @@ elif st.button("🔗 Run per-consumer match (queries HubSpot)"):
     st.caption("Matching is name-substring on ticket subject/description — a common name may "
                "over-match, and a ticket that doesn't name the consumer won't match. Treat as a guide.")
 
+# ── whole-page PDF report ──────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("### 📄 Full report (PDF)")
+from utils import pdf_download_button
+_g = globals()
+
+
+def _mk(v):
+    return v if isinstance(v, pd.DataFrame) and not v.empty else None
+
+
+_pdf_metrics = []
+if "_n_handled" in _g:
+    _pdf_metrics += [("Handled (connected)", f"{_g['_n_handled']:,}"),
+                     ("Missed", f"{_g.get('_n_missed', 0):,}"),
+                     ("Answer rate", f"{_g['_answer_rate']:.0f}%" if _g.get("_answer_rate") is not None else "—"),
+                     ("AHT", _ms_lbl(_g.get("_aht_sec", 0))),
+                     ("LWT", _ms_lbl(_g.get("_lwt_sec", 0)))]
+_pdf_metrics += [("Interactions", f"{n_int:,}"),
+                 ("Tickets created", f"{n_created:,}"),
+                 ("Tickets / interaction", f"{tpi:.2f}" if tpi is not None else "—")]
+
+_pdf_charts = []
+if _mk(_g.get("bytype")) is not None:
+    _pdf_charts.append({"data": bytype[["Source", "Interactions"]], "kind": "bar",
+                        "x": "Source", "y": "Interactions", "title": "Interactions by source"})
+if _mk(_g.get("daily")) is not None and "Interactions" in daily.columns:
+    _pdf_charts.append({"data": daily[["Period", "Interactions"]], "kind": "line",
+                        "x": "Period", "y": "Interactions", "title": "Interactions over time"})
+if _mk(_g.get("full")) is not None:
+    _pdf_charts.append({"data": full[["Agent", "Connected"]].head(12), "kind": "bar",
+                        "x": "Agent", "y": "Connected", "title": "Connected by agent"})
+
+_pdf_table = None
+if _mk(_g.get("full")) is not None:
+    _pdf_table = full[_fcols]
+elif _mk(_g.get("bytype")) is not None:
+    _pdf_table = bytype
+
+if _pdf_table is not None:
+    pdf_download_button(_pdf_table, "interactions_vs_tickets_report.pdf",
+                        "Interactions vs Tickets — Full Report",
+                        subtitle="Queue performance · Volume · Agents",
+                        metrics=_pdf_metrics, charts=_pdf_charts, key="ivt_full_pdf")
+    st.caption("Includes the KPI summary, source & trend charts, connected-by-agent, and the agent "
+               "table (reflects the current coverage-window and date filters).")
+
 report_header_close()
