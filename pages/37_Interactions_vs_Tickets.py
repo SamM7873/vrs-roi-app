@@ -767,6 +767,12 @@ if not _ci.empty and not _cg.empty:
             h, m = (h + 1) % 24, 0
         return f"{h:02d}:{m:02d}"
 
+    def _hrs(h):
+        if pd.isna(h):
+            return "—"
+        tot = int(round(h * 60)); hh, mm = divmod(tot, 60)
+        return f"{hh}h {mm:02d}m" if hh else f"{mm}m"
+
     # per-agent summary
     agent_clock = (_cg.groupby("_agent").agg(
         Days=("span_h", "size"), ClockIn=("in_hod", "mean"), ClockOut=("out_hod", "mean"),
@@ -774,7 +780,7 @@ if not _ci.empty and not _cg.empty:
     agent_clock["Agent"] = agent_clock["_agent"].map(lambda a: str(a).split("@")[0])
     agent_clock["Clock In (avg)"] = agent_clock["ClockIn"].map(_hhmm)
     agent_clock["Clock Out (avg)"] = agent_clock["ClockOut"].map(_hhmm)
-    agent_clock["Avg hours"] = agent_clock["AvgHours"].map(lambda h: _ms_lbl(h * 3600))
+    agent_clock["Avg hours"] = agent_clock["AvgHours"].map(_hrs)
     agent_clock = agent_clock.sort_values("Interactions", ascending=False)
     _acols = ["Agent", "Days", "Clock In (avg)", "Clock Out (avg)", "Avg hours", "Interactions"]
     st.dataframe(agent_clock[_acols], use_container_width=True, hide_index=True)
@@ -785,7 +791,7 @@ if not _ci.empty and not _cg.empty:
     _det["Date"] = _det["_day"].astype(str)
     _det["Clock In"] = _det["start"].dt.strftime("%I:%M %p")
     _det["Clock Out"] = _det["end"].dt.strftime("%I:%M %p")
-    _det["Hours"] = _det["span_h"].round(1)
+    _det["Hours"] = _det["span_h"].map(_hrs)
     _det["Interactions"] = _det["interactions"]
     clock_daily = _det[["Date", "Clock In", "Clock Out", "Hours", "Interactions"]]
 
@@ -798,7 +804,7 @@ if not _ci.empty and not _cg.empty:
         Date=_cg["_day"].astype(str),
         **{"Clock In": _cg["start"].dt.strftime("%I:%M %p"),
            "Clock Out": _cg["end"].dt.strftime("%I:%M %p"),
-           "Hours": _cg["span_h"].round(1),
+           "Hours": _cg["span_h"].map(_hrs),
            "Interactions": _cg["interactions"]})[
         ["Agent", "Date", "Clock In", "Clock Out", "Hours", "Interactions"]]
 
@@ -809,7 +815,7 @@ if not _ci.empty and not _cg.empty:
         gg["Agent"] = gg["_agent"].map(lambda a: str(a).split("@")[0])
         gg["Clock In (avg)"] = gg["AvgIn"].map(_hhmm)
         gg["Clock Out (avg)"] = gg["AvgOut"].map(_hhmm)
-        gg["Hours"] = gg["Hours"].round(1)
+        gg["Hours"] = gg["Hours"].map(_hrs)
         return gg[["Agent", period, "Days", "Clock In (avg)", "Clock Out (avg)",
                    "Hours", "Interactions"]].sort_values(["Agent", period])
 
