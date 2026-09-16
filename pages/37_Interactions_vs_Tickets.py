@@ -1288,18 +1288,18 @@ def _chart(name, x, y, kind="bar", title=None, cols_ok=None):
                         "title": title or f"{y} by {x}"})
 
 
-_chart("bytype", "Source", "Interactions", "bar", "Interactions by source")
+_chart("bytype", "Source", "Interactions", "pie", "Interaction share by source")
 _chart("daily", "Period", "Interactions", "line", "Interactions over time")
 _chart("daily", "Period", "Tickets", "line", "Tickets created over time")
 if _mk(_g.get("full")) is not None:
-    _pdf_charts.append({"data": full[["Agent", "Connected"]].head(15), "kind": "bar",
+    _pdf_charts.append({"data": full[["Agent", "Connected"]].head(15), "kind": "barh",
                         "x": "Agent", "y": "Connected", "title": "Connected by agent"})
-    _pdf_charts.append({"data": full[["Agent", "Missed"]].head(15), "kind": "bar",
+    _pdf_charts.append({"data": full[["Agent", "Missed"]].head(15), "kind": "barh",
                         "x": "Agent", "y": "Missed", "title": "Missed by agent"})
 _chart("_dtab", "Day", "Missed", "bar", "Missed calls by day")
-_chart("pv", "Pipeline", "Tickets", "bar", "Tickets by pipeline")
-_chart("ov", "Origin", "Tickets", "bar", "Tickets by origin")
-_chart("own", "Owner", "Tickets", "bar", "Tickets by owner")
+_chart("pv", "Pipeline", "Tickets", "pie", "Ticket share by pipeline")
+_chart("ov", "Origin", "Tickets", "pie", "Ticket share by origin")
+_chart("own", "Owner", "Tickets", "barh", "Tickets by owner")
 _chart("perday", "Day", "Total handled", "bar", "Tickets handled per day")
 
 # every section table on the page, in order

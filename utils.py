@@ -525,6 +525,17 @@ def _draw_chart_spec(ax, spec):
     d = d.head(20)
     xs = [str(v)[:18] for v in d[x].tolist()]
     ys = pd.to_numeric(d[y], errors="coerce").fillna(0).tolist()
+    if kind == "pie":
+        _pal = [_PDF_GREEN, _PDF_BEIGE, "#4C8DFF", "#E8952A", "#0FB5AE", "#7A5CFF",
+                "#E5484D", "#2DB84B", "#8792A2", "#0EA5E9"]
+        _cols = [_pal[i % len(_pal)] for i in range(len(xs))]
+        _tot = sum(ys) or 1
+        ax.pie(ys, labels=xs, colors=_cols, startangle=90, counterclock=False,
+               autopct=lambda p: f"{p:.0f}%" if p >= 4 else "",
+               textprops={"fontsize": 8, "color": _PDF_INK},
+               wedgeprops={"edgecolor": "white", "linewidth": 1.2})
+        ax.set_aspect("equal")
+        return spec.get("title") or f"{y} share"
     if kind == "barh":
         ax.barh(xs, ys, color=_PDF_BEIGE, edgecolor="white", linewidth=0.5, zorder=3); ax.invert_yaxis()
         ax.set_xlabel(y, fontsize=9, color=_PDF_MUTE)
