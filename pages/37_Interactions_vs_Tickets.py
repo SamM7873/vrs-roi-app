@@ -731,8 +731,14 @@ ot_monthly = _over_time("Monthly")
 
 # ── agent clock in / out (first & last interaction per agent per day) ────────────────
 st.markdown("##### 🕒 Agent clock in / out")
-_ci = cvf[(cvf["_agent"] != "Missed (no agent)") & cvf["_ts"].notna()].copy()
 agent_clock = pd.DataFrame()
+if "_ts" not in cvf.columns:
+    st.info("Re-run the comparison (upload the CSV and click Run) to compute clock in/out — "
+            "the saved report predates this feature.")
+    _ci = cvf.iloc[0:0].copy()
+    _ci["_ts"] = pd.NaT
+else:
+    _ci = cvf[(cvf["_agent"] != "Missed (no agent)") & cvf["_ts"].notna()].copy()
 if not _ci.empty:
     _cg = (_ci.groupby(["_agent", "_day"]).agg(start=("_ts", "min"), end=("_ts", "max"),
                                                interactions=("_ts", "size")).reset_index())
