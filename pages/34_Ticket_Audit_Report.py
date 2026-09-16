@@ -405,7 +405,20 @@ MIN_DAY = st.slider("Ignore days shorter than (hours) — filters out quick chec
 g = (ev.groupby(["_u", "_day"])
      .agg(start=("_t", "min"), end=("_t", "max"), events=("_t", "size")).reset_index())
 g["span_h"] = (g["end"] - g["start"]).dt.total_seconds() / 3600.0
+# clock-in / clock-out as hour-of-day (for per-agent averages)
+g["in_hod"] = g["start"].dt.hour + g["start"].dt.minute / 60.0
+g["out_hod"] = g["end"].dt.hour + g["end"].dt.minute / 60.0
 clean = g[g["span_h"] >= MIN_DAY].copy()
+
+
+def _hhmm(hod):
+    if pd.isna(hod):
+        return "—"
+    h = int(hod) % 24
+    m = int(round((hod - int(hod)) * 60))
+    if m == 60:
+        h, m = (h + 1) % 24, 0
+    return f"{h:02d}:{m:02d}"
 
 if clean.empty:
     st.info("No qualifying working days after the filter.")
@@ -416,7 +429,8 @@ else:
     summ = (clean.groupby("_u")
             .agg(Days=("span_h", "size"), Avg=("span_h", "mean"),
                  Median=("span_h", "median"), Longest=("span_h", "max"),
-                 Total=("span_h", "sum"))
+                 Total=("span_h", "sum"),
+                 ClockIn=("in_hod", "mean"), ClockOut=("out_hod", "mean"))
             .reset_index().sort_values("Avg", ascending=False))
     def _tag_clr(h):
         return "#2DB84B" if h >= 8 else ("#E8952A" if h >= 6.5 else "#E5484D")
@@ -426,10 +440,13 @@ else:
     show = summ.copy()
     show["Agent"] = show["_u"].map(_agent)
     show["Team"] = show["_u"].map(_team)
+    show["Clock In (avg)"] = show["ClockIn"].map(_hhmm)
+    show["Clock Out (avg)"] = show["ClockOut"].map(_hhmm)
     for c in ("Avg", "Median", "Longest"):
         show[c] = show[c].map(_hm)
     show["Total"] = show["Total"].map(lambda h: f"{h:.0f}h")
-    st.dataframe(show[["Agent", "Team", "Days", "Avg", "Median", "Longest", "Total"]],
+    st.dataframe(show[["Agent", "Team", "Days", "Clock In (avg)", "Clock Out (avg)",
+                       "Avg", "Median", "Longest", "Total"]],
                  use_container_width=True, hide_index=True)
     st.caption("🟢 ≥ 8h · 🟡 6.5–8h · 🔴 < 6.5h average day. "
                "Full-time: heather.garafola, nathaniel.holmes · 360 Direct (contractor): alyssa, "
@@ -469,16 +486,18 @@ else:
     who = st.selectbox("Agent", sorted(clean["_u"].unique()), key="tk_who")
     det = g[g["_u"] == who].sort_values("_day").copy()
     det["Date"] = det["_day"].map(lambda d: d.strftime("%a %b %d"))
-    det["Start"] = det["start"].dt.strftime("%H:%M")
-    det["End"] = det["end"].dt.strftime("%H:%M")
+    det["Clock In"] = det["start"].dt.strftime("%I:%M %p")
+    det["Clock Out"] = det["end"].dt.strftime("%I:%M %p")
     det["Span"] = det["span_h"].map(_hm)
     det["Events"] = det["events"]
     # ticket events that day for this agent
     tk_day = (tickets[tickets["_u"] == who].groupby(tickets["_t"].dt.date).size()
               if not tickets.empty else pd.Series(dtype=int))
     det["Ticket events"] = det["_day"].map(lambda d: int(tk_day.get(d, 0)) if len(tk_day) else 0)
-    st.dataframe(det[["Date", "Start", "End", "Span", "Events", "Ticket events"]],
+    st.dataframe(det[["Date", "Clock In", "Clock Out", "Span", "Events", "Ticket events"]],
                  use_container_width=True, hide_index=True, height=420)
+    st.caption("Clock In = first recorded action that day · Clock Out = last recorded action "
+               "(from the audit log; a span proxy, not a formal timeclock).")
 
 # ── export ────────────────────────────────────────────────────────────────────
 if not tickets.empty:
