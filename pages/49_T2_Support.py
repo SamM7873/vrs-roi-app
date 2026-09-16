@@ -17,7 +17,7 @@ report_header("T2 Support",
               section="Support")
 
 NUM_OBJECT = "2-40974683"   # Number object
-_key = "t2_support_v1"
+_key = "t2_support_v2_vrs"
 
 
 def _batch_read(obj, ids, props):
@@ -151,6 +151,9 @@ if run:
     if all_nids:
         with dash_spinner(f"Reading {len(all_nids):,} associated Number objects…"):
             num_of = _batch_read(NUM_OBJECT, all_nids, ["number", "number_status", "service_type"])
+    # keep VRS numbers only — do NOT count Convo Now (or other) service types
+    vrs_nid_set = {nid for nid, pr in num_of.items()
+                   if (pr.get("service_type") or "").strip().lower() == "vrs"}
 
     rows = []
     for t in tks:
@@ -159,8 +162,8 @@ if run:
         # emails from associated contacts
         emails = sorted({str(con_of.get(c, {}).get("email") or "").strip()
                          for c in t2c.get(tid, [])} - {""})
-        # associated numbers (with status)
-        _nids = t2n.get(tid, [])
+        # associated VRS numbers only (with status)
+        _nids = [n for n in t2n.get(tid, []) if n in vrs_nid_set]
         nums = sorted({str(num_of.get(n, {}).get("number") or "").strip() for n in _nids} - {""})
         statuses = sorted({str(num_of.get(n, {}).get("number_status") or "").strip() for n in _nids} - {""})
         rows.append({
@@ -229,8 +232,8 @@ hn = int(view["_has_number"].sum()) if "_has_number" in view.columns else 0
 _pct = (lambda x: f"{x/N*100:.0f}% of tickets" if N else "—")
 _cards([
     ("🎫 Tickets (filtered)", f"{N:,}", f"of {len(df):,} in pipeline", "#1A2234"),
-    ("📞 Has Number", f"{hn:,}", _pct(hn), "#0FB5AE"),
-    ("🚫 No number", f"{N-hn:,}", _pct(N-hn), "#E5484D"),
+    ("📞 Has VRS Number", f"{hn:,}", _pct(hn), "#0FB5AE"),
+    ("🚫 No VRS number", f"{N-hn:,}", _pct(N-hn), "#E5484D"),
 ])
 st.markdown("")
 
