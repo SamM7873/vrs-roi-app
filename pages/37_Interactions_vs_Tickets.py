@@ -739,6 +739,13 @@ if "_ts" not in cvf.columns:
     _ci["_ts"] = pd.NaT
 else:
     _ci = cvf[(cvf["_agent"] != "Missed (no agent)") & cvf["_ts"].notna()].copy()
+# detect a date-only export (no time component → clock in/out impossible)
+if not _ci.empty:
+    _tt = pd.to_datetime(_ci["_ts"], errors="coerce")
+    if ((_tt.dt.hour == 0) & (_tt.dt.minute == 0) & (_tt.dt.second == 0)).all():
+        st.warning("Your Convo360 export's date column has **no time-of-day** (dates only), so "
+                   "clock in / out can't be derived. Export with a date-time column to enable this.")
+        _ci = _ci.iloc[0:0]
 if not _ci.empty:
     _cg = (_ci.groupby(["_agent", "_day"]).agg(start=("_ts", "min"), end=("_ts", "max"),
                                                interactions=("_ts", "size")).reset_index())
