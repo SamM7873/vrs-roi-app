@@ -773,16 +773,16 @@ if not _ci.empty and not _cg.empty:
         tot = int(round(h * 60)); hh, mm = divmod(tot, 60)
         return f"{hh}h {mm:02d}m" if hh else f"{mm}m"
 
-    # per-agent summary
+    # per-agent summary — straightforward totals (no averages)
     agent_clock = (_cg.groupby("_agent").agg(
-        Days=("span_h", "size"), ClockIn=("in_hod", "mean"), ClockOut=("out_hod", "mean"),
-        AvgHours=("span_h", "mean"), Interactions=("interactions", "sum")).reset_index())
+        Days=("span_h", "size"), EarliestIn=("in_hod", "min"), LatestOut=("out_hod", "max"),
+        TotalHours=("span_h", "sum"), Interactions=("interactions", "sum")).reset_index())
     agent_clock["Agent"] = agent_clock["_agent"].map(lambda a: str(a).split("@")[0])
-    agent_clock["Clock In (avg)"] = agent_clock["ClockIn"].map(_hhmm)
-    agent_clock["Clock Out (avg)"] = agent_clock["ClockOut"].map(_hhmm)
-    agent_clock["Avg hours"] = agent_clock["AvgHours"].map(_hrs)
-    agent_clock = agent_clock.sort_values("Interactions", ascending=False)
-    _acols = ["Agent", "Days", "Clock In (avg)", "Clock Out (avg)", "Avg hours", "Interactions"]
+    agent_clock["Earliest In"] = agent_clock["EarliestIn"].map(_hhmm)
+    agent_clock["Latest Out"] = agent_clock["LatestOut"].map(_hhmm)
+    agent_clock["Total hours"] = agent_clock["TotalHours"].map(_hrs)
+    agent_clock = agent_clock.sort_values("TotalHours", ascending=False)
+    _acols = ["Agent", "Days", "Earliest In", "Latest Out", "Total hours", "Interactions"]
     st.dataframe(agent_clock[_acols], use_container_width=True, hide_index=True)
 
     # day-by-day for a selected agent
@@ -810,14 +810,14 @@ if not _ci.empty and not _cg.empty:
 
     def _clock_period(period):
         gg = (_cg.groupby(["_agent", period]).agg(
-            Days=("span_h", "size"), AvgIn=("in_hod", "mean"), AvgOut=("out_hod", "mean"),
+            Days=("span_h", "size"), EarliestIn=("in_hod", "min"), LatestOut=("out_hod", "max"),
             Hours=("span_h", "sum"), Interactions=("interactions", "sum")).reset_index())
         gg["Agent"] = gg["_agent"].map(lambda a: str(a).split("@")[0])
-        gg["Clock In (avg)"] = gg["AvgIn"].map(_hhmm)
-        gg["Clock Out (avg)"] = gg["AvgOut"].map(_hhmm)
-        gg["Hours"] = gg["Hours"].map(_hrs)
-        return gg[["Agent", period, "Days", "Clock In (avg)", "Clock Out (avg)",
-                   "Hours", "Interactions"]].sort_values(["Agent", period])
+        gg["Earliest In"] = gg["EarliestIn"].map(_hhmm)
+        gg["Latest Out"] = gg["LatestOut"].map(_hhmm)
+        gg["Total hours"] = gg["Hours"].map(_hrs)
+        return gg[["Agent", period, "Days", "Earliest In", "Latest Out",
+                   "Total hours", "Interactions"]].sort_values(["Agent", period])
 
     clock_weekly = _clock_period("Week")
     clock_monthly = _clock_period("Month")
@@ -1411,9 +1411,9 @@ def _chart(name, x, y, kind="bar", title=None, cols_ok=None):
                         "title": title or f"{y} by {x}"})
 
 
-if _mk(_g.get("agent_clock")) is not None and "AvgHours" in agent_clock.columns:
-    _pdf_charts.append({"data": agent_clock[["Agent", "AvgHours"]].head(15), "kind": "barh",
-                        "x": "Agent", "y": "AvgHours", "title": "Avg hours per agent (clock in→out)"})
+if _mk(_g.get("agent_clock")) is not None and "TotalHours" in agent_clock.columns:
+    _pdf_charts.append({"data": agent_clock[["Agent", "TotalHours"]].head(15), "kind": "barh",
+                        "x": "Agent", "y": "TotalHours", "title": "Total hours per agent (clock in→out)"})
 _chart("bytype", "Source", "Interactions", "pie", "Interaction share by source")
 _chart("ot_daily", "Period", "Interactions", "line", "Interactions — daily")
 _chart("ot_weekly", "Period", "Interactions", "line", "Interactions — weekly")
@@ -1443,8 +1443,8 @@ def _sub(name, cols_name):
 
 # compact summary tables (appendix after the charts)
 _ac = _mk(_g.get("agent_clock"))
-_ac_tbl = _ac[["Agent", "Days", "Clock In (avg)", "Clock Out (avg)", "Avg hours", "Interactions"]] \
-    if _ac is not None and "Clock In (avg)" in _ac.columns else None
+_ac_tbl = _ac[["Agent", "Days", "Earliest In", "Latest Out", "Total hours", "Interactions"]] \
+    if _ac is not None and "Total hours" in _ac.columns else None
 _sections = [
     ("Agent clock in / out", _ac_tbl),
     ("Clock in/out — monthly", _mk(_g.get("clock_monthly"))),
