@@ -264,6 +264,7 @@ def _parse_conv(file):
         return "Convo360: no date column found."
     ccol = _find(df.columns, "customer name", "customer", "name")
     _dt = pd.to_datetime(df[dcol], errors="coerce")
+    df["_ts"] = _dt
     df["_day"] = _dt.dt.date
     df["_hour"] = _dt.dt.hour
     df = df[df["_day"].notna()].copy()
@@ -282,7 +283,7 @@ def _parse_conv(file):
     df["_dur_min"] = pd.to_numeric(df[dur_col], errors="coerce") if dur_col else pd.NA
     df["_missed"] = df[wcol].map(_is_missed) if wcol else False
     df["_wait_sec"] = df[wcol].map(_wait_secs) if wcol else pd.NA
-    return df[["_day", "_hour", "_type", "_source", "_agent", "_customer",
+    return df[["_ts", "_day", "_hour", "_type", "_source", "_agent", "_customer",
                "_dur_min", "_missed", "_wait_sec"]]
 
 
@@ -727,6 +728,52 @@ def _over_time(gname):
 ot_daily = _over_time("Daily")
 ot_weekly = _over_time("Weekly")
 ot_monthly = _over_time("Monthly")
+
+# ── agent clock in / out (first & last interaction per agent per day) ────────────────
+st.markdown("##### 🕒 Agent clock in / out")
+_ci = cvf[(cvf["_agent"] != "Missed (no agent)") & cvf["_ts"].notna()].copy()
+agent_clock = pd.DataFrame()
+if not _ci.empty:
+    _cg = (_ci.groupby(["_agent", "_day"]).agg(start=("_ts", "min"), end=("_ts", "max"),
+                                               interactions=("_ts", "size")).reset_index())
+    _cg["span_h"] = (_cg["end"] - _cg["start"]).dt.total_seconds() / 3600.0
+    _cg["in_hod"] = _cg["start"].dt.hour + _cg["start"].dt.minute / 60.0
+    _cg["out_hod"] = _cg["end"].dt.hour + _cg["end"].dt.minute / 60.0
+
+    def _hhmm(hod):
+        if pd.isna(hod):
+            return "—"
+        h = int(hod) % 24; m = int(round((hod - int(hod)) * 60))
+        if m == 60:
+            h, m = (h + 1) % 24, 0
+        return f"{h:02d}:{m:02d}"
+
+    # per-agent summary
+    agent_clock = (_cg.groupby("_agent").agg(
+        Days=("span_h", "size"), ClockIn=("in_hod", "mean"), ClockOut=("out_hod", "mean"),
+        AvgHours=("span_h", "mean"), Interactions=("interactions", "sum")).reset_index())
+    agent_clock["Agent"] = agent_clock["_agent"].map(lambda a: str(a).split("@")[0])
+    agent_clock["Clock In (avg)"] = agent_clock["ClockIn"].map(_hhmm)
+    agent_clock["Clock Out (avg)"] = agent_clock["ClockOut"].map(_hhmm)
+    agent_clock["Avg hours"] = agent_clock["AvgHours"].map(lambda h: _ms_lbl(h * 3600))
+    agent_clock = agent_clock.sort_values("Interactions", ascending=False)
+    _acols = ["Agent", "Days", "Clock In (avg)", "Clock Out (avg)", "Avg hours", "Interactions"]
+    st.dataframe(agent_clock[_acols], use_container_width=True, hide_index=True)
+
+    # day-by-day for a selected agent
+    _who = st.selectbox("Agent day-by-day", sorted(_cg["_agent"].unique()), key="ivt_clock_who")
+    _det = _cg[_cg["_agent"] == _who].sort_values("_day").copy()
+    _det["Date"] = _det["_day"].astype(str)
+    _det["Clock In"] = _det["start"].dt.strftime("%I:%M %p")
+    _det["Clock Out"] = _det["end"].dt.strftime("%I:%M %p")
+    _det["Hours"] = _det["span_h"].round(1)
+    _det["Interactions"] = _det["interactions"]
+    clock_daily = _det[["Date", "Clock In", "Clock Out", "Hours", "Interactions"]]
+    st.dataframe(clock_daily, use_container_width=True, hide_index=True, height=320)
+    st.caption("Clock In = first interaction of the day · Clock Out = last interaction "
+               "(from the Convo360 timestamps; a span proxy).")
+else:
+    st.info("No agent-timestamped interactions to compute clock in/out.")
 st.caption("Weekly = week starting Monday · Monthly = calendar month.")
 with st.expander("ℹ️ What does 'Tickets per interaction' mean?"):
     st.markdown("""
@@ -1334,7 +1381,11 @@ def _sub(name, cols_name):
 
 
 # compact summary tables (appendix after the charts)
+_ac = _mk(_g.get("agent_clock"))
+_ac_tbl = _ac[["Agent", "Days", "Clock In (avg)", "Clock Out (avg)", "Avg hours", "Interactions"]] \
+    if _ac is not None and "Clock In (avg)" in _ac.columns else None
 _sections = [
+    ("Agent clock in / out", _ac_tbl),
     ("Interactions vs tickets — daily", _mk(_g.get("ot_daily"))),
     ("Interactions vs tickets — weekly", _mk(_g.get("ot_weekly"))),
     ("Interactions vs tickets — monthly", _mk(_g.get("ot_monthly"))),
