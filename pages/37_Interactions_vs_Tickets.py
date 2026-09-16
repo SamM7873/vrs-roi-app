@@ -782,9 +782,40 @@ if not _ci.empty:
     _det["Hours"] = _det["span_h"].round(1)
     _det["Interactions"] = _det["interactions"]
     clock_daily = _det[["Date", "Clock In", "Clock Out", "Hours", "Interactions"]]
-    st.dataframe(clock_daily, use_container_width=True, hide_index=True, height=320)
-    st.caption("Clock In = first interaction of the day · Clock Out = last interaction "
-               "(from the Convo360 timestamps; a span proxy).")
+
+    # daily / weekly / monthly clock in/out per agent
+    _cg["Week"] = pd.to_datetime(_cg["_day"]).dt.strftime("%Y-W%V")
+    _cg["Month"] = pd.to_datetime(_cg["_day"]).dt.strftime("%Y-%m")
+
+    clock_daily_all = _cg.sort_values(["_agent", "_day"]).assign(
+        Agent=_cg["_agent"].map(lambda a: str(a).split("@")[0]),
+        Date=_cg["_day"].astype(str),
+        **{"Clock In": _cg["start"].dt.strftime("%I:%M %p"),
+           "Clock Out": _cg["end"].dt.strftime("%I:%M %p"),
+           "Hours": _cg["span_h"].round(1),
+           "Interactions": _cg["interactions"]})[
+        ["Agent", "Date", "Clock In", "Clock Out", "Hours", "Interactions"]]
+
+    def _clock_period(period):
+        gg = (_cg.groupby(["_agent", period]).agg(
+            Days=("span_h", "size"), AvgIn=("in_hod", "mean"), AvgOut=("out_hod", "mean"),
+            Hours=("span_h", "sum"), Interactions=("interactions", "sum")).reset_index())
+        gg["Agent"] = gg["_agent"].map(lambda a: str(a).split("@")[0])
+        gg["Clock In (avg)"] = gg["AvgIn"].map(_hhmm)
+        gg["Clock Out (avg)"] = gg["AvgOut"].map(_hhmm)
+        gg["Hours"] = gg["Hours"].round(1)
+        return gg[["Agent", period, "Days", "Clock In (avg)", "Clock Out (avg)",
+                   "Hours", "Interactions"]].sort_values(["Agent", period])
+
+    clock_weekly = _clock_period("Week")
+    clock_monthly = _clock_period("Month")
+
+    _ct_d, _ct_w, _ct_m = st.tabs(["Daily", "Weekly", "Monthly"])
+    _ct_d.dataframe(clock_daily_all, use_container_width=True, hide_index=True, height=340)
+    _ct_w.dataframe(clock_weekly, use_container_width=True, hide_index=True, height=340)
+    _ct_m.dataframe(clock_monthly, use_container_width=True, hide_index=True, height=340)
+    st.caption("Clock In = first interaction of the period · Clock Out = last interaction · "
+               "Hours = sum of daily first→last spans (a span proxy, not payroll hours).")
 else:
     st.info("No agent-timestamped interactions to compute clock in/out.")
 st.caption("Weekly = week starting Monday · Monthly = calendar month.")
@@ -1402,6 +1433,9 @@ _ac_tbl = _ac[["Agent", "Days", "Clock In (avg)", "Clock Out (avg)", "Avg hours"
     if _ac is not None and "Clock In (avg)" in _ac.columns else None
 _sections = [
     ("Agent clock in / out", _ac_tbl),
+    ("Clock in/out — monthly", _mk(_g.get("clock_monthly"))),
+    ("Clock in/out — weekly", _mk(_g.get("clock_weekly"))),
+    ("Clock in/out — daily", _mk(_g.get("clock_daily_all"))),
     ("Interactions vs tickets — daily", _mk(_g.get("ot_daily"))),
     ("Interactions vs tickets — weekly", _mk(_g.get("ot_weekly"))),
     ("Interactions vs tickets — monthly", _mk(_g.get("ot_monthly"))),
