@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v11_split"
+_key = "convo_greeting_v12_assoc"
 
 
 def _batch_read(obj, ids, props):
@@ -211,32 +211,53 @@ if run:
                 if num not in num_since or cm < num_since[num]:
                     num_since[num] = cm
 
-    # Monthly Values per number & month, split by service:
-    #   num_month_vrs → VRS minutes (drives FCC ROI)
-    #   num_month_cn  → Convo Now minutes (shown alongside for comparison)
-    num_month_vrs = defaultdict(dict)   # number → {YYYY-MM: minutes}
-    num_month_cn = defaultdict(dict)    # number → {YYYY-MM: minutes}
+    # Collect Monthly Values rows from BOTH sources, deduped by MV object id:
+    #   1) phone-number string match on the "number" property
+    #   2) the Number → Monthly Values CRM association (so nothing is missed)
+    _mv_props = ["number", "usage_minutes", "service_type", "month_date"]
+    mv_objs = {}          # mv_id → properties
+    mvid_to_num = {}      # mv_id → phone from its Number object (fallback key)
     if vrs_numbers:
         with dash_spinner(f"Pulling Monthly Values for {len(vrs_numbers):,} numbers…"):
             for i in range(0, len(vrs_numbers), 100):
                 chunk = vrs_numbers[i:i + 100]
-                for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
+                for o in _seek_mv(_mv_props,
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
                                    {"propertyName": "usage_minutes", "operator": "GT", "value": "0"}]):
-                    op = o.get("properties", {})
-                    s = str(op.get("service_type") or "").lower()
-                    num = str(op.get("number") or "").strip()
-                    mk = str(op.get("month_date") or "")[:7]
-                    mins = to_float(op.get("usage_minutes")) or 0.0
-                    if not (num and mk):
-                        continue
-                    # a row counts as VRS when its service_type mentions VRS
-                    # (incl. the combined "VRS and Convo Now"); otherwise, if it
-                    # mentions Convo Now, it's tracked in the Convo Now bucket.
-                    if "vrs" in s:
-                        num_month_vrs[num][mk] = num_month_vrs[num].get(mk, 0.0) + mins
-                    elif "convo now" in s:
-                        num_month_cn[num][mk] = num_month_cn[num].get(mk, 0.0) + mins
+                    mv_objs[str(o["id"])] = o.get("properties", {})
+    if vrs_nid_set:
+        with dash_spinner(f"Checking Number → Monthly Values associations for {len(vrs_nid_set):,} numbers…"):
+            n2mv = _assoc(NUM_OBJECT, MV_OBJECT, sorted(vrs_nid_set))
+            _need = []
+            for nid, mvids in n2mv.items():
+                for mvid in mvids:
+                    mvid = str(mvid)
+                    mvid_to_num[mvid] = nid_to_num.get(nid, "")
+                    if mvid not in mv_objs:
+                        _need.append(mvid)
+            _need = sorted(set(_need))
+            if _need:
+                for i in range(0, len(_need), 100):
+                    got = _batch_read(MV_OBJECT, _need[i:i + 100], _mv_props)
+                    mv_objs.update(got)
+
+    # bucket the deduped rows, split by service (VRS drives FCC ROI)
+    num_month_vrs = defaultdict(dict)   # number → {YYYY-MM: minutes}
+    num_month_cn = defaultdict(dict)    # number → {YYYY-MM: minutes}
+    for mvid, op in mv_objs.items():
+        s = str(op.get("service_type") or "").lower()
+        num = str(op.get("number") or "").strip() or mvid_to_num.get(mvid, "")
+        mk = str(op.get("month_date") or "")[:7]
+        mins = to_float(op.get("usage_minutes")) or 0.0
+        if not (num and mk) or mins <= 0:
+            continue
+        # a row counts as VRS when its service_type mentions VRS (incl. the
+        # combined "VRS and Convo Now"); otherwise, if it mentions Convo Now,
+        # it's tracked in the Convo Now bucket.
+        if "vrs" in s:
+            num_month_vrs[num][mk] = num_month_vrs[num].get(mk, 0.0) + mins
+        elif "convo now" in s:
+            num_month_cn[num][mk] = num_month_cn[num].get(mk, 0.0) + mins
 
     # roll up usage from each number's earliest close month → present
     monthly = defaultdict(lambda: {"min": 0.0, "fcc": 0.0, "cn": 0.0})
