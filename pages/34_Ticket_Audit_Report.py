@@ -562,6 +562,14 @@ if _mk(_g.get("summ")) is not None and not summ.empty:
                      ("Latest avg clock-out", _hhmm(summ["ClockOut"].max()))]
 
 _pdf_charts = []
+if _mk(_g.get("per_day")) is not None and "Day" in per_day.columns:
+    _yc = next((c for c in per_day.columns if c != "Day"), None)
+    if _yc:
+        _pdf_charts.append({"data": per_day, "kind": "line", "x": "Day", "y": _yc,
+                            "title": "Ticket events per day"})
+if _mk(_g.get("ab")) is not None:
+    _pdf_charts.append({"data": ab, "kind": "pie", "x": "Action", "y": "Count",
+                        "title": "Action share"})
 if _mk(_g.get("summ")) is not None:
     _cin = summ.copy()
     _cin["Agent"] = _cin["_u"].map(_agent)
@@ -569,13 +577,18 @@ if _mk(_g.get("summ")) is not None:
                         "x": "Agent", "y": "Avg", "title": "Avg work hours per agent"})
 
 _sections = [
+    ("Ticket events per day", _mk(_g.get("per_day"))),
+    ("Action breakdown", _mk(_g.get("ab"))),
+    ("By team", _mk(_g.get("team"))),
+    ("By agent (tickets)", _mk(_g.get("agent"))),
+    ("Ticket detail", (tdet[_g["cols_t"]] if _mk(_g.get("tdet")) is not None
+                        and _g.get("cols_t") and all(c in tdet.columns for c in _g["cols_t"])
+                        else _mk(_g.get("tdet")))),
     ("Work hours per agent (with clock in / out)", _wh_tbl),
     ("Monthly work hours (clock in / out)", _mk(_g.get("monthly_wh"))),
     ("Weekly work hours (clock in / out)", _mk(_g.get("weekly_wh"))),
     ("Daily work hours (clock in / out)", _mk(_g.get("daily_wh"))),
     ("Efficiency", _mk(_g.get("eff"))),
-    ("By team", _mk(_g.get("team"))),
-    ("By agent (tickets)", _mk(_g.get("agent"))),
 ]
 _sections = [(t, d) for t, d in _sections if isinstance(d, pd.DataFrame) and not d.empty]
 pdf_multi_download_button(_sections, "ticket_audit_report.pdf",
