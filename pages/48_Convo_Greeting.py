@@ -6,6 +6,7 @@ from collections import defaultdict
 import requests
 from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
                    headers as _H, BASE_URL as _B, dash_spinner, to_float, vrs_rate_for_month,
+                   CONVO_NOW_RATE_PER_MINUTE,
                    save_report, load_report, saved_at_label, log_report_view, pdf_download_button)
 
 st.set_page_config(page_title="Convo Greeting", layout="wide", page_icon="👋")
@@ -19,7 +20,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v13_cn"
+_key = "convo_greeting_v14_cnrate"
 
 
 def _batch_read(obj, ids, props):
@@ -268,7 +269,7 @@ if run:
             num_month_cn[num][mk] = num_month_cn[num].get(mk, 0.0) + mins
 
     # roll up usage from each number's earliest close month → present
-    monthly = defaultdict(lambda: {"min": 0.0, "fcc": 0.0, "cn": 0.0})
+    monthly = defaultdict(lambda: {"min": 0.0, "fcc": 0.0, "cn": 0.0, "cn_val": 0.0})
     for num, since in num_since.items():
         for mk, mins in num_month_vrs.get(num, {}).items():
             if mk >= since:
@@ -277,6 +278,7 @@ if run:
         for mk, mins in num_month_cn.get(num, {}).items():
             if mk >= since:
                 monthly[mk]["cn"] += mins
+                monthly[mk]["cn_val"] += mins * CONVO_NOW_RATE_PER_MINUTE
 
     # every month present in Monthly Values (either service) → a column in the table
     all_months = sorted({mk for nm in num_month_vrs.values() for mk in nm}
@@ -326,8 +328,8 @@ if run:
             _row[f"{mk} CN"] = round(_by_c.get(mk, 0.0), 1)
         rows.append(_row)
     df = pd.DataFrame(rows)
-    _mrows = [{"Month": mk, "VRS Minutes": round(v["min"], 1),
-               "Convo Now Minutes": round(v["cn"], 1), "FCC $": round(v["fcc"], 2)}
+    _mrows = [{"Month": mk, "VRS Minutes": round(v["min"], 1), "FCC $": round(v["fcc"], 2),
+               "Convo Now Minutes": round(v["cn"], 1), "Convo Now $": round(v["cn_val"], 2)}
               for mk, v in sorted(monthly.items())]
     mv_df = pd.DataFrame(_mrows)
 
@@ -342,8 +344,9 @@ if run:
                 "VRS Number": num,
                 "Month": mk,
                 "VRS Minutes": round(vmin, 1),
-                "Convo Now Minutes": round(cmin, 1),
                 "FCC $": round(vmin * vrs_rate_for_month(mk), 2),
+                "Convo Now Minutes": round(cmin, 1),
+                "Convo Now $": round(cmin * CONVO_NOW_RATE_PER_MINUTE, 2),
                 "Since close?": "Yes" if mk >= since else "No",
             })
     detail_df = pd.DataFrame(_drows)
@@ -351,7 +354,8 @@ if run:
     save_report(_key, {"df": df, "pipeline": pipe_label, "mv_df": mv_df, "detail_df": detail_df,
                        "tot_min": round(sum(v["min"] for v in monthly.values()), 1),
                        "tot_cn": round(sum(v["cn"] for v in monthly.values()), 1),
-                       "tot_fcc": round(sum(v["fcc"] for v in monthly.values()), 2)})
+                       "tot_fcc": round(sum(v["fcc"] for v in monthly.values()), 2),
+                       "tot_cn_val": round(sum(v["cn_val"] for v in monthly.values()), 2)})
 
 saved = load_report(_key)
 if saved is None:
@@ -402,15 +406,16 @@ st.markdown("")
 _tot_min = saved.get("tot_min", 0.0)
 _tot_cn = saved.get("tot_cn", 0.0)
 _tot_fcc = saved.get("tot_fcc", 0.0)
+_tot_cn_val = saved.get("tot_cn_val", 0.0)
 _vmcol = "VRS Min (since close)"
 _n_active = int((df.get(_vmcol, pd.Series(dtype=float)) > 0).sum()) if _vmcol in df.columns else 0
 st.markdown("##### 💵 ROI from Monthly Values (closed date → present · associated numbers)")
 _cards([
     ("⏱️ Total VRS minutes", f"{_tot_min:,.0f}", "from associated numbers", "#4C8DFF"),
-    ("📱 Total Convo Now minutes", f"{_tot_cn:,.0f}", "same numbers · shown for comparison", "#B4883F"),
-    ("💵 FCC value (VRS)", f"${_tot_fcc:,.0f}", "VRS minutes × FCC rate", "#2DB84B"),
-    ("🚀 Tickets generating usage", f"{_n_active:,}", _pct(_n_active), "#0FB5AE"),
-    ("Avg $ / ticket w/ number", f"${_tot_fcc/hn:,.0f}" if hn else "—", "over tickets with a number", "#7A5CFF"),
+    ("💵 FCC value (VRS)", f"${_tot_fcc:,.0f}", "VRS min × FCC rate", "#2DB84B"),
+    ("📱 Total Convo Now minutes", f"{_tot_cn:,.0f}", "from Convo Now numbers", "#B4883F"),
+    (f"💲 Convo Now value", f"${_tot_cn_val:,.0f}", f"CN min × ${CONVO_NOW_RATE_PER_MINUTE:.2f}/min", "#E8A33D"),
+    ("Total value (VRS + CN)", f"${_tot_fcc + _tot_cn_val:,.0f}", "combined", "#7A5CFF"),
 ])
 _mv = saved.get("mv_df")
 if _mv is not None and not _mv.empty:
@@ -442,9 +447,9 @@ if _det is not None and not _det.empty:
                     st.dataframe(_piv, use_container_width=True, hide_index=True)
             except Exception:
                 pass
-st.caption("VRS / Convo Now minutes = usage on the tickets' associated numbers from the ticket's **closed-date "
-           "month → present** (Monthly Values month_date ≥ closed date). FCC value = **VRS** minutes × the VRS FCC "
-           "rate (Convo Now minutes are shown for comparison only, not billed).")
+st.caption(f"VRS / Convo Now minutes = usage on the tickets' associated numbers from the ticket's **closed-date "
+           f"month → present** (Monthly Values month_date ≥ closed date). FCC value = **VRS** minutes × the VRS FCC "
+           f"rate. Convo Now value = **Convo Now** minutes × **${CONVO_NOW_RATE_PER_MINUTE:.2f}/min**.")
 st.markdown("")
 
 # breakdown by association type
@@ -479,8 +484,9 @@ with _ex2:
         ("Has Contact", f"{hc:,}"),
         ("Has Number", f"{hn:,}"),
         ("Total VRS minutes", f"{_tot_min:,.0f}"),
-        ("Total Convo Now minutes", f"{_tot_cn:,.0f}"),
         ("FCC value (VRS)", f"${_tot_fcc:,.0f}"),
+        ("Total Convo Now minutes", f"{_tot_cn:,.0f}"),
+        ("Convo Now value", f"${_tot_cn_val:,.0f}"),
     ]
     _pdf_charts = []
     if _mv is not None and not _mv.empty:
