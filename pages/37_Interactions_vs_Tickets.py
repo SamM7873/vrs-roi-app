@@ -709,6 +709,24 @@ st.dataframe(daily, use_container_width=True, hide_index=True,
              column_config={"Interactions": _bar("Interactions", _mx),
                             "Tickets created": _bar("Tickets created", _mx)})
 st.bar_chart(daily.set_index("Period")[["Interactions", "Tickets created"]], height=260)
+
+
+# all three grains (for the report — independent of the toggle above)
+def _over_time(gname):
+    _cv = cvf.copy(); _cv["_p"] = _period(_cv["_day"], gname)
+    _tc = tkf[tkf["_created"]].copy(); _tc["_p"] = _period(_tc["_day"], gname)
+    _i = _cv.groupby("_p").size().rename("Interactions")
+    _c = _tc.groupby("_p").size().rename("Tickets created")
+    out = pd.concat([_i, _c], axis=1).fillna(0).astype(int).reset_index().rename(columns={"_p": "Period"})
+    out = out.sort_values("Period")
+    out["Tickets per interaction"] = out.apply(
+        lambda r: round(r["Tickets created"] / r["Interactions"], 1) if r["Interactions"] else 0, axis=1)
+    return out
+
+
+ot_daily = _over_time("Daily")
+ot_weekly = _over_time("Weekly")
+ot_monthly = _over_time("Monthly")
 st.caption("Weekly = week starting Monday · Monthly = calendar month.")
 with st.expander("ℹ️ What does 'Tickets per interaction' mean?"):
     st.markdown("""
@@ -1289,8 +1307,9 @@ def _chart(name, x, y, kind="bar", title=None, cols_ok=None):
 
 
 _chart("bytype", "Source", "Interactions", "pie", "Interaction share by source")
-_chart("daily", "Period", "Interactions", "line", "Interactions over time")
-_chart("daily", "Period", "Tickets", "line", "Tickets created over time")
+_chart("ot_daily", "Period", "Interactions", "line", "Interactions — daily")
+_chart("ot_weekly", "Period", "Interactions", "line", "Interactions — weekly")
+_chart("ot_monthly", "Period", "Interactions", "bar", "Interactions — monthly")
 if _mk(_g.get("full")) is not None:
     _pdf_charts.append({"data": full[["Agent", "Connected"]].head(15), "kind": "barh",
                         "x": "Agent", "y": "Connected", "title": "Connected by agent"})
@@ -1316,6 +1335,9 @@ def _sub(name, cols_name):
 
 # compact summary tables (appendix after the charts)
 _sections = [
+    ("Interactions vs tickets — daily", _mk(_g.get("ot_daily"))),
+    ("Interactions vs tickets — weekly", _mk(_g.get("ot_weekly"))),
+    ("Interactions vs tickets — monthly", _mk(_g.get("ot_monthly"))),
     ("Agent — connected · missed · AHT", _sub("full", "_fcols")),
     ("Interactions by source", _mk(_g.get("bytype"))),
     ("Tickets by pipeline", _mk(_g.get("pv"))),
