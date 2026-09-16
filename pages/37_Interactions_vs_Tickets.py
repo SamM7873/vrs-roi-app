@@ -1257,7 +1257,7 @@ elif st.button("🔗 Run per-consumer match (queries HubSpot)"):
 
 # ── whole-page PDF report ──────────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown("### 📄 Full report (PDF)")
+st.markdown("### 📊 Visual report (PDF)")
 from utils import pdf_download_button
 _g = globals()
 
@@ -1278,15 +1278,29 @@ _pdf_metrics += [("Interactions", f"{n_int:,}"),
                  ("Tickets / interaction", f"{tpi:.2f}" if tpi is not None else "—")]
 
 _pdf_charts = []
-if _mk(_g.get("bytype")) is not None:
-    _pdf_charts.append({"data": bytype[["Source", "Interactions"]], "kind": "bar",
-                        "x": "Source", "y": "Interactions", "title": "Interactions by source"})
-if _mk(_g.get("daily")) is not None and "Interactions" in daily.columns:
-    _pdf_charts.append({"data": daily[["Period", "Interactions"]], "kind": "line",
-                        "x": "Period", "y": "Interactions", "title": "Interactions over time"})
+
+
+def _chart(name, x, y, kind="bar", title=None, cols_ok=None):
+    d = _mk(_g.get(name))
+    if d is None or x not in d.columns or y not in d.columns:
+        return
+    _pdf_charts.append({"data": d[[x, y]].copy(), "kind": kind, "x": x, "y": y,
+                        "title": title or f"{y} by {x}"})
+
+
+_chart("bytype", "Source", "Interactions", "bar", "Interactions by source")
+_chart("daily", "Period", "Interactions", "line", "Interactions over time")
+_chart("daily", "Period", "Tickets", "line", "Tickets created over time")
 if _mk(_g.get("full")) is not None:
-    _pdf_charts.append({"data": full[["Agent", "Connected"]].head(12), "kind": "bar",
+    _pdf_charts.append({"data": full[["Agent", "Connected"]].head(15), "kind": "bar",
                         "x": "Agent", "y": "Connected", "title": "Connected by agent"})
+    _pdf_charts.append({"data": full[["Agent", "Missed"]].head(15), "kind": "bar",
+                        "x": "Agent", "y": "Missed", "title": "Missed by agent"})
+_chart("_dtab", "Day", "Missed", "bar", "Missed calls by day")
+_chart("pv", "Pipeline", "Tickets", "bar", "Tickets by pipeline")
+_chart("ov", "Origin", "Tickets", "bar", "Tickets by origin")
+_chart("own", "Owner", "Tickets", "bar", "Tickets by owner")
+_chart("perday", "Day", "Total handled", "bar", "Tickets handled per day")
 
 # every section table on the page, in order
 def _sub(name, cols_name):
@@ -1300,35 +1314,22 @@ def _sub(name, cols_name):
     return d
 
 
+# compact summary tables (appendix after the charts)
 _sections = [
     ("Agent — connected · missed · AHT", _sub("full", "_fcols")),
     ("Interactions by source", _mk(_g.get("bytype"))),
-    ("Interactions vs tickets — over time", _mk(_g.get("daily"))),
-    ("Missed calls by day", _sub("_dtab", None)),
-    ("Longest waits", _sub("_top", "_wcols")),
     ("Tickets by pipeline", _mk(_g.get("pv"))),
-    ("Tickets by origin", _mk(_g.get("ov"))),
     ("Tickets by owner", _mk(_g.get("own"))),
-    ("Ticket detail", _sub("_tv", "_detail_cols")),
-    ("Handled by origin", _sub("handled", "order")),
-    ("Tickets handled per day", _mk(_g.get("perday"))),
-    ("Handled by agent", _mk(_g.get("byagent"))),
-    ("Per-consumer match", _mk(_g.get("cust"))),
 ]
-# clean the missed-by-day table to display columns if present
-if _mk(_g.get("_dtab")) is not None:
-    _mcols = ["Day", "Total", "Answered", "Missed", "Miss %"]
-    if all(c in _dtab.columns for c in _mcols):
-        _sections[3] = ("Missed calls by day", _dtab[_mcols])
-
 _sections = [(t, d) for t, d in _sections if isinstance(d, pd.DataFrame) and not d.empty]
 
 from utils import pdf_multi_download_button
-pdf_multi_download_button(_sections, "interactions_vs_tickets_full.pdf",
-                          "Interactions vs Tickets — Full Report",
+pdf_multi_download_button(_sections, "interactions_vs_tickets_visual.pdf",
+                          "Interactions vs Tickets — Visual Report",
                           subtitle="Queue · Volume · Tickets · Workload",
-                          metrics=_pdf_metrics, charts=_pdf_charts, key="ivt_full_pdf")
-st.caption(f"Full report: KPI summary + {len(_pdf_charts)} charts + {len(_sections)} data tables "
-           "(every section on this page, reflecting your current filters).")
+                          metrics=_pdf_metrics, charts=_pdf_charts, key="ivt_visual_pdf",
+                          label="📊 Prepare visual report")
+st.caption(f"Visual report: KPI summary + {len(_pdf_charts)} chart pages + {len(_sections)} summary "
+           "tables (reflects your current filters).")
 
 report_header_close()
