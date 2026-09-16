@@ -722,6 +722,102 @@ def _pdf_from_df(df, title, subtitle="", metrics=None, charts=None):
     return buf.getvalue()
 
 
+def _pdf_multi(title, subtitle="", metrics=None, charts=None, sections=None):
+    """Full multi-section PDF: dashboard (KPIs + first chart), extra chart pages,
+    then each (section_title, df) rendered as its own titled table pages."""
+    import io
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    sections = [(t, d) for t, d in (sections or [])
+                if isinstance(d, pd.DataFrame) and not d.empty]
+    page_no = [1]
+
+    def _cell(x):
+        s = "" if x is None else str(x)
+        return (s[:38] + "…") if len(s) > 39 else s
+
+    buf = io.BytesIO()
+    with PdfPages(buf) as pdf:
+        # dashboard page (KPIs + first chart), based on the first section's df
+        _first_df = sections[0][1] if sections else pd.DataFrame()
+        numeric_cols, cat_cols = _pdf_profile(_first_df)
+        fig = plt.figure(figsize=(11, 8.5))
+        try:
+            _draw_dashboard(fig, _first_df, title, subtitle, numeric_cols, cat_cols, metrics, charts)
+        except Exception:
+            fig.clf(); ax = fig.add_axes([0, 0, 1, 1]); ax.axis("off")
+            ax.text(0.5, 0.6, title, ha="center", fontsize=20, fontweight="bold")
+        pdf.savefig(fig); plt.close(fig)
+
+        # extra chart pages
+        for spec in (charts or [])[1:]:
+            try:
+                fig = plt.figure(figsize=(11, 8.5))
+                bg = fig.add_axes([0, 0, 1, 1]); bg.axis("off"); bg.set_xlim(0, 1); bg.set_ylim(0, 1)
+                bg.add_patch(Rectangle((0, 0.94), 1, 0.06, color=_PDF_GREEN))
+                page_no[0] += 1
+                bg.text(0.955, 0.97, f"Page {page_no[0]}", color="#D9E4DD", fontsize=8, ha="right", va="center")
+                ax = fig.add_axes([0.08, 0.1, 0.86, 0.76])
+                t = _draw_chart_spec(ax, spec)
+                bg.text(0.045, 0.97, t or "Chart", color="white", fontsize=12, fontweight="bold", va="center")
+                pdf.savefig(fig); plt.close(fig)
+            except Exception:
+                plt.close("all")
+
+        # table pages, one group per section
+        per_page = 22
+        for sec_title, df in sections:
+            cols = [str(c) for c in list(df.columns)[:12]]
+            rows = [[_cell(v) for v in row[:12]] for row in df.itertuples(index=False, name=None)]
+            for start in range(0, max(len(rows), 1), per_page):
+                chunk = rows[start:start + per_page]
+                fig = plt.figure(figsize=(11, 8.5))
+                bg = fig.add_axes([0, 0, 1, 1]); bg.axis("off"); bg.set_xlim(0, 1); bg.set_ylim(0, 1)
+                bg.add_patch(Rectangle((0, 0.94), 1, 0.06, color=_PDF_GREEN))
+                bg.text(0.045, 0.97, _cell(sec_title), color="white",
+                        fontsize=12, fontweight="bold", va="center")
+                page_no[0] += 1
+                bg.text(0.955, 0.97, f"Page {page_no[0]}", color="#D9E4DD", fontsize=8, ha="right", va="center")
+                ax = fig.add_axes([0.03, 0.04, 0.94, 0.86]); ax.axis("off")
+                tbl = ax.table(cellText=chunk if chunk else [["" for _ in cols]],
+                               colLabels=cols, loc="upper center", cellLoc="left")
+                tbl.auto_set_font_size(False); tbl.set_fontsize(7); tbl.scale(1, 1.35)
+                for (r, c), cell in tbl.get_celld().items():
+                    cell.set_edgecolor("#E5E1D6")
+                    if r == 0:
+                        cell.set_facecolor(_PDF_GREEN)
+                        cell.set_text_props(color="white", fontweight="bold")
+                        cell.set_height(cell.get_height() * 1.1)
+                    else:
+                        cell.set_facecolor("white" if r % 2 else _PDF_CREAM)
+                        cell.set_text_props(color=_PDF_INK)
+                pdf.savefig(fig); plt.close(fig)
+    return buf.getvalue()
+
+
+def pdf_multi_download_button(sections, filename, title, subtitle="", metrics=None,
+                             charts=None, label="📄 Prepare FULL PDF report", key=None):
+    """Two-step full-report PDF from many (section_title, df) tables."""
+    _valid = [(t, d) for t, d in (sections or [])
+              if isinstance(d, pd.DataFrame) and not d.empty]
+    if not _valid:
+        return
+    key = key or filename
+    if st.button(label, key=f"pdfmbtn_{key}"):
+        try:
+            st.session_state[f"pdfmbytes_{key}"] = _pdf_multi(title, subtitle, metrics, charts, _valid)
+        except Exception as e:
+            st.session_state[f"pdfmbytes_{key}"] = None
+            st.error(f"PDF failed: {e}")
+    if st.session_state.get(f"pdfmbytes_{key}"):
+        st.download_button("📥 Download FULL PDF", st.session_state[f"pdfmbytes_{key}"],
+                           filename, "application/pdf", key=f"pdfmdl_{key}")
+
+
 def pdf_download_button(df, filename, title, subtitle="", metrics=None, charts=None,
                         label="📄 Prepare presentation PDF", key=None):
     """Two-step PDF export: a button that builds the PDF, then a download button.

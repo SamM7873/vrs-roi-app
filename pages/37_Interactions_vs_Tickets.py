@@ -1288,18 +1288,47 @@ if _mk(_g.get("full")) is not None:
     _pdf_charts.append({"data": full[["Agent", "Connected"]].head(12), "kind": "bar",
                         "x": "Agent", "y": "Connected", "title": "Connected by agent"})
 
-_pdf_table = None
-if _mk(_g.get("full")) is not None:
-    _pdf_table = full[_fcols]
-elif _mk(_g.get("bytype")) is not None:
-    _pdf_table = bytype
+# every section table on the page, in order
+def _sub(name, cols_name):
+    """Return globals()[name] limited to globals()[cols_name] columns, if both exist."""
+    d = _mk(_g.get(name))
+    cols = _g.get(cols_name)
+    if d is None:
+        return None
+    if cols and all(c in d.columns for c in cols):
+        return d[cols]
+    return d
 
-if _pdf_table is not None:
-    pdf_download_button(_pdf_table, "interactions_vs_tickets_report.pdf",
-                        "Interactions vs Tickets — Full Report",
-                        subtitle="Queue performance · Volume · Agents",
-                        metrics=_pdf_metrics, charts=_pdf_charts, key="ivt_full_pdf")
-    st.caption("Includes the KPI summary, source & trend charts, connected-by-agent, and the agent "
-               "table (reflects the current coverage-window and date filters).")
+
+_sections = [
+    ("Agent — connected · missed · AHT", _sub("full", "_fcols")),
+    ("Interactions by source", _mk(_g.get("bytype"))),
+    ("Interactions vs tickets — over time", _mk(_g.get("daily"))),
+    ("Missed calls by day", _sub("_dtab", None)),
+    ("Longest waits", _sub("_top", "_wcols")),
+    ("Tickets by pipeline", _mk(_g.get("pv"))),
+    ("Tickets by origin", _mk(_g.get("ov"))),
+    ("Tickets by owner", _mk(_g.get("own"))),
+    ("Ticket detail", _sub("_tv", "_detail_cols")),
+    ("Handled by origin", _sub("handled", "order")),
+    ("Tickets handled per day", _mk(_g.get("perday"))),
+    ("Handled by agent", _mk(_g.get("byagent"))),
+    ("Per-consumer match", _mk(_g.get("cust"))),
+]
+# clean the missed-by-day table to display columns if present
+if _mk(_g.get("_dtab")) is not None:
+    _mcols = ["Day", "Total", "Answered", "Missed", "Miss %"]
+    if all(c in _dtab.columns for c in _mcols):
+        _sections[3] = ("Missed calls by day", _dtab[_mcols])
+
+_sections = [(t, d) for t, d in _sections if isinstance(d, pd.DataFrame) and not d.empty]
+
+from utils import pdf_multi_download_button
+pdf_multi_download_button(_sections, "interactions_vs_tickets_full.pdf",
+                          "Interactions vs Tickets — Full Report",
+                          subtitle="Queue · Volume · Tickets · Workload",
+                          metrics=_pdf_metrics, charts=_pdf_charts, key="ivt_full_pdf")
+st.caption(f"Full report: KPI summary + {len(_pdf_charts)} charts + {len(_sections)} data tables "
+           "(every section on this page, reflecting your current filters).")
 
 report_header_close()
