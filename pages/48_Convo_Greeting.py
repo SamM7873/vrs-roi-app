@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v8_vrsonly"
+_key = "convo_greeting_v9_vrsonly"
 
 
 def _batch_read(obj, ids, props):
@@ -189,12 +189,11 @@ if run:
     if all_nids:
         with dash_spinner(f"Reading {len(all_nids):,} associated Number objects…"):
             num_of = _batch_read(NUM_OBJECT, all_nids, ["number", "service_type"])
-    # keep VRS numbers only — do NOT count Convo Now (or other) service types.
-    # service_type can be a multi-value enum (";"-joined), so tokenize it and
-    # require VRS present AND Convo Now absent.
+    # keep PURE VRS numbers only — exclude Convo Now AND the combined
+    # "VRS and Convo Now" service type (any spelling / delimiter).
     def _is_vrs(st_val):
-        toks = {t.strip().lower() for t in str(st_val or "").replace(",", ";").split(";") if t.strip()}
-        return ("vrs" in toks) and ("convo now" not in toks)
+        s = str(st_val or "").lower()
+        return ("vrs" in s) and ("convo now" not in s)
     vrs_nid_set = {nid for nid, p in num_of.items() if _is_vrs(p.get("service_type"))}
     nid_to_num = {nid: str(num_of.get(nid, {}).get("number") or "").strip()
                   for nid in vrs_nid_set if str(num_of.get(nid, {}).get("number") or "").strip()}
@@ -221,9 +220,11 @@ if run:
                 chunk = vrs_numbers[i:i + 100]
                 for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
-                                   {"propertyName": "service_type", "operator": "EQ", "value": "VRS"},
                                    {"propertyName": "usage_minutes", "operator": "GT", "value": "0"}]):
                     op = o.get("properties", {})
+                    # count PURE VRS usage only — skip Convo Now and combined rows
+                    if not _is_vrs(op.get("service_type")):
+                        continue
                     num = str(op.get("number") or "").strip()
                     mk = str(op.get("month_date") or "")[:7]
                     if num and mk:
