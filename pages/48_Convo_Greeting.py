@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v10_vrs"
+_key = "convo_greeting_v11_split"
 
 
 def _batch_read(obj, ids, props):
@@ -211,34 +211,47 @@ if run:
                 if num not in num_since or cm < num_since[num]:
                     num_since[num] = cm
 
-    # Monthly Values per number & month → count usage from the closed-date month onward.
-    num_month = defaultdict(dict)   # number → {YYYY-MM: minutes}
+    # Monthly Values per number & month, split by service:
+    #   num_month_vrs → VRS minutes (drives FCC ROI)
+    #   num_month_cn  → Convo Now minutes (shown alongside for comparison)
+    num_month_vrs = defaultdict(dict)   # number → {YYYY-MM: minutes}
+    num_month_cn = defaultdict(dict)    # number → {YYYY-MM: minutes}
     if vrs_numbers:
-        with dash_spinner(f"Pulling Monthly Values for {len(vrs_numbers):,} VRS numbers…"):
+        with dash_spinner(f"Pulling Monthly Values for {len(vrs_numbers):,} numbers…"):
             for i in range(0, len(vrs_numbers), 100):
                 chunk = vrs_numbers[i:i + 100]
                 for o in _seek_mv(["number", "usage_minutes", "service_type", "month_date"],
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
                                    {"propertyName": "usage_minutes", "operator": "GT", "value": "0"}]):
                     op = o.get("properties", {})
-                    # count PURE VRS usage only — skip Convo Now and combined rows
-                    if not _is_vrs(op.get("service_type")):
-                        continue
+                    s = str(op.get("service_type") or "").lower()
                     num = str(op.get("number") or "").strip()
                     mk = str(op.get("month_date") or "")[:7]
-                    if num and mk:
-                        num_month[num][mk] = num_month[num].get(mk, 0.0) + (to_float(op.get("usage_minutes")) or 0.0)
+                    mins = to_float(op.get("usage_minutes")) or 0.0
+                    if not (num and mk):
+                        continue
+                    # a row counts as VRS when its service_type mentions VRS
+                    # (incl. the combined "VRS and Convo Now"); otherwise, if it
+                    # mentions Convo Now, it's tracked in the Convo Now bucket.
+                    if "vrs" in s:
+                        num_month_vrs[num][mk] = num_month_vrs[num].get(mk, 0.0) + mins
+                    elif "convo now" in s:
+                        num_month_cn[num][mk] = num_month_cn[num].get(mk, 0.0) + mins
 
     # roll up usage from each number's earliest close month → present
-    monthly = defaultdict(lambda: {"min": 0.0, "fcc": 0.0})
+    monthly = defaultdict(lambda: {"min": 0.0, "fcc": 0.0, "cn": 0.0})
     for num, since in num_since.items():
-        for mk, mins in num_month.get(num, {}).items():
+        for mk, mins in num_month_vrs.get(num, {}).items():
             if mk >= since:
                 monthly[mk]["min"] += mins
                 monthly[mk]["fcc"] += mins * vrs_rate_for_month(mk)
+        for mk, mins in num_month_cn.get(num, {}).items():
+            if mk >= since:
+                monthly[mk]["cn"] += mins
 
-    # every month present in Monthly Values → becomes a column in the tickets table
-    all_months = sorted({mk for nm in num_month.values() for mk in nm})
+    # every month present in Monthly Values (either service) → a column in the table
+    all_months = sorted({mk for nm in num_month_vrs.values() for mk in nm}
+                        | {mk for nm in num_month_cn.values() for mk in nm})
     rows = []
     for t in tks:
         tid = str(t["id"])
@@ -246,12 +259,15 @@ if run:
         _nums = tid_vrs_nums.get(tid, [])
         nc, nn = len(t2c.get(tid, [])), len(_nums)
         _cm = tclose.get(tid, "")
-        # this ticket's usage per month (summed over its VRS numbers)
-        _by_month = defaultdict(float)
+        # this ticket's usage per month (summed over its numbers), split by service
+        _by_v, _by_c = defaultdict(float), defaultdict(float)
         for x in _nums:
-            for mk, m in num_month.get(x, {}).items():
-                _by_month[mk] += m
-        _tmin = round(sum(m for mk, m in _by_month.items() if _cm and mk >= _cm), 1)
+            for mk, m in num_month_vrs.get(x, {}).items():
+                _by_v[mk] += m
+            for mk, m in num_month_cn.get(x, {}).items():
+                _by_c[mk] += m
+        _tmin = round(sum(m for mk, m in _by_v.items() if _cm and mk >= _cm), 1)
+        _tcn = round(sum(m for mk, m in _by_c.items() if _cm and mk >= _cm), 1)
         _row = {
             "Ticket ID": tid,
             "Subject": (p.get("subject") or "—"),
@@ -263,36 +279,44 @@ if run:
             "VRS Numbers": nn,
             "VRS Number(s)": ", ".join(_nums) or "—",
             "VRS Min (since close)": _tmin,
+            "Convo Now Min (since close)": _tcn,
             "Has Contact": "Yes" if nc else "No",
             "Has Number": "Yes" if nn else "No",
             "Association": ("Contact + Number" if nc and nn else
                             "Contact only" if nc else
                             "Number only" if nn else "None"),
         }
-        # one column per month (total minutes that month for this ticket's numbers)
+        # two columns per month: VRS and Convo Now minutes for this ticket's numbers
         for mk in all_months:
-            _row[mk] = round(_by_month.get(mk, 0.0), 1)
+            _row[f"{mk} VRS"] = round(_by_v.get(mk, 0.0), 1)
+            _row[f"{mk} CN"] = round(_by_c.get(mk, 0.0), 1)
         rows.append(_row)
     df = pd.DataFrame(rows)
-    _mrows = [{"Month": mk, "VRS Minutes": round(v["min"], 1), "FCC $": round(v["fcc"], 2)}
+    _mrows = [{"Month": mk, "VRS Minutes": round(v["min"], 1),
+               "Convo Now Minutes": round(v["cn"], 1), "FCC $": round(v["fcc"], 2)}
               for mk, v in sorted(monthly.items())]
     mv_df = pd.DataFrame(_mrows)
 
-    # per-number monthly detail (each month's value for every VRS number, from close month on)
+    # per-number monthly detail (each month's VRS + Convo Now value, from close month on)
     _drows = []
     for num, since in sorted(num_since.items()):
-        for mk, mins in sorted(num_month.get(num, {}).items()):
+        _months = sorted(set(num_month_vrs.get(num, {})) | set(num_month_cn.get(num, {})))
+        for mk in _months:
+            vmin = num_month_vrs.get(num, {}).get(mk, 0.0)
+            cmin = num_month_cn.get(num, {}).get(mk, 0.0)
             _drows.append({
                 "VRS Number": num,
                 "Month": mk,
-                "VRS Minutes": round(mins, 1),
-                "FCC $": round(mins * vrs_rate_for_month(mk), 2),
+                "VRS Minutes": round(vmin, 1),
+                "Convo Now Minutes": round(cmin, 1),
+                "FCC $": round(vmin * vrs_rate_for_month(mk), 2),
                 "Since close?": "Yes" if mk >= since else "No",
             })
     detail_df = pd.DataFrame(_drows)
 
     save_report(_key, {"df": df, "pipeline": pipe_label, "mv_df": mv_df, "detail_df": detail_df,
                        "tot_min": round(sum(v["min"] for v in monthly.values()), 1),
+                       "tot_cn": round(sum(v["cn"] for v in monthly.values()), 1),
                        "tot_fcc": round(sum(v["fcc"] for v in monthly.values()), 2)})
 
 saved = load_report(_key)
@@ -342,13 +366,15 @@ st.markdown("")
 
 # ── ROI from Monthly Values ─────────────────────────────────────────────────
 _tot_min = saved.get("tot_min", 0.0)
+_tot_cn = saved.get("tot_cn", 0.0)
 _tot_fcc = saved.get("tot_fcc", 0.0)
 _vmcol = "VRS Min (since close)"
 _n_active = int((df.get(_vmcol, pd.Series(dtype=float)) > 0).sum()) if _vmcol in df.columns else 0
-st.markdown("##### 💵 ROI from Monthly Values (closed date → present · associated VRS numbers)")
+st.markdown("##### 💵 ROI from Monthly Values (closed date → present · associated numbers)")
 _cards([
     ("⏱️ Total VRS minutes", f"{_tot_min:,.0f}", "from associated numbers", "#4C8DFF"),
-    ("💵 FCC value", f"${_tot_fcc:,.0f}", "minutes × FCC rate", "#2DB84B"),
+    ("📱 Total Convo Now minutes", f"{_tot_cn:,.0f}", "same numbers · shown for comparison", "#B4883F"),
+    ("💵 FCC value (VRS)", f"${_tot_fcc:,.0f}", "VRS minutes × FCC rate", "#2DB84B"),
     ("🚀 Tickets generating usage", f"{_n_active:,}", _pct(_n_active), "#0FB5AE"),
     ("Avg $ / ticket w/ number", f"${_tot_fcc/hn:,.0f}" if hn else "—", "over tickets with a number", "#7A5CFF"),
 ])
@@ -372,16 +398,19 @@ if _det is not None and not _det.empty:
                      hide_index=True, height=420)
         st.download_button("📥 Export monthly detail (CSV)", _dv.to_csv(index=False),
                            "convo_greeting_monthly_detail.csv", "text/csv", key="cg_detail_csv")
-        # optional wide pivot: months as columns, numbers as rows
-        try:
-            _piv = _det.pivot_table(index="VRS Number", columns="Month",
-                                    values="VRS Minutes", aggfunc="sum", fill_value=0).reset_index()
-            st.markdown("**Pivot — minutes by month**")
-            st.dataframe(_piv, use_container_width=True, hide_index=True)
-        except Exception:
-            pass
-st.caption("VRS minutes = usage on the tickets' associated VRS numbers from the ticket's **closed-date "
-           "month → present** (Monthly Values month_date ≥ closed date). FCC value = minutes × the VRS FCC rate.")
+        # optional wide pivots: months as columns, numbers as rows — one per service
+        for _svc_col, _lbl in [("VRS Minutes", "VRS"), ("Convo Now Minutes", "Convo Now")]:
+            try:
+                if _svc_col in _det.columns and _det[_svc_col].sum() > 0:
+                    _piv = _det.pivot_table(index="VRS Number", columns="Month",
+                                            values=_svc_col, aggfunc="sum", fill_value=0).reset_index()
+                    st.markdown(f"**Pivot — {_lbl} minutes by month**")
+                    st.dataframe(_piv, use_container_width=True, hide_index=True)
+            except Exception:
+                pass
+st.caption("VRS / Convo Now minutes = usage on the tickets' associated numbers from the ticket's **closed-date "
+           "month → present** (Monthly Values month_date ≥ closed date). FCC value = **VRS** minutes × the VRS FCC "
+           "rate (Convo Now minutes are shown for comparison only, not billed).")
 st.markdown("")
 
 # breakdown by association type
@@ -414,9 +443,10 @@ with _ex2:
     _pdf_metrics = [
         ("Tickets", f"{N:,}"),
         ("Has Contact", f"{hc:,}"),
-        ("Has Number (VRS)", f"{hn:,}"),
+        ("Has Number", f"{hn:,}"),
         ("Total VRS minutes", f"{_tot_min:,.0f}"),
-        ("FCC value", f"${_tot_fcc:,.0f}"),
+        ("Total Convo Now minutes", f"{_tot_cn:,.0f}"),
+        ("FCC value (VRS)", f"${_tot_fcc:,.0f}"),
     ]
     _pdf_charts = []
     if _mv is not None and not _mv.empty:
