@@ -1359,6 +1359,9 @@ def _chart(name, x, y, kind="bar", title=None, cols_ok=None):
                         "title": title or f"{y} by {x}"})
 
 
+if _mk(_g.get("agent_clock")) is not None and "AvgHours" in agent_clock.columns:
+    _pdf_charts.append({"data": agent_clock[["Agent", "AvgHours"]].head(15), "kind": "barh",
+                        "x": "Agent", "y": "AvgHours", "title": "Avg hours per agent (clock in→out)"})
 _chart("bytype", "Source", "Interactions", "pie", "Interaction share by source")
 _chart("ot_daily", "Period", "Interactions", "line", "Interactions — daily")
 _chart("ot_weekly", "Period", "Interactions", "line", "Interactions — weekly")
