@@ -17,7 +17,7 @@ report_header("T2 Support",
               section="Support")
 
 NUM_OBJECT = "2-40974683"   # Number object
-_key = "t2_support_v2_vrs"
+_key = "t2_support_v3_vrs"
 
 
 def _batch_read(obj, ids, props):
@@ -151,9 +151,13 @@ if run:
     if all_nids:
         with dash_spinner(f"Reading {len(all_nids):,} associated Number objects…"):
             num_of = _batch_read(NUM_OBJECT, all_nids, ["number", "number_status", "service_type"])
-    # keep VRS numbers only — do NOT count Convo Now (or other) service types
-    vrs_nid_set = {nid for nid, pr in num_of.items()
-                   if (pr.get("service_type") or "").strip().lower() == "vrs"}
+    # keep VRS numbers only — do NOT count Convo Now (or other) service types.
+    # service_type can be a multi-value enum (";"-joined): require VRS present
+    # AND Convo Now absent.
+    def _is_vrs(st_val):
+        toks = {t.strip().lower() for t in str(st_val or "").replace(",", ";").split(";") if t.strip()}
+        return ("vrs" in toks) and ("convo now" not in toks)
+    vrs_nid_set = {nid for nid, pr in num_of.items() if _is_vrs(pr.get("service_type"))}
 
     rows = []
     for t in tks:

@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v7"
+_key = "convo_greeting_v8_vrsonly"
 
 
 def _batch_read(obj, ids, props):
@@ -189,9 +189,13 @@ if run:
     if all_nids:
         with dash_spinner(f"Reading {len(all_nids):,} associated Number objects…"):
             num_of = _batch_read(NUM_OBJECT, all_nids, ["number", "service_type"])
-    # keep VRS numbers only — do NOT count Convo Now (or other) service types
-    vrs_nid_set = {nid for nid, p in num_of.items()
-                   if (p.get("service_type") or "").strip().lower() == "vrs"}
+    # keep VRS numbers only — do NOT count Convo Now (or other) service types.
+    # service_type can be a multi-value enum (";"-joined), so tokenize it and
+    # require VRS present AND Convo Now absent.
+    def _is_vrs(st_val):
+        toks = {t.strip().lower() for t in str(st_val or "").replace(",", ";").split(";") if t.strip()}
+        return ("vrs" in toks) and ("convo now" not in toks)
+    vrs_nid_set = {nid for nid, p in num_of.items() if _is_vrs(p.get("service_type"))}
     nid_to_num = {nid: str(num_of.get(nid, {}).get("number") or "").strip()
                   for nid in vrs_nid_set if str(num_of.get(nid, {}).get("number") or "").strip()}
     vrs_numbers = sorted(set(nid_to_num.values()))
