@@ -526,15 +526,25 @@ def _draw_chart_spec(ax, spec):
     xs = [str(v)[:18] for v in d[x].tolist()]
     ys = pd.to_numeric(d[y], errors="coerce").fillna(0).tolist()
     if kind == "pie":
-        _pal = [_PDF_GREEN, _PDF_BEIGE, "#4C8DFF", "#E8952A", "#0FB5AE", "#7A5CFF",
-                "#E5484D", "#2DB84B", "#8792A2", "#0EA5E9"]
+        # high-contrast, colorblind-friendly palette
+        _pal = ["#2563EB", "#16A34A", "#EA580C", "#9333EA", "#0891B2",
+                "#DC2626", "#CA8A04", "#DB2777", "#4B5563", "#0D9488"]
         _cols = [_pal[i % len(_pal)] for i in range(len(xs))]
         _tot = sum(ys) or 1
-        ax.pie(ys, labels=xs, colors=_cols, startangle=90, counterclock=False,
-               autopct=lambda p: f"{p:.0f}%" if p >= 4 else "",
-               textprops={"fontsize": 8, "color": _PDF_INK},
-               wedgeprops={"edgecolor": "white", "linewidth": 1.2})
+        wedges, _t, _at = ax.pie(
+            ys, colors=_cols, startangle=90, counterclock=False,
+            autopct=lambda p: f"{p:.0f}%" if p >= 5 else "",
+            pctdistance=0.72,
+            textprops={"fontsize": 11, "color": "white", "fontweight": "bold"},
+            wedgeprops={"edgecolor": "white", "linewidth": 2})
+        # donut hole for a cleaner look
+        import matplotlib.pyplot as _plt
+        ax.add_artist(_plt.Circle((0, 0), 0.45, fc="white"))
         ax.set_aspect("equal")
+        # legend with value + share, off to the side (keeps labels readable)
+        _legend = [f"{lbl} — {int(v):,} ({v/_tot*100:.0f}%)" for lbl, v in zip(xs, ys)]
+        ax.legend(wedges, _legend, loc="center left", bbox_to_anchor=(0.98, 0.5),
+                  fontsize=10, frameon=False, labelcolor=_PDF_INK)
         return spec.get("title") or f"{y} share"
     if kind == "barh":
         ax.barh(xs, ys, color=_PDF_BEIGE, edgecolor="white", linewidth=0.5, zorder=3); ax.invert_yaxis()
