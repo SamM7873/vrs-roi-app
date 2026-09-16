@@ -452,6 +452,37 @@ else:
                "Full-time: heather.garafola, nathaniel.holmes · 360 Direct (contractor): alyssa, "
                "ashley, dante, jonah, hannah, ilan, melisa.")
 
+    # daily / weekly / monthly work-hours (with clock in/out) — used on screen + PDF
+    _c = clean.copy()
+    _c["Week"] = pd.to_datetime(_c["_day"]).dt.strftime("%Y-W%V")
+    _c["Month"] = pd.to_datetime(_c["_day"]).dt.strftime("%Y-%m")
+    daily_wh = (_c.sort_values(["_u", "_day"]).assign(
+        Agent=_c["_u"].map(_agent),
+        Date=_c["_day"].astype(str),
+        **{"Clock In": _c["start"].dt.strftime("%I:%M %p"),
+           "Clock Out": _c["end"].dt.strftime("%I:%M %p"),
+           "Hours": _c["span_h"].round(1)}))[["Agent", "Date", "Clock In", "Clock Out", "Hours"]]
+
+    def _period_wh(period):
+        gg = (_c.groupby(["_u", period]).agg(
+            Days=("span_h", "size"), Hours=("span_h", "sum"),
+            AvgIn=("in_hod", "mean"), AvgOut=("out_hod", "mean")).reset_index())
+        gg["Agent"] = gg["_u"].map(_agent)
+        gg["Clock In (avg)"] = gg["AvgIn"].map(_hhmm)
+        gg["Clock Out (avg)"] = gg["AvgOut"].map(_hhmm)
+        gg["Hours"] = gg["Hours"].round(1)
+        return gg[["Agent", period, "Days", "Clock In (avg)", "Clock Out (avg)", "Hours"]] \
+            .sort_values(["Agent", period])
+
+    weekly_wh = _period_wh("Week")
+    monthly_wh = _period_wh("Month")
+
+    with st.expander("📅 Daily / Weekly / Monthly work hours (clock in / out)", expanded=False):
+        _tab_d, _tab_w, _tab_m = st.tabs(["Daily", "Weekly", "Monthly"])
+        _tab_d.dataframe(daily_wh, use_container_width=True, hide_index=True, height=340)
+        _tab_w.dataframe(weekly_wh, use_container_width=True, hide_index=True, height=340)
+        _tab_m.dataframe(monthly_wh, use_container_width=True, hide_index=True, height=340)
+
     # ── efficiency: tickets per hour & minutes per ticket ──────────────────────
     if not tickets.empty:
         st.markdown("##### ⚡ Efficiency — tickets per hour & minutes per ticket")
@@ -506,5 +537,51 @@ if not tickets.empty:
                        .rename(columns={"_u": "agent", "_t": "timestamp",
                                         "Target object id": "ticket_id"}).to_csv(index=False),
                        "ticket_audit_events.csv", "text/csv")
+
+# ── PDF report (includes agent clock in / clock out) ────────────────────────────────
+st.markdown("---")
+st.markdown("### 📊 Report (PDF)")
+from utils import pdf_multi_download_button
+_g = globals()
+
+
+def _mk(v):
+    return v if isinstance(v, pd.DataFrame) and not v.empty else None
+
+
+_wh_cols = ["Agent", "Team", "Days", "Clock In (avg)", "Clock Out (avg)",
+            "Avg", "Median", "Longest", "Total"]
+_wh = _mk(_g.get("show"))
+_wh_tbl = _wh[[c for c in _wh_cols if c in _wh.columns]] if _wh is not None else None
+
+_pdf_metrics = [("Ticket events", f"{len(tickets):,}")] if _mk(_g.get("tickets")) is not None else []
+if _mk(_g.get("summ")) is not None and not summ.empty:
+    _pdf_metrics += [("Agents", f"{summ['_u'].nunique():,}"),
+                     ("Avg day length", _hm(summ["Avg"].mean())),
+                     ("Earliest avg clock-in", _hhmm(summ["ClockIn"].min())),
+                     ("Latest avg clock-out", _hhmm(summ["ClockOut"].max()))]
+
+_pdf_charts = []
+if _mk(_g.get("summ")) is not None:
+    _cin = summ.copy()
+    _cin["Agent"] = _cin["_u"].map(_agent)
+    _pdf_charts.append({"data": _cin[["Agent", "Avg"]].head(15), "kind": "barh",
+                        "x": "Agent", "y": "Avg", "title": "Avg work hours per agent"})
+
+_sections = [
+    ("Work hours per agent (with clock in / out)", _wh_tbl),
+    ("Monthly work hours (clock in / out)", _mk(_g.get("monthly_wh"))),
+    ("Weekly work hours (clock in / out)", _mk(_g.get("weekly_wh"))),
+    ("Daily work hours (clock in / out)", _mk(_g.get("daily_wh"))),
+    ("Efficiency", _mk(_g.get("eff"))),
+    ("By team", _mk(_g.get("team"))),
+    ("By agent (tickets)", _mk(_g.get("agent"))),
+]
+_sections = [(t, d) for t, d in _sections if isinstance(d, pd.DataFrame) and not d.empty]
+pdf_multi_download_button(_sections, "ticket_audit_report.pdf",
+                          "Ticket Audit Report",
+                          subtitle="Work hours · Clock in/out · Efficiency",
+                          metrics=_pdf_metrics, charts=_pdf_charts,
+                          key="ta_pdf", label="📊 Prepare report PDF")
 
 report_header_close()
