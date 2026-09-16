@@ -19,7 +19,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v12_assoc"
+_key = "convo_greeting_v13_cn"
 
 
 def _batch_read(obj, ids, props):
@@ -189,45 +189,53 @@ if run:
     if all_nids:
         with dash_spinner(f"Reading {len(all_nids):,} associated Number objects…"):
             num_of = _batch_read(NUM_OBJECT, all_nids, ["number", "service_type"])
-    # keep VRS numbers — includes the combined "VRS and Convo Now" service
-    # type; excludes only pure Convo Now (and other non-VRS) service types.
-    def _is_vrs(st_val):
-        return "vrs" in str(st_val or "").lower()
-    vrs_nid_set = {nid for nid, p in num_of.items() if _is_vrs(p.get("service_type"))}
+    # Classify associated Number objects by service_type:
+    #   vrs_nid_set → contains "vrs" (incl. combined "VRS and Convo Now")
+    #   cn_nid_set  → contains "convo now" (incl. combined)
+    # Both are needed so Convo Now Monthly Values (which live on Convo Now
+    # Number objects) are pulled and attributed too.
+    def _has(st_val, token):
+        return token in str(st_val or "").lower()
+    vrs_nid_set = {nid for nid, p in num_of.items() if _has(p.get("service_type"), "vrs")}
+    cn_nid_set = {nid for nid, p in num_of.items() if _has(p.get("service_type"), "convo now")}
+    relevant_nids = vrs_nid_set | cn_nid_set
     nid_to_num = {nid: str(num_of.get(nid, {}).get("number") or "").strip()
-                  for nid in vrs_nid_set if str(num_of.get(nid, {}).get("number") or "").strip()}
-    vrs_numbers = sorted(set(nid_to_num.values()))
+                  for nid in relevant_nids if str(num_of.get(nid, {}).get("number") or "").strip()}
+    all_numbers = sorted(set(nid_to_num.values()))          # phones for the MV pull (VRS + CN)
+    vrs_numbers = sorted({nid_to_num[n] for n in vrs_nid_set if n in nid_to_num})
 
-    # each ticket's close month, its VRS numbers, and the earliest close month per number
+    # each ticket's close month, its VRS + CN numbers, and the earliest close month per number
     tclose = {str(t["id"]): (str(t.get("properties", {}).get("closed_date") or "")[:7]) for t in tks}
-    tid_vrs_nums = {}
+    tid_vrs_nums, tid_cn_nums = {}, {}
     num_since = {}   # number → earliest close month among tickets owning it
     for tid in tids:
-        nums = sorted({nid_to_num.get(n, "") for n in t2n.get(tid, []) if n in vrs_nid_set} - {""})
-        tid_vrs_nums[tid] = nums
+        vnums = sorted({nid_to_num.get(n, "") for n in t2n.get(tid, []) if n in vrs_nid_set} - {""})
+        cnums = sorted({nid_to_num.get(n, "") for n in t2n.get(tid, []) if n in cn_nid_set} - {""})
+        tid_vrs_nums[tid] = vnums
+        tid_cn_nums[tid] = cnums
         cm = tclose.get(tid)
         if cm:
-            for num in nums:
+            for num in set(vnums) | set(cnums):
                 if num not in num_since or cm < num_since[num]:
                     num_since[num] = cm
 
     # Collect Monthly Values rows from BOTH sources, deduped by MV object id:
-    #   1) phone-number string match on the "number" property
+    #   1) phone-number string match on the "number" property (VRS + CN numbers)
     #   2) the Number → Monthly Values CRM association (so nothing is missed)
     _mv_props = ["number", "usage_minutes", "service_type", "month_date"]
     mv_objs = {}          # mv_id → properties
     mvid_to_num = {}      # mv_id → phone from its Number object (fallback key)
-    if vrs_numbers:
-        with dash_spinner(f"Pulling Monthly Values for {len(vrs_numbers):,} numbers…"):
-            for i in range(0, len(vrs_numbers), 100):
-                chunk = vrs_numbers[i:i + 100]
+    if all_numbers:
+        with dash_spinner(f"Pulling Monthly Values for {len(all_numbers):,} numbers…"):
+            for i in range(0, len(all_numbers), 100):
+                chunk = all_numbers[i:i + 100]
                 for o in _seek_mv(_mv_props,
                                   [{"propertyName": "number", "operator": "IN", "values": chunk},
                                    {"propertyName": "usage_minutes", "operator": "GT", "value": "0"}]):
                     mv_objs[str(o["id"])] = o.get("properties", {})
-    if vrs_nid_set:
-        with dash_spinner(f"Checking Number → Monthly Values associations for {len(vrs_nid_set):,} numbers…"):
-            n2mv = _assoc(NUM_OBJECT, MV_OBJECT, sorted(vrs_nid_set))
+    if relevant_nids:
+        with dash_spinner(f"Checking Number → Monthly Values associations for {len(relevant_nids):,} numbers…"):
+            n2mv = _assoc(NUM_OBJECT, MV_OBJECT, sorted(relevant_nids))
             _need = []
             for nid, mvids in n2mv.items():
                 for mvid in mvids:
@@ -278,13 +286,16 @@ if run:
         tid = str(t["id"])
         p = t.get("properties", {})
         _nums = tid_vrs_nums.get(tid, [])
+        _cnums = tid_cn_nums.get(tid, [])
         nc, nn = len(t2c.get(tid, [])), len(_nums)
         _cm = tclose.get(tid, "")
-        # this ticket's usage per month (summed over its numbers), split by service
+        # this ticket's usage per month, split by service: VRS from its VRS
+        # numbers, Convo Now from its Convo Now numbers
         _by_v, _by_c = defaultdict(float), defaultdict(float)
         for x in _nums:
             for mk, m in num_month_vrs.get(x, {}).items():
                 _by_v[mk] += m
+        for x in _cnums:
             for mk, m in num_month_cn.get(x, {}).items():
                 _by_c[mk] += m
         _tmin = round(sum(m for mk, m in _by_v.items() if _cm and mk >= _cm), 1)
@@ -299,6 +310,8 @@ if run:
             "Contacts": nc,
             "VRS Numbers": nn,
             "VRS Number(s)": ", ".join(_nums) or "—",
+            "Convo Now Numbers": len(_cnums),
+            "Convo Now Number(s)": ", ".join(_cnums) or "—",
             "VRS Min (since close)": _tmin,
             "Convo Now Min (since close)": _tcn,
             "Has Contact": "Yes" if nc else "No",
