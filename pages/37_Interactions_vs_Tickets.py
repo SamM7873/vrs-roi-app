@@ -520,14 +520,21 @@ st.markdown("### 1 · Queue performance (Convo360) — AHT · wait · agents")
 _n_missed = int((cvf["_missed"].fillna(False) | (cvf["_agent"] == "Missed (no agent)")).sum())
 _n_handled = len(_conn)
 _answer_rate = (_n_handled / (_n_handled + _n_missed) * 100) if (_n_handled + _n_missed) else None
+_missed_rate = (100 - _answer_rate) if _answer_rate is not None else None
+_src_lbl = ", ".join(pick) if pick else "all sources"
 _metric_cards([
     ("✅ Handled (connected)", f"{_n_handled:,}", "answered calls · chats", "#2DB84B"),
     ("📵 Missed", f"{_n_missed:,}",
-     f"{100 - _answer_rate:.0f}% of calls" if _answer_rate is not None else "—", "#E5484D"),
+     f"of {_n_handled + _n_missed:,} interactions", "#E5484D"),
+    ("📈 Answer rate", f"{_answer_rate:.1f}%" if _answer_rate is not None else "—",
+     f"handled ÷ (handled + missed)", "#2DB84B"),
+    ("📉 Missed rate", f"{_missed_rate:.1f}%" if _missed_rate is not None else "—",
+     f"missed ÷ (handled + missed)", "#E5484D"),
     ("⏱️ AHT", _ms_lbl(_aht_sec), "avg handle time", "#4C8DFF"),
     ("⏳ LWT", _ms_lbl(_lwt_sec),
      f"longest · median wait {_ms_lbl(_med_sec)}", "#E8952A"),
 ])
+st.caption(f"Answer / missed rate is based on the selected interaction sources: **{_src_lbl}**.")
 st.caption("**AHT** = average handle time (talk/handle duration) · **ASA** = average speed of "
            "answer (wait before connect) · **LWT** = longest a caller waited · **Answer rate** = "
            "handled ÷ (handled + missed). Computed on **connected** interactions only.")
