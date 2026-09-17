@@ -97,14 +97,14 @@ if not is_app_admin():
 SAVE_KEY = "interactions_vs_tickets"
 RETENTION_OPTS = {"24 hours": 24, "48 hours": 48, "72 hours": 72, "7 days": 168}
 
-st.markdown(
-    "Upload **both** exports to compare **incoming interactions** (Convo360 — videophone, "
-    "videochat, chat) against **tickets created** (HubSpot audit log). The goal: several "
-    "contacts from the same consumer should roll up into **one ticket**, not one ticket per "
-    "call. A high interactions-per-ticket ratio = good consolidation; near 1:1 = over-ticketing.")
-
-st.info("These two exports share no consumer key, so matching is at the **day** level "
-        "(and agent, best-effort) — not per individual consumer.", icon="ℹ️")
+with st.expander("ℹ️ About this report — what it compares & how it's calculated"):
+    st.markdown(
+        "Compares **incoming interactions** (Convo360 — videophone, videochat, chat) against "
+        "**tickets created** (HubSpot audit log). The goal: several contacts from the same "
+        "consumer should roll up into **one ticket**, not one ticket per call. A high "
+        "interactions-per-ticket ratio = good consolidation; near 1:1 = over-ticketing.")
+    st.info("These two exports share no consumer key, so matching is at the **day** level "
+            "(and agent, best-effort) — not per individual consumer.", icon="ℹ️")
 
 with st.expander("📖 Definitions & how the formulas work"):
     st.markdown("""
@@ -410,6 +410,7 @@ n_created = int(tkf["_created"].sum())
 n_touched = tkf["Target object id"].replace("", pd.NA).nunique()
 # tickets per interaction — how many tickets were opened for each incoming call/chat
 tpi = (n_created / n_int) if n_int else None
+_tkt_aht_min = None   # team avg time/ticket — filled later in the productivity section
 
 # answer / missed rate (based on the selected interaction sources)
 _top_missed = int((cvf["_missed"].fillna(False) | (cvf["_agent"] == "Missed (no agent)")).sum()) if n_int else 0
@@ -417,19 +418,11 @@ _top_handled = n_int - _top_missed
 _top_answer = (_top_handled / n_int * 100) if n_int else None
 _top_missrate = (100 - _top_answer) if _top_answer is not None else None
 
-# ── KPI cards (visual summary) ──────────────────────────────────────────────────
 _tpi_color = "#8792A2" if tpi is None else ("#2DB84B" if tpi <= 0.8 else ("#E8952A" if tpi <= 1.2 else "#E5484D"))
-_metric_cards([
-    ("📞 Incoming interactions", f"{n_int:,}", "calls · chats · video", "#4C8DFF"),
-    ("📈 Answer rate", f"{_top_answer:.1f}%" if _top_answer is not None else "—",
-     f"{_top_handled:,} of {n_int:,} answered", "#2DB84B"),
-    ("📉 Missed rate", f"{_top_missrate:.1f}%" if _top_missrate is not None else "—",
-     f"{_top_missed:,} of {n_int:,} missed", "#E5484D"),
-    ("🎫 Tickets created", f"{n_created:,}", "new tickets opened", "#7A5CFF"),
-    ("🗂️ Tickets touched", f"{n_touched:,}", "distinct tickets worked", "#0FB5AE"),
-    ("⚖️ Tickets per interaction", f"{tpi:.1f}" if tpi else "—", "tickets ÷ calls", _tpi_color),
-])
-st.caption("Answer / missed rate is based on the selected interaction sources (VP · Videochat · Live chat).")
+
+# ── Executive summary (rendered here, at the top, but FILLED at the end of the ──────
+# page once every metric — call AHT, ticket AHT, flags — has been computed).
+_exec = st.container()
 
 # ── answer / missed rate by source (Videophone · Videochat · Chat · …) ───────────
 if n_int:
@@ -534,19 +527,12 @@ else:
             _flags.append(("amber", f"**Long wait** — callers to {rr['Agent'].split('@')[0]} waited "
                                     f"up to {_ms_lbl(rr['_lwt'])} (LWT)."))
 
-st.markdown("##### 🚩 Flags & concerns")
-if not _flags:
-    st.success("✅ No red flags detected for this window.")
-else:
-    _sev = {"red": st.error, "amber": st.warning, "green": st.success}
-    for sev, msg in sorted(_flags, key=lambda x: {"red": 0, "amber": 1, "green": 2}[x[0]]):
-        _sev[sev](("🔴 " if sev == "red" else "🟡 ") + msg)
-    st.caption("Flags are heuristics from this window's data — a prompt to investigate, not a verdict. "
-               "More flags appear in each section (pending reminders, manual/automatic, per-agent).")
+# (Flags are rendered in the Executive summary at the top of the page.)
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### 1 · Queue performance (Convo360) — AHT · wait · agents")
+st.markdown("### 1 · Service level — are we answering?")
+st.caption("Answer / missed rate, speed of answer, and handle time for incoming calls & chats.")
 # ────────────────────────────────────────────────────────────────────────────────
 _n_missed = int((cvf["_missed"].fillna(False) | (cvf["_agent"] == "Missed (no agent)")).sum())
 _n_handled = len(_conn)
@@ -773,7 +759,8 @@ else:
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### 2 · Volume — interactions vs tickets")
+st.markdown("### 2 · Volume & trends — interactions vs tickets")
+st.caption("How many interactions come in vs how many tickets we open — and the trend over time.")
 # ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### Incoming interactions by source")
 bytype = cvf["_source"].value_counts().rename_axis("Source").reset_index(name="Interactions")
@@ -956,6 +943,7 @@ export). It's a flag to look into, not proof of over-ticketing.
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
 st.markdown("### 3 · Ticket detail — pipeline & source")
+st.caption("What kinds of tickets we're creating, by pipeline and where they came from.")
 # ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### 🎟️ Tickets created — pipeline & detail (live)")
 st.caption("The audit CSV has ticket IDs but no pipeline/subject — click to enrich them from "
@@ -1090,7 +1078,8 @@ if "ivt_tickets_df" in st.session_state:
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### 4 · Workload — new vs catch-up & pending")
+st.markdown("### 4 · Workload & backlog — new vs catch-up & pending")
+st.caption("Is the team working new tickets or clearing backlog — and what's still open?")
 # ────────────────────────────────────────────────────────────────────────────────
 st.markdown("##### 🆕 Tickets handled per day — new vs catch-up")
 st.caption("Of the tickets an agent **touches** in a day: **New** = created that same day · "
@@ -1298,7 +1287,8 @@ if "ivt_open_df" in st.session_state:
 
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
-st.markdown("### 5 · Productivity — by agent & work hours")
+st.markdown("### 5 · Team productivity — by agent & work hours")
+st.caption("Per-agent volume, work hours, and average time per ticket.")
 # ────────────────────────────────────────────────────────────────────────────────
 # agent performance KPIs (from ticket touches — the real handling agents)
 _touch_agent = (tkf[tkf["Target object id"] != ""].groupby("_agent")["Target object id"]
@@ -1479,6 +1469,50 @@ elif st.button("🔗 Run per-consumer match (queries HubSpot)"):
                        "per_consumer_match.csv", "text/csv", key="ivt_cust_csv")
     st.caption("Matching is name-substring on ticket subject/description — a common name may "
                "over-match, and a ticket that doesn't name the consumer won't match. Treat as a guide.")
+
+# ══════════════════════════════════════════════════════════════════════════════════
+# Fill the Executive summary at the TOP of the page (everything is computed by now).
+# ══════════════════════════════════════════════════════════════════════════════════
+with _exec:
+    st.markdown("## Executive summary")
+
+    # plain-language headline / traffic light
+    if _top_answer is None:
+        _hl_txt, _hl_fn = "No interaction data in the selected range.", st.info
+    elif _top_answer >= 90:
+        _hl_txt, _hl_fn = (f"✅ **Strong service level** — we answered **{_top_answer:.0f}%** of "
+                           f"{n_int:,} interactions.", st.success)
+    elif _top_answer >= 80:
+        _hl_txt, _hl_fn = (f"🟡 **Watch service level** — **{_top_answer:.0f}%** answered "
+                           f"({_top_missed:,} of {n_int:,} missed).", st.warning)
+    else:
+        _hl_txt, _hl_fn = (f"🔴 **Service level below target** — only **{_top_answer:.0f}%** answered; "
+                           f"**{_top_missed:,}** of {n_int:,} interactions missed.", st.error)
+    _hl_fn(_hl_txt)
+
+    # the numbers that matter, one row
+    _metric_cards([
+        ("📈 Answer rate", f"{_top_answer:.1f}%" if _top_answer is not None else "—",
+         f"{_top_handled:,} of {n_int:,} answered", "#2DB84B"),
+        ("📉 Missed rate", f"{_top_missrate:.1f}%" if _top_missrate is not None else "—",
+         f"{_top_missed:,} missed", "#E5484D"),
+        ("⏱️ Call AHT", _ms_lbl(_aht_sec), "avg handle time / call", "#4C8DFF"),
+        ("⏱️ Ticket AHT", _ms(_tkt_aht_min) if _tkt_aht_min else "—", "avg time / ticket", "#E8952A"),
+        ("📞 Interactions", f"{n_int:,}", "calls · chats · video", "#0FB5AE"),
+        ("🎫 Tickets created", f"{n_created:,}", f"{tpi:.1f} per interaction" if tpi else "—", "#7A5CFF"),
+    ])
+
+    # top issues, in plain language (max 4)
+    if _flags:
+        st.markdown("**Top issues to look at**")
+        _sev = {"red": st.error, "amber": st.warning, "green": st.success}
+        for sev, msg in sorted(_flags, key=lambda x: {"red": 0, "amber": 1, "green": 2}[x[0]])[:4]:
+            _sev[sev](("🔴 " if sev == "red" else "🟡 ") + msg)
+    else:
+        st.success("✅ No red flags detected for this window.")
+    st.caption("Answer / missed rate is based on the selected interaction sources (VP · Videochat · Live chat). "
+               "Detailed breakdowns follow below.")
+    st.divider()
 
 # ── whole-page PDF report ──────────────────────────────────────────────────────────
 st.markdown("---")
