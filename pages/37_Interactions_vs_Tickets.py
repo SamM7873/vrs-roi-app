@@ -1397,6 +1397,8 @@ else:
         })
         wrows.append(row)
     weff = pd.DataFrame(wrows).sort_values("_sort", ascending=False).drop(columns="_sort")
+    # team-level ticket AHT (avg time per ticket) for the summary / PDF
+    _tkt_aht_min = (hrs.sum() * 60 / tt_by.sum()) if tt_by.sum() else 0
     _wcfg = {"Tickets touched": _bar("Tickets touched", weff["Tickets touched"].max() if not weff.empty else 1),
              "Ticket events": _bar("Ticket events", weff["Ticket events"].max() if not weff.empty else 1)}
     if "Manual" in weff.columns:
@@ -1496,8 +1498,10 @@ if _g.get("_top_answer") is not None:
                      ("Handled", f"{_g.get('_top_handled', 0):,}"),
                      ("Missed", f"{_g.get('_top_missed', 0):,}")]
 if "_aht_sec" in _g:
-    _pdf_metrics += [("AHT", _ms_lbl(_g.get("_aht_sec", 0))),
+    _pdf_metrics += [("Call AHT", _ms_lbl(_g.get("_aht_sec", 0))),
                      ("LWT", _ms_lbl(_g.get("_lwt_sec", 0)))]
+if _g.get("_tkt_aht_min"):
+    _pdf_metrics += [("Ticket AHT (time/ticket)", _ms(_g["_tkt_aht_min"]))]
 _pdf_metrics += [("Tickets created", f"{n_created:,}"),
                  ("Tickets / interaction", f"{tpi:.2f}" if tpi is not None else "—")]
 
@@ -1512,9 +1516,6 @@ def _chart(name, x, y, kind="bar", title=None, cols_ok=None):
                         "title": title or f"{y} by {x}"})
 
 
-if _mk(_g.get("agent_clock")) is not None and "TotalHours" in agent_clock.columns:
-    _pdf_charts.append({"data": agent_clock[["Agent", "TotalHours"]].head(15), "kind": "barh",
-                        "x": "Agent", "y": "TotalHours", "title": "Total hours per agent (clock in→out)"})
 _chart("bytype", "Source", "Interactions", "pie", "Interaction share by source")
 _chart("_srcbk", "Source", "Answer rate", "barh", "Answer rate % by source")
 _chart("_srcbk", "Source", "Missed rate", "barh", "Missed rate % by source")
@@ -1549,19 +1550,15 @@ def _sub(name, cols_name):
 
 
 # compact summary tables (appendix after the charts)
-_ac = _mk(_g.get("agent_clock"))
-_ac_tbl = _ac[["Agent", "Days", "Earliest In", "Latest Out", "Total hours", "Interactions"]] \
-    if _ac is not None and "Total hours" in _ac.columns else None
+# NOTE: clock in/out tables are intentionally left OUT of the PDF — they live
+# on the Streamlit page only. The PDF focuses on AHT / answer-miss / volume.
 _sections = [
-    ("Agent clock in / out", _ac_tbl),
-    ("Clock in/out — monthly", _mk(_g.get("clock_monthly"))),
-    ("Clock in/out — weekly", _mk(_g.get("clock_weekly"))),
-    ("Clock in/out — daily", _mk(_g.get("clock_daily_all"))),
     ("Interactions vs tickets — daily", _mk(_g.get("ot_daily"))),
     ("Interactions vs tickets — weekly", _mk(_g.get("ot_weekly"))),
     ("Interactions vs tickets — monthly", _mk(_g.get("ot_monthly"))),
     ("Agent — connected · missed · AHT", _sub("full", "_fcols")),
     ("Answer / missed rate by source", _mk(_g.get("_srcbk"))),
+    ("Work hours & time per ticket (by agent)", _mk(_g.get("weff"))),
     ("Agents available during missed calls", _mk(_g.get("_av_df"))),
     ("Interactions by source", _mk(_g.get("bytype"))),
     ("Tickets by pipeline", _mk(_g.get("pv"))),
