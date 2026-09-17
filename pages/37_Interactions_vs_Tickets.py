@@ -1489,15 +1489,16 @@ def _mk(v):
     return v if isinstance(v, pd.DataFrame) and not v.empty else None
 
 
-_pdf_metrics = []
-if "_n_handled" in _g:
-    _pdf_metrics += [("Handled (connected)", f"{_g['_n_handled']:,}"),
-                     ("Missed", f"{_g.get('_n_missed', 0):,}"),
-                     ("Answer rate", f"{_g['_answer_rate']:.0f}%" if _g.get("_answer_rate") is not None else "—"),
-                     ("AHT", _ms_lbl(_g.get("_aht_sec", 0))),
+_pdf_metrics = [("Interactions", f"{n_int:,}")]
+if _g.get("_top_answer") is not None:
+    _pdf_metrics += [("Answer rate", f"{_g['_top_answer']:.1f}%"),
+                     ("Missed rate", f"{_g['_top_missrate']:.1f}%"),
+                     ("Handled", f"{_g.get('_top_handled', 0):,}"),
+                     ("Missed", f"{_g.get('_top_missed', 0):,}")]
+if "_aht_sec" in _g:
+    _pdf_metrics += [("AHT", _ms_lbl(_g.get("_aht_sec", 0))),
                      ("LWT", _ms_lbl(_g.get("_lwt_sec", 0)))]
-_pdf_metrics += [("Interactions", f"{n_int:,}"),
-                 ("Tickets created", f"{n_created:,}"),
+_pdf_metrics += [("Tickets created", f"{n_created:,}"),
                  ("Tickets / interaction", f"{tpi:.2f}" if tpi is not None else "—")]
 
 _pdf_charts = []
@@ -1515,6 +1516,12 @@ if _mk(_g.get("agent_clock")) is not None and "TotalHours" in agent_clock.column
     _pdf_charts.append({"data": agent_clock[["Agent", "TotalHours"]].head(15), "kind": "barh",
                         "x": "Agent", "y": "TotalHours", "title": "Total hours per agent (clock in→out)"})
 _chart("bytype", "Source", "Interactions", "pie", "Interaction share by source")
+_chart("_srcbk", "Source", "Answer rate", "barh", "Answer rate % by source")
+_chart("_srcbk", "Source", "Missed rate", "barh", "Missed rate % by source")
+if _mk(_g.get("_av_df")) is not None and "Missed calls available for" in _g["_av_df"].columns:
+    _pdf_charts.append({"data": _g["_av_df"][["Agent", "Missed calls available for"]].head(15),
+                        "kind": "barh", "x": "Agent", "y": "Missed calls available for",
+                        "title": "Agents available during missed calls"})
 _chart("ot_daily", "Period", "Interactions", "line", "Interactions — daily")
 _chart("ot_weekly", "Period", "Interactions", "line", "Interactions — weekly")
 _chart("ot_monthly", "Period", "Interactions", "bar", "Interactions — monthly")
@@ -1554,6 +1561,8 @@ _sections = [
     ("Interactions vs tickets — weekly", _mk(_g.get("ot_weekly"))),
     ("Interactions vs tickets — monthly", _mk(_g.get("ot_monthly"))),
     ("Agent — connected · missed · AHT", _sub("full", "_fcols")),
+    ("Answer / missed rate by source", _mk(_g.get("_srcbk"))),
+    ("Agents available during missed calls", _mk(_g.get("_av_df"))),
     ("Interactions by source", _mk(_g.get("bytype"))),
     ("Tickets by pipeline", _mk(_g.get("pv"))),
     ("Tickets by owner", _mk(_g.get("own"))),
