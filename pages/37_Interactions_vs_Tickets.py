@@ -695,68 +695,6 @@ else:
                        _miss[["_day", "_hour", "_type", "_source", "_customer"]].to_csv(index=False),
                        "missed_calls.csv", "text/csv", key="ivt_miss_csv")
 
-    # ── who was available (on shift) during each missed call ─────────────────────
-    st.markdown("##### 🟢 Available agents during missed calls")
-    if "_ts" not in cvf.columns or cvf["_ts"].isna().all() or _miss["_ts"].isna().all():
-        st.info("Need interaction timestamps for this — re-run with a Convo360 export that includes the time "
-                "of day (the current data has dates only).")
-    else:
-        import numpy as _np
-        _wmin = st.select_slider(
-            "Count an agent as 'available' if they handled another call within",
-            options=[5, 10, 15, 30, 60], value=15,
-            format_func=lambda m: f"±{m} min", key="ivt_avail_win")
-        _h = cvf[(~cvf["_missed"].fillna(False)) & (cvf["_agent"] != "Missed (no agent)")
-                 & cvf["_ts"].notna()].sort_values("_ts")
-        _hts = _h["_ts"].values.astype("datetime64[s]")
-        _hag = _h["_agent"].values
-        _m = _miss[_miss["_ts"].notna()].copy()
-        _delta = _np.timedelta64(int(_wmin) * 60, "s")
-        _avail = {}
-        _cover = _nocover = 0
-        _detail = []
-        for _, mr in _m.iterrows():
-            t = _np.datetime64(mr["_ts"], "s")
-            lo = int(_np.searchsorted(_hts, t - _delta, side="left"))
-            hi = int(_np.searchsorted(_hts, t + _delta, side="right"))
-            ags = sorted({str(a) for a in _hag[lo:hi]})
-            if ags:
-                _cover += 1
-            else:
-                _nocover += 1
-            for a in ags:
-                _avail[a] = _avail.get(a, 0) + 1
-            _detail.append({"When": str(mr["_ts"])[:16], "Source": mr["_source"],
-                            "Customer": (mr.get("_customer") or "—"),
-                            "Available agents": ", ".join(a.split("@")[0] for a in ags) or "— none —",
-                            "# available": len(ags)})
-        _tot = len(_m)
-        _metric_cards([
-            ("📵 Missed calls", f"{_tot:,}", "in range", "#E5484D"),
-            ("🟢 Someone available", f"{_cover:,}",
-             f"{_cover/_tot*100:.0f}% had an agent on shift" if _tot else "—", "#E8952A"),
-            ("🔴 Nobody available", f"{_nocover:,}",
-             f"{_nocover/_tot*100:.0f}% truly uncovered" if _tot else "—", "#8792A2"),
-        ])
-        if _avail:
-            _av_df = (pd.DataFrame([{"Agent": a.split("@")[0], "Missed calls available for": c}
-                                    for a, c in _avail.items()])
-                      .sort_values("Missed calls available for", ascending=False))
-            _av_df["% of misses"] = (_av_df["Missed calls available for"] / _tot * 100).round(0).astype(int).astype(str) + "%"
-            st.markdown("**Agents available during missed calls** (on shift nearby, but not routed the call)")
-            st.dataframe(_av_df, use_container_width=True, hide_index=True,
-                         column_config={"Missed calls available for":
-                                        _bar("Missed calls available for",
-                                             int(_av_df["Missed calls available for"].max() or 1))})
-        with st.expander(f"Detail — each missed call & who was available ({_tot:,})", expanded=False):
-            _dd = pd.DataFrame(_detail)
-            st.dataframe(_dd, use_container_width=True, hide_index=True, height=460)
-            st.download_button("📥 Export available-agents (CSV)", _dd.to_csv(index=False),
-                               "missed_available_agents.csv", "text/csv", key="ivt_avail_csv")
-        st.caption("‘Available’ = the agent handled another interaction within the chosen window of the missed "
-                   "call, so they were on shift then but weren’t routed this call. Convo360 has no true "
-                   "Ready/Available status, so this is an activity-based proxy, not a presence log.")
-
 # ════════════════════════════════════════════════════════════════════════════════
 st.divider()
 st.markdown("### 2 · Volume & trends — interactions vs tickets")
@@ -1553,10 +1491,6 @@ def _chart(name, x, y, kind="bar", title=None, cols_ok=None):
 _chart("bytype", "Source", "Interactions", "pie", "Interaction share by source")
 _chart("_srcbk", "Source", "Answer rate", "barh", "Answer rate % by source")
 _chart("_srcbk", "Source", "Missed rate", "barh", "Missed rate % by source")
-if _mk(_g.get("_av_df")) is not None and "Missed calls available for" in _g["_av_df"].columns:
-    _pdf_charts.append({"data": _g["_av_df"][["Agent", "Missed calls available for"]].head(15),
-                        "kind": "barh", "x": "Agent", "y": "Missed calls available for",
-                        "title": "Agents available during missed calls"})
 _chart("ot_daily", "Period", "Interactions", "line", "Interactions — daily")
 _chart("ot_weekly", "Period", "Interactions", "line", "Interactions — weekly")
 _chart("ot_monthly", "Period", "Interactions", "bar", "Interactions — monthly")
@@ -1593,7 +1527,6 @@ _sections = [
     ("Agent — connected · missed · AHT", _sub("full", "_fcols")),
     ("Answer / missed rate by source", _mk(_g.get("_srcbk"))),
     ("Work hours & time per ticket (by agent)", _mk(_g.get("weff"))),
-    ("Agents available during missed calls", _mk(_g.get("_av_df"))),
     ("Interactions by source", _mk(_g.get("bytype"))),
     ("Tickets by pipeline", _mk(_g.get("pv"))),
     ("Tickets by owner", _mk(_g.get("own"))),
