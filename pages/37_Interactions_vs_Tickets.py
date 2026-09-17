@@ -431,6 +431,26 @@ _metric_cards([
 ])
 st.caption("Answer / missed rate is based on the selected interaction sources (VP · Videochat · Live chat).")
 
+# ── answer / missed rate by source (Videophone · Videochat · Chat · …) ───────────
+if n_int:
+    _cs = cvf.copy()
+    _cs["_is_missed"] = _cs["_missed"].fillna(False) | (_cs["_agent"] == "Missed (no agent)")
+    _srcbk = (_cs.groupby("_source")
+                 .agg(Total=("_source", "size"), Missed=("_is_missed", "sum"))
+                 .reset_index().rename(columns={"_source": "Source"}))
+    _srcbk["Answered"] = _srcbk["Total"] - _srcbk["Missed"]
+    _srcbk["Answer rate"] = (_srcbk["Answered"] / _srcbk["Total"] * 100).round(1)
+    _srcbk["Missed rate"] = (_srcbk["Missed"] / _srcbk["Total"] * 100).round(1)
+    _srcbk = _srcbk.sort_values("Total", ascending=False)
+    with st.expander("📊 Answer / missed rate by source", expanded=True):
+        _sv = _srcbk.copy()
+        _sv["Answer rate"] = _sv["Answer rate"].map(lambda x: f"{x:.1f}%")
+        _sv["Missed rate"] = _sv["Missed rate"].map(lambda x: f"{x:.1f}%")
+        st.dataframe(_sv[["Source", "Total", "Answered", "Missed", "Answer rate", "Missed rate"]],
+                     use_container_width=True, hide_index=True)
+        st.caption("Per-source split of the interactions in range. VP = Videophone (SIP video call), "
+                   "Videochat = in-app video, Chat = live chat.")
+
 if tpi is not None:
     if tpi <= 0.5:
         st.success(f"✅ ~{tpi:.1f} tickets per interaction — strong consolidation "
