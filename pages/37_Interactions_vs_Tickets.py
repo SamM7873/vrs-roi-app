@@ -545,7 +545,7 @@ _waited["_w"] = pd.to_numeric(_waited["_wait_sec"], errors="coerce")
 _waited = _waited[_waited["_w"].notna() & (_waited["_w"] > 0)]
 if not _waited.empty:
     with st.expander(f"⏳ Who waited longest (LWT = {_ms_lbl(_lwt_sec)}) — all {len(_waited):,}",
-                     expanded=True):
+                     expanded=False):
         _top = _waited.sort_values("_w", ascending=False).copy()
         _top["Wait"] = _top["_w"].map(_ms_lbl)
         _top["Agent"] = _top["_agent"].map(lambda a: str(a).split("@")[0])
