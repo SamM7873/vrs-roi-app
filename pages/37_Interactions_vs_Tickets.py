@@ -411,14 +411,25 @@ n_touched = tkf["Target object id"].replace("", pd.NA).nunique()
 # tickets per interaction — how many tickets were opened for each incoming call/chat
 tpi = (n_created / n_int) if n_int else None
 
+# answer / missed rate (based on the selected interaction sources)
+_top_missed = int((cvf["_missed"].fillna(False) | (cvf["_agent"] == "Missed (no agent)")).sum()) if n_int else 0
+_top_handled = n_int - _top_missed
+_top_answer = (_top_handled / n_int * 100) if n_int else None
+_top_missrate = (100 - _top_answer) if _top_answer is not None else None
+
 # ── KPI cards (visual summary) ──────────────────────────────────────────────────
 _tpi_color = "#8792A2" if tpi is None else ("#2DB84B" if tpi <= 0.8 else ("#E8952A" if tpi <= 1.2 else "#E5484D"))
 _metric_cards([
     ("📞 Incoming interactions", f"{n_int:,}", "calls · chats · video", "#4C8DFF"),
+    ("📈 Answer rate", f"{_top_answer:.1f}%" if _top_answer is not None else "—",
+     f"{_top_handled:,} of {n_int:,} answered", "#2DB84B"),
+    ("📉 Missed rate", f"{_top_missrate:.1f}%" if _top_missrate is not None else "—",
+     f"{_top_missed:,} of {n_int:,} missed", "#E5484D"),
     ("🎫 Tickets created", f"{n_created:,}", "new tickets opened", "#7A5CFF"),
     ("🗂️ Tickets touched", f"{n_touched:,}", "distinct tickets worked", "#0FB5AE"),
     ("⚖️ Tickets per interaction", f"{tpi:.1f}" if tpi else "—", "tickets ÷ calls", _tpi_color),
 ])
+st.caption("Answer / missed rate is based on the selected interaction sources (VP · Videochat · Live chat).")
 
 if tpi is not None:
     if tpi <= 0.5:
