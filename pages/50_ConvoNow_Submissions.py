@@ -315,11 +315,15 @@ if search:
 TOTAL = len(df)
 N = len(view)
 n_cn = int((view["Has Convo Now"] == "Yes").sum())
+_cn_pct = (n_cn / N * 100) if N else None
 _filtered = bool(mpick or stpick or search)
-k = st.columns(3)
+k = st.columns(4)
 _card(k[0], "📝 Submissions", f"{N:,}", (f"of {TOTAL:,} total" if _filtered else "in range"), "#7A5CFF")
-_card(k[1], "📱 Have Convo Now number", f"{n_cn:,}", f"{n_cn/N*100:.0f}% of submissions" if N else "—", "#0FB5AE")
-_card(k[2], "🚫 No Convo Now number", f"{N-n_cn:,}", f"{(N-n_cn)/N*100:.0f}% of submissions" if N else "—", "#E5484D")
+_card(k[1], "📈 Convo Now %", f"{_cn_pct:.1f}%" if _cn_pct is not None else "—",
+      "submissions with a CN number", "#2DB84B")
+_card(k[2], "📱 Have Convo Now number", f"{n_cn:,}", f"of {N:,} submissions" if N else "—", "#0FB5AE")
+_card(k[3], "🚫 No Convo Now number", f"{N-n_cn:,}", f"{(N-n_cn)/N*100:.0f}% of submissions" if N else "—", "#E5484D")
+st.caption("**Convo Now % = submissions with a Convo Now number ÷ all submissions in range.**")
 st.markdown("")
 
 # ── by create month (every month) ───────────────────────────────────────────────────
