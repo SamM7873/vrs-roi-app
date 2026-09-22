@@ -14,12 +14,12 @@ require_auth()
 log_report_view("Convo Now Submissions")
 
 report_header("Convo Now Submissions",
-              "Submission forms (create date) → Contact (email = email) → Number · Convo Now only",
+              "Submission forms (create date) → Contact (email = email) → Number · Convo Now & VRS",
               section="Customers")
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_key = "convo_now_subs_v1"
+_key = "convo_now_subs_v2_vrs"
 
 WINDOWS = {"Last 3 months": 3, "Last 6 months": 6, "Last 9 months": 9,
            "Last 12 months": 12, "Last 24 months": 24}
@@ -125,11 +125,15 @@ def _is_convo_now(st_val):
     return "convo now" in str(st_val or "").lower()
 
 
+def _is_vrs(st_val):
+    return "vrs" in str(st_val or "").lower()
+
+
 prop_names = _list_props(SUB_OBJECT)
 
 st.markdown("Reads **submission form** records by **create date**, follows **Submission → Contact** "
             "(by CRM association *and* by matching **email = email**), then **Contact → Number**, and "
-            "keeps only **Convo Now** numbers. No monthly values — just the number check.")
+            "checks each for a **Convo Now** and a **VRS** number. No monthly values — just the number check.")
 
 # ── create-date filter (drives the whole page) ──────────────────────────────────────
 c1, c2 = st.columns([1.3, 1])
@@ -229,13 +233,14 @@ if run:
         with dash_spinner(f"Reading {len(assoc_nids):,} associated Number records…"):
             num_of.update(_batch_read(NUM_OBJECT, assoc_nids, nprops))
 
-    # email fallback against the Number object (Convo Now numbers whose own email matches)
+    # email fallback against the Number object (VRS + Convo Now numbers whose own email matches)
     want_emails = {p["email"] for p in sub_person.values() if p["email"]}
     email_to_nids = defaultdict(list)
     if want_emails:
-        with dash_spinner("Matching Convo Now numbers by email…"):
+        with dash_spinner("Matching VRS / Convo Now numbers by email…"):
             for rr in _seek(NUM_OBJECT, nprops,
-                            [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}]):
+                            [{"propertyName": "service_type", "operator": "IN",
+                              "values": ["VRS", "Convo Now"]}]):
                 pp = rr.get("properties", {})
                 em = (pp.get("email") or "").strip().lower()
                 if em in want_emails:
@@ -243,32 +248,34 @@ if run:
                     num_of[nid] = pp
                     email_to_nids[em].append(nid)
 
-    def _is_cn_ok(nid):
-        return _is_convo_now(num_of.get(nid, {}).get("service_type"))
-
-    sub_to_nids = {}
-    for sid, p in sub_person.items():
-        nids = {n for cid in sub_to_cids.get(sid, []) for n in cid_to_nids.get(cid, [])}
-        nids |= set(email_to_nids.get(p["email"], []))
-        sub_to_nids[sid] = sorted(n for n in nids if _is_cn_ok(n))
+    def _nums_for(nids, kind):
+        """(numbers, statuses) for a submission's numbers of the given service kind."""
+        test = _is_convo_now if kind == "cn" else _is_vrs
+        sel = [n for n in nids if test(num_of.get(n, {}).get("service_type"))]
+        numbers = [x for x in (str(num_of.get(n, {}).get("number") or "").strip() for n in sel) if x]
+        statuses = sorted({s for s in ((num_of.get(n, {}).get("number_status")
+                          or num_of.get(n, {}).get("account_status") or "").strip().title()
+                          for n in sel if num_of.get(n)) if s})
+        return sel, numbers, statuses
 
     rows = []
     for sid, p in sub_person.items():
-        cnids = sub_to_nids.get(sid, [])
-        numbers = [x for x in (str(num_of.get(n, {}).get("number") or "").strip() for n in cnids) if x]
-        statuses = sorted({(num_of.get(n, {}).get("number_status")
-                            or num_of.get(n, {}).get("account_status") or "").strip().title()
-                           for n in cnids if num_of.get(n)})
-        statuses = [s for s in statuses if s]
+        nids = {n for cid in sub_to_cids.get(sid, []) for n in cid_to_nids.get(cid, [])}
+        nids |= set(email_to_nids.get(p["email"], []))
+        cn_sel, cn_nums, cn_stat = _nums_for(nids, "cn")
+        vrs_sel, vrs_nums, vrs_stat = _nums_for(nids, "vrs")
         rows.append({
             "Created": p["created"] or "—",
             "Month": (p["created"] or "")[:7] or "—",
             "Name": p["name"] or "—",
             "Email": p["email"] or "—",
             "State": p["state"] or "—",
-            "Convo Now Number(s)": ", ".join(numbers) or "—",
-            "Number Status": ", ".join(statuses) or "—",
-            "Has Convo Now": "Yes" if cnids else "No",
+            "Convo Now Number(s)": ", ".join(cn_nums) or "—",
+            "Convo Now Status": ", ".join(cn_stat) or "—",
+            "Has Convo Now": "Yes" if cn_sel else "No",
+            "VRS Number(s)": ", ".join(vrs_nums) or "—",
+            "VRS Status": ", ".join(vrs_stat) or "—",
+            "Has VRS": "Yes" if vrs_sel else "No",
         })
     df = pd.DataFrame(rows)
     save_report(_key, {"df": df, "window": window_label if not use_custom else _range_note})
@@ -315,24 +322,32 @@ if search:
 TOTAL = len(df)
 N = len(view)
 n_cn = int((view["Has Convo Now"] == "Yes").sum())
+n_vrs = int((view["Has VRS"] == "Yes").sum()) if "Has VRS" in view.columns else 0
 _cn_pct = (n_cn / N * 100) if N else None
+_vrs_pct = (n_vrs / N * 100) if N else None
 _filtered = bool(mpick or stpick or search)
-k = st.columns(4)
+k = st.columns(5)
 _card(k[0], "📝 Submissions", f"{N:,}", (f"of {TOTAL:,} total" if _filtered else "in range"), "#7A5CFF")
 _card(k[1], "📈 Convo Now %", f"{_cn_pct:.1f}%" if _cn_pct is not None else "—",
-      "submissions with a CN number", "#2DB84B")
-_card(k[2], "📱 Have Convo Now number", f"{n_cn:,}", f"of {N:,} submissions" if N else "—", "#0FB5AE")
-_card(k[3], "🚫 No Convo Now number", f"{N-n_cn:,}", f"{(N-n_cn)/N*100:.0f}% of submissions" if N else "—", "#E5484D")
-st.caption("**Convo Now % = submissions with a Convo Now number ÷ all submissions in range.**")
+      f"{n_cn:,} with a CN number", "#2DB84B")
+_card(k[2], "📉 VRS %", f"{_vrs_pct:.1f}%" if _vrs_pct is not None else "—",
+      f"{n_vrs:,} with a VRS number", "#4C8DFF")
+_card(k[3], "📱 Have Convo Now", f"{n_cn:,}", f"of {N:,} submissions" if N else "—", "#0FB5AE")
+_card(k[4], "📞 Have VRS", f"{n_vrs:,}", f"of {N:,} submissions" if N else "—", "#0E7C86")
+st.caption("**Convo Now % / VRS % = submissions with a Convo Now / VRS number ÷ all submissions in range.**")
 st.markdown("")
 
 # ── by create month (every month) ───────────────────────────────────────────────────
 st.markdown("##### By create month")
 if len(view):
     bm = (view.groupby("Month").agg(Submissions=("Month", "size"),
-          **{"Have Convo Now": ("Has Convo Now", lambda s: (s == "Yes").sum())}).reset_index())
+          **{"Have Convo Now": ("Has Convo Now", lambda s: (s == "Yes").sum()),
+             "Have VRS": ("Has VRS", lambda s: (s == "Yes").sum())}).reset_index())
     bm["% with CN"] = (bm["Have Convo Now"] / bm["Submissions"] * 100).round(0).astype(int).astype(str) + "%"
-    st.dataframe(bm.sort_values("Month"), use_container_width=True, hide_index=True)
+    bm["% with VRS"] = (bm["Have VRS"] / bm["Submissions"] * 100).round(0).astype(int).astype(str) + "%"
+    st.dataframe(bm.sort_values("Month")[["Month", "Submissions", "Have Convo Now", "% with CN",
+                                          "Have VRS", "% with VRS"]],
+                 use_container_width=True, hide_index=True)
 else:
     st.caption("No rows match the current filters.")
 
