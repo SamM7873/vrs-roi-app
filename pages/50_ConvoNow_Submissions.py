@@ -19,7 +19,7 @@ report_header("Convo Now Submissions",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_key = "convo_now_subs_v2_vrs"
+_key = "convo_now_subs_v3_b2c"
 
 WINDOWS = {"Last 3 months": 3, "Last 6 months": 6, "Last 9 months": 9,
            "Last 12 months": 12, "Last 24 months": 24}
@@ -57,6 +57,21 @@ def _list_props(obj):
     except Exception:
         pass
     return []
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _prop_defs(obj):
+    """[(name, label, [option values])] for every property (options for enums)."""
+    out = []
+    try:
+        r = requests.get(f"{_B}/crm/v3/properties/{obj}", headers=_H, timeout=30)
+        if r.status_code == 200:
+            for p in r.json().get("results", []):
+                opts = [o.get("value") for o in (p.get("options") or []) if o.get("value")]
+                out.append((p.get("name"), p.get("label") or p.get("name"), opts))
+    except Exception:
+        pass
+    return out
 
 
 def _assoc(from_obj, to_obj, from_ids):
@@ -130,10 +145,32 @@ def _is_vrs(st_val):
 
 
 prop_names = _list_props(SUB_OBJECT)
+_defs = _prop_defs(SUB_OBJECT)
 
-st.markdown("Reads **submission form** records by **create date**, follows **Submission → Contact** "
-            "(by CRM association *and* by matching **email = email**), then **Contact → Number**, and "
-            "checks each for a **Convo Now** and a **VRS** number. No monthly values — just the number check.")
+# find the "B2C service interest" field on the submission object
+_b2c = next((n for n, l, o in _defs
+             if "b2c" in n.lower() and ("service" in n.lower() or "interest" in n.lower())), None)
+_b2c = _b2c or next((n for n, l, o in _defs
+                     if "b2c" in (l or "").lower() and "service" in (l or "").lower()), None)
+_b2c_opts = next((o for n, l, o in _defs if n == _b2c), []) if _b2c else []
+# default to the Convo Now (face-to-face conversations) option
+_b2c_default = [o for o in _b2c_opts if "convo now" in o.lower() and "face" in o.lower()] \
+    or [o for o in _b2c_opts if "convo now" in o.lower()]
+
+st.markdown("Reads **submission form** records by **create date**, filters to **B2C Service Interest = "
+            "Convo Now (face-to-face conversations)**, follows **Submission → Contact** (CRM association "
+            "*and* **email = email**), then **Contact → Number**, and checks each for a **Convo Now** and "
+            "a **VRS** number. No monthly values — just the number check.")
+
+# ── B2C service interest filter ─────────────────────────────────────────────────────
+if _b2c:
+    b2c_pick = st.multiselect(f"B2C Service Interest (field `{_b2c}`)", _b2c_opts,
+                              default=_b2c_default,
+                              help="Defaults to Convo Now (face-to-face conversations).")
+else:
+    b2c_pick = []
+    st.warning("Couldn't find a **B2C Service Interest** field on the submission object — showing all "
+               "submissions. (The field may be named differently.)")
 
 # ── create-date filter (drives the whole page) ──────────────────────────────────────
 c1, c2 = st.columns([1.3, 1])
@@ -164,8 +201,10 @@ if use_custom:
 run = st.button("▶ Run", type="primary")
 
 if run:
-    # 1) submission records in the create-date window
+    # 1) submission records in the create-date window (+ B2C service interest)
     sub_props = ["hs_createdate"] + [p for p in ("email", "firstname", "lastname") if p in prop_names]
+    if _b2c:
+        sub_props.append(_b2c)
     if use_custom:
         _sub_filters = []
         if created_lo:
@@ -175,6 +214,8 @@ if run:
     else:
         _sub_filters = [{"propertyName": "hs_createdate", "operator": "GTE",
                          "value": _months_ago_ms(WINDOWS[window_label])}]
+    if _b2c and b2c_pick:
+        _sub_filters.append({"propertyName": _b2c, "operator": "IN", "values": b2c_pick})
     with dash_spinner("Reading submissions…"):
         subs = fetch_all(SUB_OBJECT, sub_props, filter_groups=[{"filters": _sub_filters}])
     if not subs:
@@ -278,7 +319,8 @@ if run:
             "Has VRS": "Yes" if vrs_sel else "No",
         })
     df = pd.DataFrame(rows)
-    save_report(_key, {"df": df, "window": window_label if not use_custom else _range_note})
+    save_report(_key, {"df": df, "window": window_label if not use_custom else _range_note,
+                       "b2c": ", ".join(b2c_pick) if b2c_pick else "all"})
 
 saved = load_report(_key)
 if saved is None:
@@ -287,7 +329,8 @@ if saved is None:
 
 df = saved["df"]
 if saved.get("saved_at"):
-    st.caption(f"📌 Saved {saved_at_label(saved)} · created: **{saved.get('window','')}**")
+    st.caption(f"📌 Saved {saved_at_label(saved)} · created: **{saved.get('window','')}** · "
+               f"B2C interest: **{saved.get('b2c','all')}**")
 if df.empty:
     st.warning("No submissions."); report_header_close(); st.stop()
 
