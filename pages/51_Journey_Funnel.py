@@ -18,7 +18,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v15_colorder"
+_JF_KEY = "journey_funnel_v16_colorder2"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -277,13 +277,18 @@ if run:
 
     def _col_order(item):
         lab = (item[1] or "").lower()
+        # first match wins — specific before generic
         checks = [
-            ("name", 0), ("email", 1), ("mobile", 3), ("phone", 2),
+            ("company domain", 15), ("company", 14),
+            ("email", 1), ("mobile", 3), ("phone", 2),
             ("state", 4), ("city", 4), ("zip", 4), ("country", 4),
-            ("company", 5), ("b2c service interest", 6), ("b2b service interest", 7),
-            ("service interest", 6), ("referral", 8),
-            ("utm campaign", 10), ("utm source", 11), ("utm medium", 12),
-            ("utm content", 13), ("utm term", 14), ("utm", 15),
+            ("utm source", 5), ("utm campaign", 6), ("utm medium", 7),
+            ("utm content", 8), ("utm term", 9), ("utm", 9),
+            ("b2c referral", 10), ("referral source b2c", 10),
+            ("b2c service interest", 11), ("b2b service interest", 12),
+            ("service interest", 11),
+            ("referral source b2b", 13), ("b2b referral", 13), ("referral", 13),
+            ("full name", 0), ("first name", 0), ("last name", 0), ("name", 0),
         ]
         for kw, pri in checks:
             if kw in lab:
