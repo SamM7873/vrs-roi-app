@@ -373,30 +373,38 @@ def _card(col, t, v, s, c):
         <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
 
+# Volume stages are DIFFERENT populations (all interactions, all tickets — not
+# only those from submissions), so we show counts + a plain ratio, not
+# conversion / drop-off (which would imply a per-person funnel — that's the
+# Matched journey section below).
 _c = st.columns(4)
-_card(_c[0], "Submissions", f"{n_sub:,}", "top of funnel", "#7A5CFF")
-_si = _pct(n_int, n_sub)
-_card(_c[1], "Sub → Interaction", f"{_si:.0f}%" if _si is not None else "—",
-      f"{100-_si:.0f}% drop-off" if _si is not None else "—", "#0FB5AE")
-_it = _pct(n_tick, n_int)
-_card(_c[2], "Interaction → Ticket", f"{_it:.0f}%" if _it is not None else "—",
-      f"{100-_it:.0f}% drop-off" if _it is not None else "—", "#2DB84B")
-_ov = _pct(n_tick, n_sub)
-_card(_c[3], "Overall (Sub → Ticket)", f"{_ov:.0f}%" if _ov is not None else "—",
-      "end-to-end conversion", "#4C8DFF")
+_card(_c[0], "Submissions", f"{n_sub:,}", "form fills in window", "#7A5CFF")
+_ri = (n_int / n_sub) if n_sub else None
+_card(_c[1], "Interactions", f"{n_int:,}",
+      f"{_ri:.2f}× submissions" if _ri is not None else "—", "#0FB5AE")
+_rt = (n_tick / n_int) if n_int else None
+_card(_c[2], "Tickets created", f"{n_tick:,}",
+      f"{_rt:.2f}× interactions" if _rt is not None else "—", "#2DB84B")
+_rts = (n_tick / n_sub) if n_sub else None
+_card(_c[3], "Tickets per submission", f"{_rts:.2f}×" if _rts is not None else "—",
+      "volume ratio (not conversion)", "#4C8DFF")
+st.caption("These are **volume counts** for the window — three separate populations, not the same "
+           "people tracked through stages. For true per-person conversion & drop-off, see the "
+           "**Matched journey** below.")
 st.markdown("")
 
 # ── funnel bars ─────────────────────────────────────────────────────────────────────
-st.markdown("##### Funnel")
+st.markdown("##### Volume by stage")
+_scale = max((s[1] for s in stages), default=1) or 1
 _html = '<div style="display:flex;flex-direction:column;gap:14px;">'
 prev = None
 for lab, cnt, color in stages:
     pct_top = (cnt / top * 100) if top else 0
-    width = max(8, pct_top)
+    width = max(8, cnt / _scale * 100)
     conv = ""
     if prev is not None:
-        c = (cnt / prev * 100) if prev else 0
-        conv = f"→ {c:.0f}% from previous stage · {100 - c:.0f}% drop-off"
+        c = (cnt / prev) if prev else 0
+        conv = f"{c:.2f}× the previous stage"
     _html += f'''<div>
       <div style="display:flex;justify-content:space-between;font-size:.82rem;color:#475467;margin-bottom:4px;">
         <span style="font-weight:800;">{lab}</span>
