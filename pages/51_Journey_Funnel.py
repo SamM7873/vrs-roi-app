@@ -294,7 +294,7 @@ mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
 # ════════════════════════════════════════════════════════════════════════════════════
 if mode == _MODE_ACQ:
-    _AKEY = "journey_acq_v9_hasvrs"
+    _AKEY = "journey_acq_v10_stage"
     st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
                 "Contact → Number** (service type **VRS**), then Live (**number status Live**) → the "
                 "number's URSA milestones: **first login → first outbound call → second outbound call**.")
@@ -389,7 +389,7 @@ if mode == _MODE_ACQ:
                      else "Organisations" if any(k in (p.get("usage_type") or "").lower()
                      for p in nums for k in ("organ", "business", "company")) else "—")
             _stage = ("Keep calling" if keep else "First call" if call else "First login" if login
-                      else "Live" if live else "Sign-up only")
+                      else "Live" if live else "Has VRS (not live)" if nums else "Sign-up only")
             _arows.append({
                 "Email": em or "(no email)",
                 "Consumer": _consumer,
@@ -464,7 +464,7 @@ if mode == _MODE_ACQ:
         _no_vrs = int((_seg_df.get("Has VRS", pd.Series(dtype=str)) == "No").sum())
         st.markdown(f"##### Sign-up detail  ·  🚫 **{_no_vrs:,}** of {len(_seg_df):,} have **no VRS number**")
         _sc1, _sc2, _sc3 = st.columns([1.3, 1, 2])
-        _stopts = ["Sign-up only", "Live", "First login", "First call", "Keep calling"]
+        _stopts = ["Sign-up only", "Has VRS (not live)", "Live", "First login", "First call", "Keep calling"]
         _stpick = _sc1.multiselect("Stage reached (empty = all)",
                                    [s for s in _stopts if s in set(_seg_df["Stage reached"])],
                                    default=[], key="acq_stage_filter")
