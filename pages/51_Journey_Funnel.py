@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import time
 from datetime import date, datetime, timezone, timedelta
 import requests
 from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
@@ -17,7 +18,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v11_callwait"
+_JF_KEY = "journey_funnel_v12_hms"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -142,6 +143,31 @@ def _ms(d):
 def _dig10(v):
     d = "".join(ch for ch in str(v or "") if ch.isdigit())
     return d[-10:] if len(d) >= 10 else ""
+
+
+def _hms(v):
+    """Format a duration as 'Xh Ym Zs'. Accepts HH:MM:SS / MM:SS, or decimal minutes."""
+    s = str(v or "").strip()
+    if not s or s.lower() in ("nan", "none", "n/a", "—"):
+        return "—"
+    secs = None
+    if ":" in s:
+        try:
+            parts = [int(float(x)) for x in s.split(":")]
+            while len(parts) < 3:
+                parts.insert(0, 0)
+            secs = parts[0] * 3600 + parts[1] * 60 + parts[2]
+        except Exception:
+            return s
+    else:
+        try:
+            secs = int(round(float(s) * 60))   # decimal minutes → seconds
+        except Exception:
+            return s
+    h, rem = divmod(int(secs), 3600)
+    m, sec = divmod(rem, 60)
+    out = (f"{h}h " if h else "") + (f"{m}m " if (m or h) else "") + f"{sec}s"
+    return out.strip()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -330,8 +356,8 @@ if run:
                "Interaction type": _join(m[0] for m in _metas) or "—",
                "Interaction agent": _join(m[1] for m in _metas) or "—",
                "Interaction query": _join(m[2] for m in _metas) or "—",
-               "Call time": _join(m[3] for m in _metas) or "—",
-               "Wait time": _join(m[4] for m in _metas) or "—",
+               "Call time": _join(_hms(m[3]) for m in _metas) or "—",
+               "Wait time": _join(_hms(m[4]) for m in _metas) or "—",
                "Website": _join(m[5] for m in _metas) or "—",
                "Has ticket (via contact)": "Yes" if has_ticket else "No",
                "Ticket": _tk_subj or "—",
@@ -349,16 +375,22 @@ if run:
                           "n_sub_email": len(sub_emails),
                           "lo": str(lo), "hi": str(hi), "sub_df": _sub_df})
 
+_RETAIN = 7 * 24 * 3600   # keep the saved record for 7 days
 d = load_report(_JF_KEY)
+if d and (time.time() - d.get("saved_at", 0)) > _RETAIN:
+    d = None   # expired — older than 7 days
 if not d:
     st.info("Upload both CSVs, set the date range, and click **▶ Build funnel**. "
-            "After that the report is **saved** — you won't need to re-upload to view it again.")
+            "The report is then **saved for 7 days** — you won't need to re-upload to view it again.")
     report_header_close(); st.stop()
 
 n_sub, n_int, n_tick = d["n_sub"], d["n_int"], d["n_tick"]
 if d.get("saved_at"):
-    st.caption(f"📌 Saved {saved_at_label(d)} · window: **{d['lo']} → {d['hi']}** "
-               "· re-upload + Build only to refresh")
+    _rem = max(0, _RETAIN - (time.time() - d["saved_at"]))
+    _left = f"~{int(_rem // 86400)}d {int((_rem % 86400) // 3600)}h left" if _rem >= 86400 \
+        else f"~{int(_rem // 3600)}h left"
+    st.caption(f"📌 Saved {saved_at_label(d)} · kept 7 days ({_left}) · window: "
+               f"**{d['lo']} → {d['hi']}** · re-upload + Build to refresh")
 else:
     st.caption(f"📌 Window: **{d['lo']} → {d['hi']}**")
 
