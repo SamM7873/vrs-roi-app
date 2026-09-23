@@ -286,14 +286,16 @@ mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
 # ════════════════════════════════════════════════════════════════════════════════════
 if mode == _MODE_ACQ:
-    _AKEY = "journey_acq_v5_usage"
+    _AKEY = "journey_acq_v6_consumer"
     st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
                 "Contact → Number** (service type **VRS**), then Live (**number status Live**) → the "
                 "number's URSA milestones: **first login → first outbound call → second outbound call**.")
     _t = date.today()
-    ac1, ac2 = st.columns(2)
+    ac1, ac2, ac3 = st.columns(3)
     alo = ac1.date_input("Sign-ups from", value=_t - timedelta(days=28), key="acq_lo")
     ahi = ac2.date_input("to", value=_t, key="acq_hi")
+    acut = ac3.date_input("New consumer on/after", value=date(2026, 9, 23), key="acq_cut",
+                          help="Numbers created on/after this date = New consumer; earlier = Existing.")
     if alo > ahi:
         alo, ahi = ahi, alo
         st.warning("From was after To — swapped.")
@@ -354,10 +356,15 @@ if mode == _MODE_ACQ:
             _stat = sorted({(p.get("number_status") or "").strip().title() for p in nums} - {""})
             _usage = sorted({(p.get("usage_type") or "").strip().title() for p in nums} - {""})
             _created = sorted({_fmtd(p.get("number_created_at")) for p in nums} - {""})
+            # New (created on/after cutoff) vs Existing (before cutoff), by earliest number
+            _cut = acut.strftime("%Y-%m-%d")
+            _consumer = ("New" if (_created and min(_created) >= _cut) else
+                         "Existing" if _created else "—")
             _stage = ("Keep calling" if keep else "First call" if call else "First login" if login
                       else "Live" if live else "Sign-up only")
             _arows.append({
                 "Email": em or "(no email)",
+                "Consumer": _consumer,
                 "VRS Number(s)": ", ".join(_numbers) or "—",
                 "Number Status": ", ".join(_stat) or "—",
                 "Usage type": ", ".join(_usage) or "—",
@@ -389,15 +396,20 @@ if mode == _MODE_ACQ:
     _adf = ad.get("df")
     if _adf is not None and not _adf.empty:
         st.markdown("##### Sign-up detail")
-        _sc1, _sc2 = st.columns([1.3, 2])
+        _sc1, _sc2, _sc3 = st.columns([1.3, 1, 2])
         _stopts = ["Sign-up only", "Live", "First login", "First call", "Keep calling"]
         _stpick = _sc1.multiselect("Stage reached (empty = all)",
                                    [s for s in _stopts if s in set(_adf["Stage reached"])],
                                    default=[], key="acq_stage_filter")
-        _q = _sc2.text_input("Search email / number", key="acq_search").strip().lower()
+        _cpick = _sc2.multiselect("Consumer (empty = all)",
+                                  [c for c in ["New", "Existing", "—"] if c in set(_adf.get("Consumer", []))],
+                                  default=[], key="acq_consumer_filter")
+        _q = _sc3.text_input("Search email / number", key="acq_search").strip().lower()
         _v = _adf
         if _stpick:
             _v = _v[_v["Stage reached"].isin(_stpick)]
+        if _cpick and "Consumer" in _v.columns:
+            _v = _v[_v["Consumer"].isin(_cpick)]
         if _q:
             _v = _v[_v.apply(lambda r: _q in " ".join(str(x).lower() for x in r.values), axis=1)]
         st.caption(f"{len(_v):,} of {len(_adf):,} sign-ups")
