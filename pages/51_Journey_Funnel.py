@@ -18,7 +18,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v14_alltix"
+_JF_KEY = "journey_funnel_v15_colorder"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -274,6 +274,22 @@ if run:
 
     # ── stage 1: submissions created in the window (HubSpot custom object) ──
     _cprops = _sub_contact_props()
+
+    def _col_order(item):
+        lab = (item[1] or "").lower()
+        checks = [
+            ("name", 0), ("email", 1), ("mobile", 3), ("phone", 2),
+            ("state", 4), ("city", 4), ("zip", 4), ("country", 4),
+            ("company", 5), ("b2c service interest", 6), ("b2b service interest", 7),
+            ("service interest", 6), ("referral", 8),
+            ("utm campaign", 10), ("utm source", 11), ("utm medium", 12),
+            ("utm content", 13), ("utm term", 14), ("utm", 15),
+        ]
+        for kw, pri in checks:
+            if kw in lab:
+                return (pri, lab)
+        return (30, lab)
+    _cprops = sorted(_cprops, key=_col_order)
     _cnames = [n for n, _ in _cprops]
     _fn = next((n for n in _cnames if n.lower() in ("firstname", "first_name")), None)
     _ln = next((n for n in _cnames if n.lower() in ("lastname", "last_name")), None)
