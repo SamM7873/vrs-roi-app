@@ -17,7 +17,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v7_agentquery"
+_JF_KEY = "journey_funnel_v8_ticketowner"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -126,6 +126,20 @@ def _ms(d):
 def _dig10(v):
     d = "".join(ch for ch in str(v or "") if ch.isdigit())
     return d[-10:] if len(d) >= 10 else ""
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _owner_names():
+    out = {}
+    try:
+        r = requests.get(f"{_B}/crm/v3/owners?limit=500", headers=_H, timeout=15)
+        if r.status_code == 200:
+            for o in r.json().get("results", []):
+                nm = f"{(o.get('firstName') or '').strip()} {(o.get('lastName') or '').strip()}".strip()
+                out[str(o["id"])] = nm or o.get("email", str(o["id"]))
+    except Exception:
+        pass
+    return out
 
 
 def _batch_read(obj, ids, props):
@@ -245,6 +259,10 @@ if run:
     _cids = sorted(set(email_to_cid.values()))
     with dash_spinner("Linking contacts → tickets…"):
         cid_to_tids = _assoc("contacts", "tickets", _cids)
+    # read the associated tickets (subject + owner) and resolve owner names
+    _own = _owner_names()
+    _all_tids = sorted({t for tids in cid_to_tids.values() for t in tids})
+    _tk_of = _batch_read("tickets", _all_tids, ["subject", "hubspot_owner_id"]) if _all_tids else {}
     # contact → Number → phone (bridge to SIP call numbers)
     with dash_spinner("Linking contacts → numbers (phone bridge)…"):
         cid_to_nids = _assoc("contacts", NUM_OBJECT, _cids)
@@ -271,10 +289,14 @@ if run:
         matched = by_name or by_num or by_cnum
         _n_match += int(matched); _n_by_name += int(by_name)
         _n_by_num += int(by_num); _n_by_cnum += int(by_cnum)
-        has_ticket = bool(cid) and bool(cid_to_tids.get(cid))
+        _tids = cid_to_tids.get(cid, []) if cid else []
+        has_ticket = bool(_tids)
         _n_has_tk += int(has_ticket)
         if matched and has_ticket:          # sequential: ticket AMONG those with an interaction
             _n_int_tk += 1
+        _tk_subj = _join((_tk_of.get(t, {}).get("subject") or f"#{t}") for t in _tids)
+        _tk_own = _join(_own.get(str(_tk_of.get(t, {}).get("hubspot_owner_id") or ""), "")
+                        for t in _tids)
         _mt = [x for x, ok in (("Name", by_name), ("Number", by_num), ("Contact#", by_cnum)) if ok]
         # gather the matched interaction rows' type/agent/query
         _metas = []
@@ -291,7 +313,9 @@ if run:
                "Interaction type": _join(m[0] for m in _metas) or "—",
                "Interaction agent": _join(m[1] for m in _metas) or "—",
                "Interaction query": _join(m[2] for m in _metas) or "—",
-               "Has ticket (via contact)": "Yes" if has_ticket else "No"}
+               "Has ticket (via contact)": "Yes" if has_ticket else "No",
+               "Ticket": _tk_subj or "—",
+               "Ticket owner": _tk_own or "—"}
         for n, lab in _cprops:
             row[lab] = p.get(n) or ""
         _sub_rows.append(row)
