@@ -16,7 +16,7 @@ report_header("Journey Funnel",
               section="Support")
 
 SUB_OBJECT = "2-49942763"   # submission form records
-_JF_KEY = "journey_funnel_v2"
+_JF_KEY = "journey_funnel_v3_match"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -63,16 +63,23 @@ def _find(cols, *names):
     return None
 
 
+def _norm_name(v):
+    """Normalize a person name for loose matching (lowercase, collapse spaces)."""
+    return " ".join(str(v or "").lower().split())
+
+
 def _parse_conv(file):
-    """Convo360 interaction export → rows with a date."""
+    """Convo360 interaction export → rows with a date and customer name."""
     df = pd.read_csv(file, dtype=str).fillna("")
     df.columns = [c.strip() for c in df.columns]
     dcol = _find(df.columns, "date")
     if not dcol:
         return "Convo360: no date column found."
+    ccol = _find(df.columns, "customer name", "customer", "name")
     df["_day"] = pd.to_datetime(df[dcol], errors="coerce").dt.date
+    df["_cust"] = df[ccol].map(_norm_name) if ccol else ""
     df = df[df["_day"].notna()].copy()
-    return df[["_day"]]
+    return df[["_day", "_cust"]]
 
 
 def _parse_tick(file):
@@ -112,32 +119,13 @@ if lo > hi:
 run = st.button("▶ Build funnel", type="primary", disabled=not (conv_file and tick_file))
 
 if run:
-    # ── stage 1: submissions created in the window (HubSpot custom object) ──
-    _cprops = _sub_contact_props()
-    _cnames = [n for n, _ in _cprops]
-    with dash_spinner("Reading submission forms…"):
-        subs = fetch_all(SUB_OBJECT, ["hs_createdate"] + _cnames, filter_groups=[{"filters": [
-            {"propertyName": "hs_createdate", "operator": "GTE", "value": _ms(lo)},
-            {"propertyName": "hs_createdate", "operator": "LTE", "value": _ms(hi + timedelta(days=1))}]}])
-    n_sub = len(subs)
-
-    # submission contact-info detail table (all discovered contact fields)
-    _sub_rows = []
-    for s in subs:
-        p = s.get("properties", {})
-        cd = str(p.get("hs_createdate") or "")
-        row = {"Created": cd[:10]}
-        for n, lab in _cprops:
-            row[lab] = p.get(n) or ""
-        _sub_rows.append(row)
-    _sub_df = pd.DataFrame(_sub_rows)
-
-    # ── stage 2: interactions in the window (Convo360 CSV) ──
+    # ── stage 2 source first: interactions in the window (Convo360 CSV) ──
     cv = _parse_conv(conv_file)
     if isinstance(cv, str):
         st.error(cv); report_header_close(); st.stop()
     cv = cv[(cv["_day"] >= lo) & (cv["_day"] <= hi)]
     n_int = len(cv)
+    _int_names = set(cv["_cust"].dropna()) - {""}   # normalized interaction customer names
 
     # ── stage 3: tickets created in the window (audit-log CSV) ──
     tk = _parse_tick(tick_file)
@@ -146,8 +134,39 @@ if run:
     tk = tk[(tk["_day"] >= lo) & (tk["_day"] <= hi)]
     n_tick = int(tk["_created"].sum())
 
+    # ── stage 1: submissions created in the window (HubSpot custom object) ──
+    _cprops = _sub_contact_props()
+    _cnames = [n for n, _ in _cprops]
+    _fn = next((n for n in _cnames if n.lower() in ("firstname", "first_name")), None)
+    _ln = next((n for n in _cnames if n.lower() in ("lastname", "last_name")), None)
+    _nm = next((n for n in _cnames if n.lower() == "name"), None)
+    with dash_spinner("Reading submission forms…"):
+        subs = fetch_all(SUB_OBJECT, ["hs_createdate", "firstname", "lastname"] + _cnames,
+                         filter_groups=[{"filters": [
+                             {"propertyName": "hs_createdate", "operator": "GTE", "value": _ms(lo)},
+                             {"propertyName": "hs_createdate", "operator": "LTE",
+                              "value": _ms(hi + timedelta(days=1))}]}])
+    n_sub = len(subs)
+
+    # submission contact-info detail table + per-submission interaction name match
+    _sub_rows, _n_match = [], 0
+    for s in subs:
+        p = s.get("properties", {})
+        cd = str(p.get("hs_createdate") or "")
+        # build a normalized name to match against interaction customer names
+        fn = p.get(_fn) or p.get("firstname") or ""
+        ln = p.get(_ln) or p.get("lastname") or ""
+        nm = _norm_name(f"{fn} {ln}") or _norm_name(p.get(_nm) or "")
+        matched = bool(nm) and nm in _int_names
+        _n_match += int(matched)
+        row = {"Created": cd[:10], "Had interaction (name match)": "Yes" if matched else "No"}
+        for n, lab in _cprops:
+            row[lab] = p.get(n) or ""
+        _sub_rows.append(row)
+    _sub_df = pd.DataFrame(_sub_rows)
+
     save_report(_JF_KEY, {"n_sub": n_sub, "n_int": n_int, "n_tick": n_tick,
-                          "lo": str(lo), "hi": str(hi), "sub_df": _sub_df})
+                          "n_match": _n_match, "lo": str(lo), "hi": str(hi), "sub_df": _sub_df})
 
 d = load_report(_JF_KEY)
 if not d:
@@ -230,6 +249,24 @@ st.caption("Volume funnel: each stage is the total count in the window. Drop-off
            "= 1 − (next stage ÷ previous stage). Because the sources aren't joined per person, a later "
            "stage can exceed an earlier one (e.g. more interactions than submissions) — that just means "
            "the stages draw from different populations, not a negative drop-off.")
+
+# ── matched journey (per person, by name) ───────────────────────────────────────────
+_nm_match = d.get("n_match")
+if _nm_match is not None:
+    st.markdown("##### 🔗 Matched journey — Submission → Interaction (by name)")
+    _mpct = _pct(_nm_match, n_sub)
+    _mc = st.columns(3)
+    _card(_mc[0], "Submissions", f"{n_sub:,}", "with a name", "#7A5CFF")
+    _card(_mc[1], "Had an interaction", f"{_nm_match:,}",
+          f"{_mpct:.0f}% of submissions" if _mpct is not None else "—", "#0FB5AE")
+    _card(_mc[2], "No interaction match", f"{n_sub - _nm_match:,}",
+          f"{100-_mpct:.0f}% drop-off" if _mpct is not None else "—", "#E5484D")
+    st.caption("Person-level match: a submission counts as **Had an interaction** when its name "
+               "(first + last) matches a Convo360 **Customer Name** in the window. Names are matched "
+               "loosely (case-insensitive), so common/blank names may over- or under-match. "
+               "The **ticket** stage can't be person-matched — the audit-log CSV has no customer name "
+               "or email — so it stays in the volume funnel above.")
+    st.markdown("")
 
 # ── submission contact info (top of funnel) ─────────────────────────────────────────
 _sub_df = d.get("sub_df")
