@@ -496,17 +496,25 @@ if _nm_match is not None:
 _sub_df = d.get("sub_df")
 if _sub_df is not None and not _sub_df.empty:
     st.markdown("##### 📝 Submission contact info")
-    _fc1, _fc2 = st.columns([1, 2])
+    _fc1, _fc2, _fc3 = st.columns([1, 1.3, 2])
     _match_col = "Had interaction"
     if _match_col in _sub_df.columns:
         _mfilt = _fc1.radio("Had interaction", ["All", "Yes", "No"],
                             horizontal=True, key="jf_match_filter")
     else:
         _mfilt = "All"
-    _s = _fc2.text_input("Search submissions (name / email / phone…)").strip().lower()
+    if "Match type" in _sub_df.columns:
+        _mtopts = sorted(v for v in _sub_df["Match type"].unique() if v and v != "—")
+        _mtpick = _fc2.multiselect("Match type", _mtopts, default=[], key="jf_mt_filter",
+                                   help="Name = call/chat name · Number = form phone · Contact# = Contact→Number phone")
+    else:
+        _mtpick = []
+    _s = _fc3.text_input("Search submissions (name / email / phone…)").strip().lower()
     _sv = _sub_df
     if _mfilt != "All" and _match_col in _sv.columns:
         _sv = _sv[_sv[_match_col] == _mfilt]
+    if _mtpick:
+        _sv = _sv[_sv["Match type"].isin(_mtpick)]
     if _s:
         _sv = _sv[_sv.apply(lambda r: _s in " ".join(str(x).lower() for x in r.values), axis=1)]
     st.caption(f"{len(_sv):,} of {len(_sub_df):,} submissions · all contact fields on the submission object")
