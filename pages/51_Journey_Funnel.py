@@ -279,9 +279,8 @@ def _acq_render(sg, lv, lg, cl, kp, note):
 
 # ── report mode ─────────────────────────────────────────────────────────────────────
 _MODE_SIT = "Submission → Interaction → Ticket"
-_MODE_ACQ = "Acquisition funnel (Submissions) — Sign-up → Live → First login → First call → Keep calling"
-_MODE_ACQR = "Acquisition funnel (Registrations) — matches STG_REGISTRATIONS"
-mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ, _MODE_ACQR])
+_MODE_ACQ = "Acquisition funnel — Sign-up → Live → First login → First call → Keep calling"
+mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
 
 # ════════════════════════════════════════════════════════════════════════════════════
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
@@ -346,90 +345,6 @@ if mode == _MODE_ACQ:
                 "numbers count. Live = **number status Live**. First login / first call / keep calling use "
                 "the Number's **ursa_first_login**, **ursa_first_outbound_call**, **ursa_second_outbound_call**. "
                 "Each gate nests inside the previous one, so the funnel drops cleanly.")
-    report_header_close(); st.stop()
-
-# ════════════════════════════════════════════════════════════════════════════════════
-# ACQUISITION FUNNEL (Registrations) — starts from Number objects (matches STG_REGISTRATIONS)
-# ════════════════════════════════════════════════════════════════════════════════════
-if mode == _MODE_ACQR:
-    _RKEY = "journey_acqreg_v1"
-    st.markdown("Starts from **Number objects** (registrations), deduped to one per **phone number**, "
-                "**service type = VRS**, excluding **cancelled / hidden / archived**. Live = **number "
-                "status Live**; then first login → first call → keep calling on those numbers.")
-    _rt = date.today()
-    rc1, rc2, rc3 = st.columns([1, 1, 1.2])
-    rlo = rc1.date_input("Numbers created from", value=_rt - timedelta(days=28), key="reg_lo")
-    rhi = rc2.date_input("to", value=_rt, key="reg_hi")
-    seg = rc3.selectbox("Segment (usage type)", ["All", "B2C (Personal)", "B2B (Organization)"], key="reg_seg")
-    if rlo > rhi:
-        rlo, rhi = rhi, rlo
-    if st.button("▶ Build registration funnel", type="primary", key="reg_run"):
-        _rprops = _list_props(NUM_OBJECT)
-        _hidden = [n for n in _rprops if "hidden" in n.lower() or "archived" in n.lower()]
-        _want = (["number", "number_status", "service_type", "usage_type", "number_created_at",
-                  "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"] + _hidden)
-        _want = [p for p in dict.fromkeys(_want) if p in _rprops or p in (
-            "number", "number_status", "service_type", "number_created_at")]
-        with dash_spinner("Reading Number objects (registrations)…"):
-            nums = fetch_all(NUM_OBJECT, _want, filter_groups=[{"filters": [
-                {"propertyName": "number_created_at", "operator": "GTE", "value": _ms(rlo)},
-                {"propertyName": "number_created_at", "operator": "LTE", "value": _ms(rhi + timedelta(days=1))}]}])
-
-        def _seg_of(p):
-            u = (p.get("usage_type") or "").strip().lower()
-            if "person" in u:
-                return "B2C (Personal)"
-            if "organ" in u or "org" == u or "company" in u or "business" in u:
-                return "B2B (Organization)"
-            return "Other"
-
-        # filter: VRS/PSTN service, exclude cancelled/hidden/archived, apply usage segment
-        by_phone = {}
-        for o in nums:
-            p = o.get("properties", {})
-            svc = (p.get("service_type") or "").lower()
-            if "vrs" not in svc:               # service type must be VRS
-                continue
-            stt = (p.get("number_status") or "").lower()
-            if "cancel" in stt or "archiv" in stt or "hidden" in stt:
-                continue
-            if any((str(p.get(h) or "").lower() in ("true", "yes", "1")) for h in _hidden):
-                continue
-            if seg != "All" and _seg_of(p) != seg:
-                continue
-            phone = _dig10(p.get("number")) or f"id{o['id']}"
-            # dedupe: keep the "most progressed" record per phone
-            prev = by_phone.get(phone)
-            score = (int(bool(p.get("ursa_second_outbound_call"))) * 8 +
-                     int(bool(p.get("ursa_first_outbound_call"))) * 4 +
-                     int(bool(p.get("ursa_first_login"))) * 2 +
-                     int((p.get("number_status") or "").lower() == "live"))
-            if prev is None or score > prev[0]:
-                by_phone[phone] = (score, p)
-
-        recs = [p for _, p in by_phone.values()]
-        n_signup = len(recs)
-        n_live = n_login = n_call = n_keep = 0
-        for p in recs:
-            live = (p.get("number_status") or "").lower() == "live"
-            login = live and bool(p.get("ursa_first_login"))
-            call = login and bool(p.get("ursa_first_outbound_call"))
-            keep = call and bool(p.get("ursa_second_outbound_call"))
-            n_live += int(live); n_login += int(login); n_call += int(call); n_keep += int(keep)
-        save_report(_RKEY, {"n_signup": n_signup, "n_live": n_live, "n_login": n_login,
-                            "n_call": n_call, "n_keep": n_keep, "lo": str(rlo), "hi": str(rhi), "seg": seg})
-
-    rd = load_report(_RKEY)
-    if not rd:
-        st.info("Set the window (and segment) and click **▶ Build registration funnel**.")
-        report_header_close(); st.stop()
-    if rd.get("saved_at"):
-        st.caption(f"📌 Saved {saved_at_label(rd)} · numbers created {rd['lo']} → {rd['hi']} · "
-                   f"segment: {rd.get('seg','All')}")
-    _acq_render(rd["n_signup"], rd["n_live"], rd["n_login"], rd["n_call"], rd["n_keep"],
-                "Sign-ups = **Number objects created in the window** (VRS/PSTN, deduped by phone, "
-                "cancelled/hidden/archived excluded). Live = number_status **Live**. First login / call / "
-                "keep calling use **ursa_first_login / ursa_first_outbound_call / ursa_second_outbound_call**.")
     report_header_close(); st.stop()
 
 # ── inputs (Submission → Interaction → Ticket) ──────────────────────────────────────
