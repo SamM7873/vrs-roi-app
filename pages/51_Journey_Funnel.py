@@ -286,7 +286,7 @@ mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
 # ════════════════════════════════════════════════════════════════════════════════════
 if mode == _MODE_ACQ:
-    _AKEY = "journey_acq_v2_vrs"
+    _AKEY = "journey_acq_v3_dedup"
     st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
                 "Contact → Number** (service type **VRS**), then Live (**number status Live**) → the "
                 "number's URSA milestones: **first login → first outbound call → second outbound call**.")
@@ -319,10 +319,16 @@ if mode == _MODE_ACQ:
             _numof = _batch_read(NUM_OBJECT, _nids, ["number_status", "service_type", "ursa_first_login",
                                  "ursa_first_outbound_call", "ursa_second_outbound_call"])
 
-        n_live = n_login = n_call = n_keep = 0
+        # de-duplicate sign-ups: one per email (a person who submitted twice counts once);
+        # blank-email submissions are kept individually (can't dedupe without a key)
+        _persons = {}
         for s in _subs:
             em = (s.get("properties", {}).get("email") or "").strip().lower()
-            cid = _e2c.get(em)
+            _persons[em or f"sub:{s['id']}"] = em
+        n_signup = len(_persons)
+        n_live = n_login = n_call = n_keep = 0
+        for key, em in _persons.items():
+            cid = _e2c.get(em) if em else None
             # VRS numbers only (service type must be VRS)
             nums = [_numof.get(n, {}) for n in _c2n.get(cid, [])] if cid else []
             nums = [p for p in nums if "vrs" in (p.get("service_type") or "").lower()]
