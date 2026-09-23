@@ -16,7 +16,8 @@ report_header("Journey Funnel",
               section="Support")
 
 SUB_OBJECT = "2-49942763"   # submission form records
-_JF_KEY = "journey_funnel_v5_gated"
+NUM_OBJECT = "2-40974683"   # Number object
+_JF_KEY = "journey_funnel_v6_phonebridge"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -123,6 +124,22 @@ def _dig10(v):
     return d[-10:] if len(d) >= 10 else ""
 
 
+def _batch_read(obj, ids, props):
+    out = {}
+    ids = [str(x) for x in ids]
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
+        try:
+            r = requests.post(f"{_B}/crm/v3/objects/{obj}/batch/read", headers=_H,
+                              json={"inputs": [{"id": c} for c in chunk], "properties": props}, timeout=60)
+            if r.status_code in (200, 207):
+                for o in r.json().get("results", []):
+                    out[str(o["id"])] = o.get("properties", {})
+        except requests.exceptions.RequestException:
+            pass
+    return out
+
+
 def _assoc(from_obj, to_obj, from_ids):
     """v4 batch association {from_id: [to_ids]}."""
     from collections import defaultdict as _dd
@@ -203,12 +220,20 @@ if run:
             em = (c.get("properties", {}).get("email") or "").strip().lower()
             if em:
                 email_to_cid.setdefault(em, str(c["id"]))
+    _cids = sorted(set(email_to_cid.values()))
     with dash_spinner("Linking contacts → tickets…"):
-        cid_to_tids = _assoc("contacts", "tickets", sorted(set(email_to_cid.values())))
+        cid_to_tids = _assoc("contacts", "tickets", _cids)
+    # contact → Number → phone (bridge to SIP call numbers)
+    with dash_spinner("Linking contacts → numbers (phone bridge)…"):
+        cid_to_nids = _assoc("contacts", NUM_OBJECT, _cids)
+        _all_nids = sorted({n for v in cid_to_nids.values() for n in v})
+        _num_of = _batch_read(NUM_OBJECT, _all_nids, ["number"]) if _all_nids else {}
+        cid_to_phones = {cid: ({_dig10(_num_of.get(n, {}).get("number")) for n in nids} - {""})
+                         for cid, nids in cid_to_nids.items()}
 
     # submission detail + interaction match (name for call/chat, number for SIP) + ticket match
     _sub_rows = []
-    _n_match = _n_by_name = _n_by_num = _n_has_tk = _n_int_tk = 0
+    _n_match = _n_by_name = _n_by_num = _n_by_cnum = _n_has_tk = _n_int_tk = 0
     for s in subs:
         p = s.get("properties", {})
         cd = str(p.get("hs_createdate") or "")
@@ -216,21 +241,22 @@ if run:
         ln = p.get(_ln) or p.get("lastname") or ""
         nm = _norm_name(f"{fn} {ln}") or _norm_name(p.get(_nm) or "")
         ph = _dig10(p.get(_ph)) if _ph else ""
-        by_name = bool(nm) and nm in _int_names
-        by_num = bool(ph) and ph in _int_numbers
-        matched = by_name or by_num
-        _n_match += int(matched); _n_by_name += int(by_name); _n_by_num += int(by_num)
-        # ticket via contact (email → contact → ticket association)
         em = _norm_name(p.get(_em) or "") if _em else ""
         cid = email_to_cid.get(em)
+        by_name = bool(nm) and nm in _int_names
+        by_num = bool(ph) and ph in _int_numbers
+        by_cnum = bool(cid) and bool(cid_to_phones.get(cid, set()) & _int_numbers)   # contact→number→SIP
+        matched = by_name or by_num or by_cnum
+        _n_match += int(matched); _n_by_name += int(by_name)
+        _n_by_num += int(by_num); _n_by_cnum += int(by_cnum)
         has_ticket = bool(cid) and bool(cid_to_tids.get(cid))
         _n_has_tk += int(has_ticket)
         if matched and has_ticket:          # sequential: ticket AMONG those with an interaction
             _n_int_tk += 1
+        _mt = [x for x, ok in (("Name", by_name), ("Number", by_num), ("Contact#", by_cnum)) if ok]
         row = {"Created": cd[:10],
                "Had interaction": "Yes" if matched else "No",
-               "Match type": (("Name" if by_name else "") +
-                              (" + Number" if by_num and by_name else ("Number" if by_num else ""))) or "—",
+               "Match type": " + ".join(_mt) or "—",
                "Has ticket (via contact)": "Yes" if has_ticket else "No"}
         for n, lab in _cprops:
             row[lab] = p.get(n) or ""
@@ -239,7 +265,7 @@ if run:
 
     save_report(_JF_KEY, {"n_sub": n_sub, "n_int": n_int, "n_tick": n_tick,
                           "n_match": _n_match, "n_by_name": _n_by_name, "n_by_num": _n_by_num,
-                          "n_has_tk": _n_has_tk, "n_int_tk": _n_int_tk,
+                          "n_by_cnum": _n_by_cnum, "n_has_tk": _n_has_tk, "n_int_tk": _n_int_tk,
                           "n_int_names": len(_int_names), "n_int_numbers": len(_int_numbers),
                           "n_sub_phone": int(sum(1 for s in subs if _ph and _dig10(s.get('properties', {}).get(_ph)))),
                           "n_sub_email": len(sub_emails),
@@ -350,8 +376,9 @@ if _nm_match is not None:
             f"- Interaction **names** (call/chat) seen: **{d.get('n_int_names',0):,}** · "
             f"submissions matched by name: **{d.get('n_by_name',0):,}**\n"
             f"- Interaction **numbers** (SIP) seen: **{d.get('n_int_numbers',0):,}** · "
-            f"submissions with a phone: **{d.get('n_sub_phone',0):,}** · matched by number: "
-            f"**{d.get('n_by_num',0):,}**\n"
+            f"submissions with a phone: **{d.get('n_sub_phone',0):,}** · matched by form phone: "
+            f"**{d.get('n_by_num',0):,}** · matched by **Contact→Number** phone: "
+            f"**{d.get('n_by_cnum',0):,}**\n"
             f"- Submissions with an **email**: **{d.get('n_sub_email',0):,}** · with a **ticket via "
             f"contact** (any interaction or not): **{d.get('n_has_tk',0):,}**")
         st.caption("If 'matched by name' is tiny, Convo360 call/chat Customer Names are likely "
