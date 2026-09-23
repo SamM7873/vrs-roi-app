@@ -18,7 +18,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v13_order"
+_JF_KEY = "journey_funnel_v14_alltix"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -257,13 +257,13 @@ if run:
         if rr.get("_num"):
             num_meta[rr["_num"]].append(meta)
 
-    def _join(vals):
+    def _join(vals, limit=4):
         seen, out = set(), []
         for v in vals:
             v = str(v).strip()
             if v and v not in seen:
                 seen.add(v); out.append(v)
-        return ", ".join(out[:4])
+        return ", ".join(out if limit is None else out[:limit])
 
     # ── stage 3: tickets created in the window (audit-log CSV) ──
     tk = _parse_tick(tick_file)
@@ -337,9 +337,9 @@ if run:
         _n_has_tk += int(has_ticket)
         if matched and has_ticket:          # sequential: ticket AMONG those with an interaction
             _n_int_tk += 1
-        _tk_subj = _join((_tk_of.get(t, {}).get("subject") or f"#{t}") for t in _tids)
-        _tk_own = _join(_own.get(str(_tk_of.get(t, {}).get("hubspot_owner_id") or ""), "")
-                        for t in _tids)
+        _tk_subj = _join(((_tk_of.get(t, {}).get("subject") or f"#{t}") for t in _tids), limit=None)
+        _tk_own = _join((_own.get(str(_tk_of.get(t, {}).get("hubspot_owner_id") or ""), "")
+                         for t in _tids), limit=None)
         _mt = [x for x, ok in (("Name", by_name), ("Number", by_num), ("Contact#", by_cnum)) if ok]
         # gather the matched interaction rows' type/agent/query
         _metas = []
