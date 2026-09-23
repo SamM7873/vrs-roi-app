@@ -294,7 +294,7 @@ mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
 # ════════════════════════════════════════════════════════════════════════════════════
 if mode == _MODE_ACQ:
-    _AKEY = "journey_acq_v7_toolbar"
+    _AKEY = "journey_acq_v8_regtype"
     st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
                 "Contact → Number** (service type **VRS**), then Live (**number status Live**) → the "
                 "number's URSA milestones: **first login → first outbound call → second outbound call**.")
@@ -338,8 +338,8 @@ if mode == _MODE_ACQ:
         _nids = sorted({n for v in _c2n.values() for n in v})
         with dash_spinner(f"Reading {len(_nids):,} numbers (status + URSA milestones)…"):
             _numof = _batch_read(NUM_OBJECT, _nids, ["number", "number_status", "service_type",
-                                 "usage_type", "number_created_at", "portin_status", "ursa_first_login",
-                                 "ursa_first_outbound_call", "ursa_second_outbound_call"])
+                                 "usage_type", "number_created_at", "portin_status", "registration_type",
+                                 "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"])
 
         def _fmtd(v):
             v = str(v or "").strip()
@@ -374,6 +374,7 @@ if mode == _MODE_ACQ:
             _numbers = sorted({str(p.get("number") or "").strip() for p in nums} - {""})
             _stat = sorted({(p.get("number_status") or "").strip().title() for p in nums} - {""})
             _usage = sorted({(p.get("usage_type") or "").strip().title() for p in nums} - {""})
+            _regtype = sorted({(p.get("registration_type") or "").strip() for p in nums} - {""})
             _created = sorted({_fmtd(p.get("number_created_at")) for p in nums} - {""})
             # New (created on/after cutoff) vs Existing (before cutoff), by earliest number
             _cut = acut.strftime("%Y-%m-%d")
@@ -394,6 +395,7 @@ if mode == _MODE_ACQ:
                 "Consumer": _consumer,
                 "Type": _useg,
                 "Number type": _numtype,
+                "Registration type": ", ".join(_regtype) or "—",
                 "VRS Number(s)": ", ".join(_numbers) or "—",
                 "Number Status": ", ".join(_stat) or "—",
                 "Usage type": ", ".join(_usage) or "—",
@@ -432,6 +434,12 @@ if mode == _MODE_ACQ:
             _seg_df = _seg_df[_seg_df["Type"] == typ]
         if numt != "All" and "Number type" in _seg_df.columns:
             _seg_df = _seg_df[_seg_df["Number type"] == numt]
+        if "Registration type" in _adf.columns:
+            _regopts = sorted(v for v in _adf["Registration type"].unique() if v and v != "—")
+            _regpick = st.multiselect("Registration type (empty = all)", _regopts, default=[],
+                                      key="acq_reg_filter")
+            if _regpick:
+                _seg_df = _seg_df[_seg_df["Registration type"].isin(_regpick)]
 
     # derive the funnel counts from the (filtered) per-person data
     if _adf is not None and not _adf.empty:
