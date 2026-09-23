@@ -16,22 +16,31 @@ report_header("Journey Funnel",
               section="Support")
 
 SUB_OBJECT = "2-49942763"   # submission form records
-_JF_KEY = "journey_funnel_v1"
+_JF_KEY = "journey_funnel_v2"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _sub_contact_props():
-    """Discover the submission object's contact-info properties (name/email/phone/address…)."""
+    """Discover the submission object's contact-info properties.
+
+    Includes name/email/phone/address/state/zip, plus UTM fields, B2C & B2B
+    service interest, and referral source. Excludes event-location fields
+    (event city/state/name) and any plain 'city' field.
+    """
     try:
         r = requests.get(f"{_B}/crm/v3/properties/{SUB_OBJECT}", headers=_H, timeout=30)
         if r.status_code != 200:
             return []
         _kw = ("email", "phone", "mobile", "firstname", "lastname", "first_name", "last_name",
-               "name", "contact", "address", "city", "state", "zip", "country", "company")
+               "name", "contact", "address", "state", "zip", "country", "company",
+               "utm", "service_interest", "b2c", "b2b", "referral")
         out = []
         for p in r.json().get("results", []):
             n = (p.get("name") or "")
-            if any(k in n.lower() for k in _kw):
+            nl = n.lower()
+            if "event" in nl or "city" in nl:      # drop event-location + city fields
+                continue
+            if any(k in nl for k in _kw):
                 out.append((n, p.get("label") or n))
         return out
     except Exception:
