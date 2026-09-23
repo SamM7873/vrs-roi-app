@@ -221,8 +221,12 @@ def _assoc(from_obj, to_obj, from_ids):
     return out
 
 
-def _acq_render(sg, lv, lg, cl, kp, note):
-    """Render the 5 rate cards + drop-off Sankey for an acquisition funnel."""
+def _acq_render(sg, lv, lg, cl, kp, note, of_signups=False):
+    """Render the 5 rate cards + drop-off Sankey for an acquisition funnel.
+
+    of_signups=False → each gate's rate is vs the PREVIOUS gate ("per gate").
+    of_signups=True  → each gate's rate is vs SIGN-UPS ("of sign-ups").
+    """
     def _rate(a, b):
         return f"{a/b*100:.0f}% ({a:,})" if b else "—"
 
@@ -233,12 +237,16 @@ def _acq_render(sg, lv, lg, cl, kp, note):
             <div style="font-size:1.7rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
             <div style="font-size:.7rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
+    _dl = "sign-ups" if of_signups else None
     _ac = st.columns(5)
     _acard(_ac[0], "Sign-ups", f"{sg:,}", "new VRS/PSTN registrations", "#8792A2")
-    _acard(_ac[1], "Live consumers", _rate(lv, sg), "PSTN number ready / sign-ups", "#4C8DFF")
-    _acard(_ac[2], "First login rate", _rate(lg, lv), "logged in / live consumers", "#0EA5E9")
-    _acard(_ac[3], "First-call rate", _rate(cl, lg), "first outbound / logged in", "#14B8A6")
-    _acard(_ac[4], "Keep calling", _rate(kp, cl), "second outbound / first-call", "#22C55E")
+    _acard(_ac[1], "Live consumers", _rate(lv, sg), "PSTN ready / sign-ups", "#4C8DFF")
+    _acard(_ac[2], "First login rate", _rate(lg, sg if of_signups else lv),
+           f"logged in / {_dl or 'live consumers'}", "#0EA5E9")
+    _acard(_ac[3], "First-call rate", _rate(cl, sg if of_signups else lg),
+           f"first outbound / {_dl or 'logged in'}", "#14B8A6")
+    _acard(_ac[4], "Keep calling", _rate(kp, sg if of_signups else cl),
+           f"second outbound / {_dl or 'first-call'}", "#22C55E")
     st.markdown("")
     st.markdown("**Where do consumers drop off on the way to calling?**")
     st.markdown(
@@ -286,19 +294,20 @@ mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
 # ════════════════════════════════════════════════════════════════════════════════════
 if mode == _MODE_ACQ:
-    _AKEY = "journey_acq_v6_consumer"
+    _AKEY = "journey_acq_v7_toolbar"
     st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
                 "Contact → Number** (service type **VRS**), then Live (**number status Live**) → the "
                 "number's URSA milestones: **first login → first outbound call → second outbound call**.")
     _t = date.today()
-    ac1, ac2, ac3 = st.columns(3)
-    alo = ac1.date_input("Sign-ups from", value=_t - timedelta(days=28), key="acq_lo")
-    ahi = ac2.date_input("to", value=_t, key="acq_hi")
+    ac0, ac3 = st.columns([2, 1])
+    _win = ac0.radio("Rolling window (past completed days, PST)",
+                     [7, 14, 28, 30, 56, 60, 84, 90], index=2, horizontal=True,
+                     format_func=lambda d: f"{d}d", key="acq_win")
     acut = ac3.date_input("New consumer on/after", value=date(2026, 9, 23), key="acq_cut",
                           help="Numbers created on/after this date = New consumer; earlier = Existing.")
-    if alo > ahi:
-        alo, ahi = ahi, alo
-        st.warning("From was after To — swapped.")
+    ahi = _t - timedelta(days=1)                 # last completed day
+    alo = ahi - timedelta(days=int(_win) - 1)
+    st.caption(f"Sign-ups window: **{alo} → {ahi}** (past {_win} completed days)")
     if st.button("▶ Build acquisition funnel", type="primary", key="acq_run"):
         with dash_spinner("Reading sign-ups (submissions)…"):
             _subs = fetch_all(SUB_OBJECT, ["hs_createdate", "email"], filter_groups=[{"filters": [
@@ -319,7 +328,7 @@ if mode == _MODE_ACQ:
         _nids = sorted({n for v in _c2n.values() for n in v})
         with dash_spinner(f"Reading {len(_nids):,} numbers (status + URSA milestones)…"):
             _numof = _batch_read(NUM_OBJECT, _nids, ["number", "number_status", "service_type",
-                                 "usage_type", "number_created_at", "ursa_first_login",
+                                 "usage_type", "number_created_at", "portin_status", "ursa_first_login",
                                  "ursa_first_outbound_call", "ursa_second_outbound_call"])
 
         def _fmtd(v):
@@ -360,11 +369,21 @@ if mode == _MODE_ACQ:
             _cut = acut.strftime("%Y-%m-%d")
             _consumer = ("New" if (_created and min(_created) >= _cut) else
                          "Existing" if _created else "—")
+            # Number type: Ported in if any number has a port-in status, else Direct
+            _ported = any((str(p.get("portin_status") or "").strip().lower()
+                           not in ("", "none", "n/a", "not ported", "direct")) for p in nums)
+            _numtype = "Ported in" if _ported else ("Direct" if nums else "—")
+            # usage segment for the Type filter
+            _useg = ("Personal" if any("person" in (p.get("usage_type") or "").lower() for p in nums)
+                     else "Organisations" if any(k in (p.get("usage_type") or "").lower()
+                     for p in nums for k in ("organ", "business", "company")) else "—")
             _stage = ("Keep calling" if keep else "First call" if call else "First login" if login
                       else "Live" if live else "Sign-up only")
             _arows.append({
                 "Email": em or "(no email)",
                 "Consumer": _consumer,
+                "Type": _useg,
+                "Number type": _numtype,
                 "VRS Number(s)": ", ".join(_numbers) or "—",
                 "Number Status": ", ".join(_stat) or "—",
                 "Usage type": ", ".join(_usage) or "—",
@@ -388,13 +407,23 @@ if mode == _MODE_ACQ:
         st.caption(f"📌 Saved {saved_at_label(ad)} · sign-ups {ad['lo']} → {ad['hi']}")
 
     _adf = ad.get("df")
-    # ── consumer segment drives the WHOLE funnel (cards + Sankey + table) ─────────────
-    seg = st.radio("Consumer segment", ["All", "New", "Existing"], horizontal=True, key="acq_seg")
-    _seg_df = _adf if _adf is not None else pd.DataFrame()
-    if seg != "All" and _adf is not None and "Consumer" in _adf.columns:
-        _seg_df = _adf[_adf["Consumer"] == seg]
+    # ── toolbar: consumer segment · show each gate · type · numbers ───────────────────
+    tb1, tb2, tb3, tb4 = st.columns(4)
+    seg = tb1.radio("Consumer", ["All", "New", "Existing"], horizontal=True, key="acq_seg")
+    gate = tb2.radio("Show each gate", ["Per gate", "Of sign-ups"], horizontal=True, key="acq_gate")
+    typ = tb3.radio("Type", ["All", "Personal", "Organisations"], horizontal=True, key="acq_type")
+    numt = tb4.radio("Numbers", ["All", "Direct", "Ported in"], horizontal=True, key="acq_numtype")
 
-    # derive the funnel counts from the (segmented) per-person data
+    _seg_df = _adf if _adf is not None else pd.DataFrame()
+    if _adf is not None and not _adf.empty:
+        if seg != "All" and "Consumer" in _seg_df.columns:
+            _seg_df = _seg_df[_seg_df["Consumer"] == seg]
+        if typ != "All" and "Type" in _seg_df.columns:
+            _seg_df = _seg_df[_seg_df["Type"] == typ]
+        if numt != "All" and "Number type" in _seg_df.columns:
+            _seg_df = _seg_df[_seg_df["Number type"] == numt]
+
+    # derive the funnel counts from the (filtered) per-person data
     if _adf is not None and not _adf.empty:
         _sg = len(_seg_df)
         _lv = int((_seg_df["Live"] == "Yes").sum())
@@ -405,10 +434,11 @@ if mode == _MODE_ACQ:
         _sg, _lv, _lg, _cl, _kp = (ad["n_signup"], ad["n_live"], ad["n_login"],
                                    ad["n_call"], ad["n_keep"])
     _acq_render(_sg, _lv, _lg, _cl, _kp,
-                f"Segment: **{seg}** consumers. Sign-ups = **submissions** in the window "
-                "(Submission → Contact → Number, VRS only). New = number created on/after the cutoff, "
-                "Existing = before. Live = **number status Live**; then **ursa_first_login / "
-                "ursa_first_outbound_call / ursa_second_outbound_call**. Each gate nests inside the previous.")
+                f"Consumer: **{seg}** · Type: **{typ}** · Numbers: **{numt}** · gates shown "
+                f"**{gate.lower()}**. New = number created on/after cutoff; Direct = newly acquired "
+                "number, Ported in = brought from another carrier. Live = number status Live; then "
+                "ursa_first_login / ursa_first_outbound_call / ursa_second_outbound_call.",
+                of_signups=(gate == "Of sign-ups"))
 
     # ── per-person detail table (same segment) ───────────────────────────────────────
     if _adf is not None and not _adf.empty:
