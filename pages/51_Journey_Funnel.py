@@ -17,7 +17,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v6_phonebridge"
+_JF_KEY = "journey_funnel_v7_agentquery"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -83,19 +83,23 @@ def _parse_conv(file):
         return "Convo360: no date column found."
     ccol = _find(df.columns, "customer name", "customer", "name")
     tcol = _find(df.columns, "type")
+    acol = _find(df.columns, "agent", "rep")
+    qcol = _find(df.columns, "customer query", "query", "reason")
     df["_day"] = pd.to_datetime(df[dcol], errors="coerce").dt.date
     _raw = df[ccol] if ccol else ""
     _typ = df[tcol].str.upper() if tcol else ""
     is_sip = (_typ.str.contains("SIP") | _typ.str.contains("VIDEO")) if tcol else False
     df["_cust"] = "" if not ccol else _raw.where(~is_sip, "").map(_norm_name)      # name for call/chat
     df["_num"] = "" if not ccol else _raw.where(is_sip, "").map(_dig10)            # number for SIP
-    # fallback: if a non-SIP customer name is actually all digits, treat as a number too
     if ccol:
         _extra_num = _raw.map(_dig10)
         df["_num"] = df["_num"].where(df["_num"] != "", _extra_num.where(_raw.map(
             lambda v: "".join(ch for ch in str(v) if ch.isdigit()) == str(v).replace(" ", "")), ""))
+    df["_type"] = df[tcol].str.strip() if tcol else ""
+    df["_agent"] = df[acol].astype(str).str.split("@").str[0].str.strip() if acol else ""
+    df["_query"] = df[qcol].astype(str).str.strip() if qcol else ""
     df = df[df["_day"].notna()].copy()
-    return df[["_day", "_cust", "_num"]]
+    return df[["_day", "_cust", "_num", "_type", "_agent", "_query"]]
 
 
 def _parse_tick(file):
@@ -186,6 +190,24 @@ if run:
     _int_names = set(cv["_cust"].dropna()) - {""}          # call/chat customer names
     _int_numbers = set(cv["_num"].dropna()) - {""}         # SIP customer numbers (last-10)
 
+    # name/number → interaction meta (type · agent · query) for the matched rows
+    from collections import defaultdict as _ddict
+    name_meta, num_meta = _ddict(list), _ddict(list)
+    for _, rr in cv.iterrows():
+        meta = (rr.get("_type", ""), rr.get("_agent", ""), rr.get("_query", ""))
+        if rr.get("_cust"):
+            name_meta[rr["_cust"]].append(meta)
+        if rr.get("_num"):
+            num_meta[rr["_num"]].append(meta)
+
+    def _join(vals):
+        seen, out = set(), []
+        for v in vals:
+            v = str(v).strip()
+            if v and v not in seen:
+                seen.add(v); out.append(v)
+        return ", ".join(out[:4])
+
     # ── stage 3: tickets created in the window (audit-log CSV) ──
     tk = _parse_tick(tick_file)
     if isinstance(tk, str):
@@ -254,9 +276,21 @@ if run:
         if matched and has_ticket:          # sequential: ticket AMONG those with an interaction
             _n_int_tk += 1
         _mt = [x for x, ok in (("Name", by_name), ("Number", by_num), ("Contact#", by_cnum)) if ok]
+        # gather the matched interaction rows' type/agent/query
+        _metas = []
+        if by_name:
+            _metas += name_meta.get(nm, [])
+        if by_num:
+            _metas += num_meta.get(ph, [])
+        if by_cnum:
+            for _cph in (cid_to_phones.get(cid, set()) & _int_numbers):
+                _metas += num_meta.get(_cph, [])
         row = {"Created": cd[:10],
                "Had interaction": "Yes" if matched else "No",
                "Match type": " + ".join(_mt) or "—",
+               "Interaction type": _join(m[0] for m in _metas) or "—",
+               "Interaction agent": _join(m[1] for m in _metas) or "—",
+               "Interaction query": _join(m[2] for m in _metas) or "—",
                "Has ticket (via contact)": "Yes" if has_ticket else "No"}
         for n, lab in _cprops:
             row[lab] = p.get(n) or ""
