@@ -16,6 +16,25 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _sub_contact_props():
+    """Discover the submission object's contact-info properties (name/email/phone/address…)."""
+    try:
+        r = requests.get(f"{_B}/crm/v3/properties/{SUB_OBJECT}", headers=_H, timeout=30)
+        if r.status_code != 200:
+            return []
+        _kw = ("email", "phone", "mobile", "firstname", "lastname", "first_name", "last_name",
+               "name", "contact", "address", "city", "state", "zip", "country", "company")
+        out = []
+        for p in r.json().get("results", []):
+            n = (p.get("name") or "")
+            if any(k in n.lower() for k in _kw):
+                out.append((n, p.get("label") or n))
+        return out
+    except Exception:
+        return []
+
 st.markdown("A single funnel across three sources: **submission forms** (HubSpot custom object), "
             "**interactions** (Convo360 CSV), and **tickets** (HubSpot audit-log CSV). Counts are the "
             "**volume at each stage** in the chosen date window, so you can see the drop-off from "
@@ -83,11 +102,24 @@ run = st.button("▶ Build funnel", type="primary", disabled=not (conv_file and 
 
 if run:
     # ── stage 1: submissions created in the window (HubSpot custom object) ──
+    _cprops = _sub_contact_props()
+    _cnames = [n for n, _ in _cprops]
     with dash_spinner("Reading submission forms…"):
-        subs = fetch_all(SUB_OBJECT, ["hs_createdate"], filter_groups=[{"filters": [
+        subs = fetch_all(SUB_OBJECT, ["hs_createdate"] + _cnames, filter_groups=[{"filters": [
             {"propertyName": "hs_createdate", "operator": "GTE", "value": _ms(lo)},
             {"propertyName": "hs_createdate", "operator": "LTE", "value": _ms(hi + timedelta(days=1))}]}])
     n_sub = len(subs)
+
+    # submission contact-info detail table (all discovered contact fields)
+    _sub_rows = []
+    for s in subs:
+        p = s.get("properties", {})
+        cd = str(p.get("hs_createdate") or "")
+        row = {"Created": cd[:10]}
+        for n, lab in _cprops:
+            row[lab] = p.get(n) or ""
+        _sub_rows.append(row)
+    _sub_df = pd.DataFrame(_sub_rows)
 
     # ── stage 2: interactions in the window (Convo360 CSV) ──
     cv = _parse_conv(conv_file)
@@ -104,7 +136,7 @@ if run:
     n_tick = int(tk["_created"].sum())
 
     st.session_state["_jf"] = {"n_sub": n_sub, "n_int": n_int, "n_tick": n_tick,
-                               "lo": str(lo), "hi": str(hi)}
+                               "lo": str(lo), "hi": str(hi), "sub_df": _sub_df}
 
 d = st.session_state.get("_jf")
 if not d:
@@ -182,5 +214,18 @@ st.caption("Volume funnel: each stage is the total count in the window. Drop-off
            "= 1 − (next stage ÷ previous stage). Because the sources aren't joined per person, a later "
            "stage can exceed an earlier one (e.g. more interactions than submissions) — that just means "
            "the stages draw from different populations, not a negative drop-off.")
+
+# ── submission contact info (top of funnel) ─────────────────────────────────────────
+_sub_df = d.get("sub_df")
+if _sub_df is not None and not _sub_df.empty:
+    st.markdown("##### 📝 Submission contact info")
+    _s = st.text_input("Search submissions (name / email / phone…)").strip().lower()
+    _sv = _sub_df
+    if _s:
+        _sv = _sv[_sv.apply(lambda r: _s in " ".join(str(x).lower() for x in r.values), axis=1)]
+    st.caption(f"{len(_sv):,} of {len(_sub_df):,} submissions · all contact fields on the submission object")
+    st.dataframe(_sv, use_container_width=True, hide_index=True, height=460)
+    st.download_button("📥 Export submissions (CSV)", _sv.to_csv(index=False),
+                       "submission_contact_info.csv", "text/csv", key="jf_sub_csv")
 
 report_header_close()
