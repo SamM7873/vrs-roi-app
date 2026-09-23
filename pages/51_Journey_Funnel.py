@@ -509,12 +509,21 @@ if _sub_df is not None and not _sub_df.empty:
                                    help="Name = call/chat name · Number = form phone · Contact# = Contact→Number phone")
     else:
         _mtpick = []
-    _s = _fc3.text_input("Search submissions (name / email / phone…)").strip().lower()
+    # interaction type filter (Call / SIP / Chat / Query …) — matches the joined type string
+    if "Interaction type" in _sub_df.columns:
+        _ittoks = sorted({t.strip() for v in _sub_df["Interaction type"] for t in str(v).split(",")
+                          if t.strip() and t.strip() != "—"})
+        _itpick = _fc3.multiselect("Interaction type", _ittoks, default=[], key="jf_it_filter")
+    else:
+        _itpick = []
+    _s = st.text_input("Search submissions (name / email / phone / query…)").strip().lower()
     _sv = _sub_df
     if _mfilt != "All" and _match_col in _sv.columns:
         _sv = _sv[_sv[_match_col] == _mfilt]
     if _mtpick:
         _sv = _sv[_sv["Match type"].isin(_mtpick)]
+    if _itpick:
+        _sv = _sv[_sv["Interaction type"].apply(lambda v: any(t in str(v) for t in _itpick))]
     if _s:
         _sv = _sv[_sv.apply(lambda r: _s in " ".join(str(x).lower() for x in r.values), axis=1)]
     st.caption(f"{len(_sv):,} of {len(_sub_df):,} submissions · all contact fields on the submission object")
