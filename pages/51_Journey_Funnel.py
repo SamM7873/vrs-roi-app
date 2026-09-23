@@ -18,7 +18,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v12_hms"
+_JF_KEY = "journey_funnel_v13_order"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -350,20 +350,25 @@ if run:
         if by_cnum:
             for _cph in (cid_to_phones.get(cid, set()) & _int_numbers):
                 _metas += num_meta.get(_cph, [])
-        row = {"Created": cd[:10],
-               "Had interaction": "Yes" if matched else "No",
-               "Match type": " + ".join(_mt) or "—",
-               "Interaction type": _join(m[0] for m in _metas) or "—",
-               "Interaction agent": _join(m[1] for m in _metas) or "—",
-               "Interaction query": _join(m[2] for m in _metas) or "—",
-               "Call time": _join(_hms(m[3]) for m in _metas) or "—",
-               "Wait time": _join(_hms(m[4]) for m in _metas) or "—",
-               "Website": _join(m[5] for m in _metas) or "—",
-               "Has ticket (via contact)": "Yes" if has_ticket else "No",
-               "Ticket": _tk_subj or "—",
-               "Ticket owner": _tk_own or "—"}
-        for n, lab in _cprops:
+        # column order: SUBMISSION → INTERACTION → TICKET
+        row = {"Created": cd[:10]}
+        for n, lab in _cprops:                       # submission form fields
             row[lab] = p.get(n) or ""
+        row.update({                                 # interaction fields
+            "Had interaction": "Yes" if matched else "No",
+            "Match type": " + ".join(_mt) or "—",
+            "Interaction type": _join(m[0] for m in _metas) or "—",
+            "Interaction agent": _join(m[1] for m in _metas) or "—",
+            "Interaction query": _join(m[2] for m in _metas) or "—",
+            "Call time": _join(_hms(m[3]) for m in _metas) or "—",
+            "Wait time": _join(_hms(m[4]) for m in _metas) or "—",
+            "Website": _join(m[5] for m in _metas) or "—",
+        })
+        row.update({                                 # ticket fields
+            "Has ticket (via contact)": "Yes" if has_ticket else "No",
+            "Ticket": _tk_subj or "—",
+            "Ticket owner": _tk_own or "—",
+        })
         _sub_rows.append(row)
     _sub_df = pd.DataFrame(_sub_rows)
 
