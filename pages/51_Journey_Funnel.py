@@ -286,7 +286,7 @@ mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
 # ════════════════════════════════════════════════════════════════════════════════════
 if mode == _MODE_ACQ:
-    _AKEY = "journey_acq_v3_dedup"
+    _AKEY = "journey_acq_v4_table"
     st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
                 "Contact → Number** (service type **VRS**), then Live (**number status Live**) → the "
                 "number's URSA milestones: **first login → first outbound call → second outbound call**.")
@@ -316,8 +316,8 @@ if mode == _MODE_ACQ:
             _c2n = _assoc("contacts", NUM_OBJECT, sorted(set(_e2c.values())))
         _nids = sorted({n for v in _c2n.values() for n in v})
         with dash_spinner(f"Reading {len(_nids):,} numbers (status + URSA milestones)…"):
-            _numof = _batch_read(NUM_OBJECT, _nids, ["number_status", "service_type", "ursa_first_login",
-                                 "ursa_first_outbound_call", "ursa_second_outbound_call"])
+            _numof = _batch_read(NUM_OBJECT, _nids, ["number", "number_status", "service_type",
+                                 "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"])
 
         # de-duplicate sign-ups: one per email (a person who submitted twice counts once);
         # blank-email submissions are kept individually (can't dedupe without a key)
@@ -327,6 +327,7 @@ if mode == _MODE_ACQ:
             _persons[em or f"sub:{s['id']}"] = em
         n_signup = len(_persons)
         n_live = n_login = n_call = n_keep = 0
+        _arows = []
         for key, em in _persons.items():
             cid = _e2c.get(em) if em else None
             # VRS numbers only (service type must be VRS)
@@ -337,8 +338,24 @@ if mode == _MODE_ACQ:
             call = login and any((p.get("ursa_first_outbound_call") or "") for p in nums)
             keep = call and any((p.get("ursa_second_outbound_call") or "") for p in nums)
             n_live += int(live); n_login += int(login); n_call += int(call); n_keep += int(keep)
+            _numbers = sorted({str(p.get("number") or "").strip() for p in nums} - {""})
+            _stat = sorted({(p.get("number_status") or "").strip().title() for p in nums} - {""})
+            _stage = ("Keep calling" if keep else "First call" if call else "First login" if login
+                      else "Live" if live else "Sign-up only")
+            _arows.append({
+                "Email": em or "(no email)",
+                "VRS Number(s)": ", ".join(_numbers) or "—",
+                "Number Status": ", ".join(_stat) or "—",
+                "Live": "Yes" if live else "No",
+                "First login": "Yes" if login else "No",
+                "First call": "Yes" if call else "No",
+                "Keep calling": "Yes" if keep else "No",
+                "Stage reached": _stage,
+            })
+        _adf = pd.DataFrame(_arows)
         save_report(_AKEY, {"n_signup": n_signup, "n_live": n_live, "n_login": n_login,
-                            "n_call": n_call, "n_keep": n_keep, "lo": str(alo), "hi": str(ahi)})
+                            "n_call": n_call, "n_keep": n_keep, "lo": str(alo), "hi": str(ahi),
+                            "df": _adf})
 
     ad = load_report(_AKEY)
     if not ad:
@@ -351,6 +368,26 @@ if mode == _MODE_ACQ:
                 "numbers count. Live = **number status Live**. First login / first call / keep calling use "
                 "the Number's **ursa_first_login**, **ursa_first_outbound_call**, **ursa_second_outbound_call**. "
                 "Each gate nests inside the previous one, so the funnel drops cleanly.")
+
+    # ── per-person detail table ──────────────────────────────────────────────────────
+    _adf = ad.get("df")
+    if _adf is not None and not _adf.empty:
+        st.markdown("##### Sign-up detail")
+        _sc1, _sc2 = st.columns([1.3, 2])
+        _stopts = ["Sign-up only", "Live", "First login", "First call", "Keep calling"]
+        _stpick = _sc1.multiselect("Stage reached (empty = all)",
+                                   [s for s in _stopts if s in set(_adf["Stage reached"])],
+                                   default=[], key="acq_stage_filter")
+        _q = _sc2.text_input("Search email / number", key="acq_search").strip().lower()
+        _v = _adf
+        if _stpick:
+            _v = _v[_v["Stage reached"].isin(_stpick)]
+        if _q:
+            _v = _v[_v.apply(lambda r: _q in " ".join(str(x).lower() for x in r.values), axis=1)]
+        st.caption(f"{len(_v):,} of {len(_adf):,} sign-ups")
+        st.dataframe(_v, use_container_width=True, hide_index=True, height=460)
+        st.download_button("📥 Export sign-ups (CSV)", _v.to_csv(index=False),
+                           "acquisition_signups.csv", "text/csv", key="acq_csv")
     report_header_close(); st.stop()
 
 # ── inputs (Submission → Interaction → Ticket) ──────────────────────────────────────
