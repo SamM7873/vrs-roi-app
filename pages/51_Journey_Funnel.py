@@ -286,7 +286,7 @@ mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
 # ════════════════════════════════════════════════════════════════════════════════════
 if mode == _MODE_ACQ:
-    _AKEY = "journey_acq_v4_table"
+    _AKEY = "journey_acq_v5_usage"
     st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
                 "Contact → Number** (service type **VRS**), then Live (**number status Live**) → the "
                 "number's URSA milestones: **first login → first outbound call → second outbound call**.")
@@ -317,7 +317,19 @@ if mode == _MODE_ACQ:
         _nids = sorted({n for v in _c2n.values() for n in v})
         with dash_spinner(f"Reading {len(_nids):,} numbers (status + URSA milestones)…"):
             _numof = _batch_read(NUM_OBJECT, _nids, ["number", "number_status", "service_type",
-                                 "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"])
+                                 "usage_type", "number_created_at", "ursa_first_login",
+                                 "ursa_first_outbound_call", "ursa_second_outbound_call"])
+
+        def _fmtd(v):
+            v = str(v or "").strip()
+            if not v:
+                return ""
+            if v.isdigit():
+                try:
+                    return datetime.fromtimestamp(int(v) / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+                except Exception:
+                    return v
+            return v[:10]
 
         # de-duplicate sign-ups: one per email (a person who submitted twice counts once);
         # blank-email submissions are kept individually (can't dedupe without a key)
@@ -340,12 +352,16 @@ if mode == _MODE_ACQ:
             n_live += int(live); n_login += int(login); n_call += int(call); n_keep += int(keep)
             _numbers = sorted({str(p.get("number") or "").strip() for p in nums} - {""})
             _stat = sorted({(p.get("number_status") or "").strip().title() for p in nums} - {""})
+            _usage = sorted({(p.get("usage_type") or "").strip().title() for p in nums} - {""})
+            _created = sorted({_fmtd(p.get("number_created_at")) for p in nums} - {""})
             _stage = ("Keep calling" if keep else "First call" if call else "First login" if login
                       else "Live" if live else "Sign-up only")
             _arows.append({
                 "Email": em or "(no email)",
                 "VRS Number(s)": ", ".join(_numbers) or "—",
                 "Number Status": ", ".join(_stat) or "—",
+                "Usage type": ", ".join(_usage) or "—",
+                "Number created": ", ".join(_created) or "—",
                 "Live": "Yes" if live else "No",
                 "First login": "Yes" if login else "No",
                 "First call": "Yes" if call else "No",
