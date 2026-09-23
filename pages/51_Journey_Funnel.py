@@ -386,33 +386,45 @@ if mode == _MODE_ACQ:
         report_header_close(); st.stop()
     if ad.get("saved_at"):
         st.caption(f"📌 Saved {saved_at_label(ad)} · sign-ups {ad['lo']} → {ad['hi']}")
-    _acq_render(ad["n_signup"], ad["n_live"], ad["n_login"], ad["n_call"], ad["n_keep"],
-                "Sign-ups = **submissions** in the window (Submission → Contact → Number). Only **VRS** "
-                "numbers count. Live = **number status Live**. First login / first call / keep calling use "
-                "the Number's **ursa_first_login**, **ursa_first_outbound_call**, **ursa_second_outbound_call**. "
-                "Each gate nests inside the previous one, so the funnel drops cleanly.")
 
-    # ── per-person detail table ──────────────────────────────────────────────────────
     _adf = ad.get("df")
+    # ── consumer segment drives the WHOLE funnel (cards + Sankey + table) ─────────────
+    seg = st.radio("Consumer segment", ["All", "New", "Existing"], horizontal=True, key="acq_seg")
+    _seg_df = _adf if _adf is not None else pd.DataFrame()
+    if seg != "All" and _adf is not None and "Consumer" in _adf.columns:
+        _seg_df = _adf[_adf["Consumer"] == seg]
+
+    # derive the funnel counts from the (segmented) per-person data
+    if _adf is not None and not _adf.empty:
+        _sg = len(_seg_df)
+        _lv = int((_seg_df["Live"] == "Yes").sum())
+        _lg = int((_seg_df["First login"] == "Yes").sum())
+        _cl = int((_seg_df["First call"] == "Yes").sum())
+        _kp = int((_seg_df["Keep calling"] == "Yes").sum())
+    else:   # older saved report without the df — fall back to stored aggregate (All only)
+        _sg, _lv, _lg, _cl, _kp = (ad["n_signup"], ad["n_live"], ad["n_login"],
+                                   ad["n_call"], ad["n_keep"])
+    _acq_render(_sg, _lv, _lg, _cl, _kp,
+                f"Segment: **{seg}** consumers. Sign-ups = **submissions** in the window "
+                "(Submission → Contact → Number, VRS only). New = number created on/after the cutoff, "
+                "Existing = before. Live = **number status Live**; then **ursa_first_login / "
+                "ursa_first_outbound_call / ursa_second_outbound_call**. Each gate nests inside the previous.")
+
+    # ── per-person detail table (same segment) ───────────────────────────────────────
     if _adf is not None and not _adf.empty:
         st.markdown("##### Sign-up detail")
-        _sc1, _sc2, _sc3 = st.columns([1.3, 1, 2])
+        _sc1, _sc2 = st.columns([1.3, 2])
         _stopts = ["Sign-up only", "Live", "First login", "First call", "Keep calling"]
         _stpick = _sc1.multiselect("Stage reached (empty = all)",
-                                   [s for s in _stopts if s in set(_adf["Stage reached"])],
+                                   [s for s in _stopts if s in set(_seg_df["Stage reached"])],
                                    default=[], key="acq_stage_filter")
-        _cpick = _sc2.multiselect("Consumer (empty = all)",
-                                  [c for c in ["New", "Existing", "—"] if c in set(_adf.get("Consumer", []))],
-                                  default=[], key="acq_consumer_filter")
-        _q = _sc3.text_input("Search email / number", key="acq_search").strip().lower()
-        _v = _adf
+        _q = _sc2.text_input("Search email / number", key="acq_search").strip().lower()
+        _v = _seg_df
         if _stpick:
             _v = _v[_v["Stage reached"].isin(_stpick)]
-        if _cpick and "Consumer" in _v.columns:
-            _v = _v[_v["Consumer"].isin(_cpick)]
         if _q:
             _v = _v[_v.apply(lambda r: _q in " ".join(str(x).lower() for x in r.values), axis=1)]
-        st.caption(f"{len(_v):,} of {len(_adf):,} sign-ups")
+        st.caption(f"{len(_v):,} of {len(_adf):,} sign-ups · segment: {seg}")
         st.dataframe(_v, use_container_width=True, hide_index=True, height=460)
         st.download_button("📥 Export sign-ups (CSV)", _v.to_csv(index=False),
                            "acquisition_signups.csv", "text/csv", key="acq_csv")
