@@ -287,10 +287,10 @@ mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ, _MODE_ACQR])
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
 # ════════════════════════════════════════════════════════════════════════════════════
 if mode == _MODE_ACQ:
-    _AKEY = "journey_acq_v1"
+    _AKEY = "journey_acq_v2_vrs"
     st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
-                "Contact → Number**, then the number's URSA milestones: **first login → first outbound "
-                "call → second outbound call**.")
+                "Contact → Number** (service type **VRS**), then Live (**number status Live**) → the "
+                "number's URSA milestones: **first login → first outbound call → second outbound call**.")
     _t = date.today()
     ac1, ac2 = st.columns(2)
     alo = ac1.date_input("Sign-ups from", value=_t - timedelta(days=28), key="acq_lo")
@@ -320,14 +320,14 @@ if mode == _MODE_ACQ:
             _numof = _batch_read(NUM_OBJECT, _nids, ["number_status", "service_type", "ursa_first_login",
                                  "ursa_first_outbound_call", "ursa_second_outbound_call"])
 
-        def _live(p):
-            return (p.get("number_status") or "").strip().lower() == "live"
         n_live = n_login = n_call = n_keep = 0
         for s in _subs:
             em = (s.get("properties", {}).get("email") or "").strip().lower()
             cid = _e2c.get(em)
+            # VRS numbers only (service type must be VRS)
             nums = [_numof.get(n, {}) for n in _c2n.get(cid, [])] if cid else []
-            live = any(_live(p) for p in nums)
+            nums = [p for p in nums if "vrs" in (p.get("service_type") or "").lower()]
+            live = any((p.get("number_status") or "").strip().lower() == "live" for p in nums)
             login = live and any((p.get("ursa_first_login") or "") for p in nums)
             call = login and any((p.get("ursa_first_outbound_call") or "") for p in nums)
             keep = call and any((p.get("ursa_second_outbound_call") or "") for p in nums)
@@ -342,10 +342,10 @@ if mode == _MODE_ACQ:
     if ad.get("saved_at"):
         st.caption(f"📌 Saved {saved_at_label(ad)} · sign-ups {ad['lo']} → {ad['hi']}")
     _acq_render(ad["n_signup"], ad["n_live"], ad["n_login"], ad["n_call"], ad["n_keep"],
-                "Sign-ups = **submissions** in the window. Live = a linked Number is **Live** (PSTN ready). "
-                "First login / first call / keep calling use the Number's **ursa_first_login**, "
-                "**ursa_first_outbound_call**, **ursa_second_outbound_call**. Each gate nests inside the "
-                "previous one, so the funnel drops cleanly.")
+                "Sign-ups = **submissions** in the window (Submission → Contact → Number). Only **VRS** "
+                "numbers count. Live = **number status Live**. First login / first call / keep calling use "
+                "the Number's **ursa_first_login**, **ursa_first_outbound_call**, **ursa_second_outbound_call**. "
+                "Each gate nests inside the previous one, so the funnel drops cleanly.")
     report_header_close(); st.stop()
 
 # ════════════════════════════════════════════════════════════════════════════════════
