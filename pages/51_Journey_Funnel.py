@@ -17,7 +17,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v8_ticketowner"
+_JF_KEY = "journey_funnel_v9_alltypes"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -86,15 +86,14 @@ def _parse_conv(file):
     acol = _find(df.columns, "agent", "rep")
     qcol = _find(df.columns, "customer query", "query", "reason")
     df["_day"] = pd.to_datetime(df[dcol], errors="coerce").dt.date
-    _raw = df[ccol] if ccol else ""
-    _typ = df[tcol].str.upper() if tcol else ""
-    is_sip = (_typ.str.contains("SIP") | _typ.str.contains("VIDEO")) if tcol else False
-    df["_cust"] = "" if not ccol else _raw.where(~is_sip, "").map(_norm_name)      # name for call/chat
-    df["_num"] = "" if not ccol else _raw.where(is_sip, "").map(_dig10)            # number for SIP
-    if ccol:
-        _extra_num = _raw.map(_dig10)
-        df["_num"] = df["_num"].where(df["_num"] != "", _extra_num.where(_raw.map(
-            lambda v: "".join(ch for ch in str(v) if ch.isdigit()) == str(v).replace(" ", "")), ""))
+    _raw = df[ccol].astype(str) if ccol else pd.Series([""] * len(df))
+    # Bucket by the Customer Name itself (not the Type): if it's a phone number
+    # → number bucket; otherwise → name bucket. This covers ALL types
+    # (call, SIP, query, chat), incl. SIP rows that carry a name.
+    _num10 = _raw.map(_dig10)
+    _is_number = _num10.str.len().eq(10)
+    df["_num"] = _num10.where(_is_number, "")
+    df["_cust"] = _raw.where(~_is_number, "").map(_norm_name)
     df["_type"] = df[tcol].str.strip() if tcol else ""
     df["_agent"] = df[acol].astype(str).str.split("@").str[0].str.strip() if acol else ""
     df["_query"] = df[qcol].astype(str).str.strip() if qcol else ""
