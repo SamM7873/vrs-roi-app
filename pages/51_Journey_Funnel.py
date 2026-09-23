@@ -294,7 +294,7 @@ mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
 # ════════════════════════════════════════════════════════════════════════════════════
 if mode == _MODE_ACQ:
-    _AKEY = "journey_acq_v8_regtype"
+    _AKEY = "journey_acq_v9_hasvrs"
     st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
                 "Contact → Number** (service type **VRS**), then Live (**number status Live**) → the "
                 "number's URSA milestones: **first login → first outbound call → second outbound call**.")
@@ -393,6 +393,7 @@ if mode == _MODE_ACQ:
             _arows.append({
                 "Email": em or "(no email)",
                 "Consumer": _consumer,
+                "Has VRS": "Yes" if nums else "No",
                 "Type": _useg,
                 "Number type": _numtype,
                 "Registration type": ", ".join(_regtype) or "—",
@@ -460,16 +461,20 @@ if mode == _MODE_ACQ:
 
     # ── per-person detail table (same segment) ───────────────────────────────────────
     if _adf is not None and not _adf.empty:
-        st.markdown("##### Sign-up detail")
-        _sc1, _sc2 = st.columns([1.3, 2])
+        _no_vrs = int((_seg_df.get("Has VRS", pd.Series(dtype=str)) == "No").sum())
+        st.markdown(f"##### Sign-up detail  ·  🚫 **{_no_vrs:,}** of {len(_seg_df):,} have **no VRS number**")
+        _sc1, _sc2, _sc3 = st.columns([1.3, 1, 2])
         _stopts = ["Sign-up only", "Live", "First login", "First call", "Keep calling"]
         _stpick = _sc1.multiselect("Stage reached (empty = all)",
                                    [s for s in _stopts if s in set(_seg_df["Stage reached"])],
                                    default=[], key="acq_stage_filter")
-        _q = _sc2.text_input("Search email / number", key="acq_search").strip().lower()
+        _hv = _sc2.radio("Has VRS", ["All", "Yes", "No"], horizontal=True, key="acq_hasvrs")
+        _q = _sc3.text_input("Search email / number", key="acq_search").strip().lower()
         _v = _seg_df
         if _stpick:
             _v = _v[_v["Stage reached"].isin(_stpick)]
+        if _hv != "All" and "Has VRS" in _v.columns:
+            _v = _v[_v["Has VRS"] == _hv]
         if _q:
             _v = _v[_v.apply(lambda r: _q in " ".join(str(x).lower() for x in r.values), axis=1)]
         st.caption(f"{len(_v):,} of {len(_adf):,} sign-ups · segment: {seg}")
