@@ -447,27 +447,41 @@ if _nm_match is not None:
     _tk = _tk_match or 0
     _no_int = max(0, n_sub - _nm)
     _no_tk = max(0, _nm - _tk)
+    # palette
+    _START, _PROG, _WIN, _DROP = "#6366F1", "#0EA5E9", "#22C55E", "#94A3B8"
+    st.markdown("**Acquisition funnel — where do submissions drop off on the way to a ticket?**")
+    st.markdown(
+        f"""<div style="display:flex;gap:20px;align-items:center;font-size:.8rem;color:#475467;
+        margin:2px 0 6px;font-weight:600;">
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;
+          background:{_PROG};margin-right:6px;"></span>Progressing</span>
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;
+          background:{_WIN};margin-right:6px;"></span>Reached a ticket</span>
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;
+          background:{_DROP};margin-right:6px;"></span>Dropped off</span></div>""",
+        unsafe_allow_html=True)
     try:
         import plotly.graph_objects as go
-        _PROG, _KEEP, _DROP = "#5B8DEF", "#3FB950", "#20304F"
-        labels = [f"Submissions · {n_sub:,}", f"Had interaction · {_nm:,}",
-                  f"Has ticket · {_tk:,}", f"No interaction · {_no_int:,}",
-                  f"No ticket · {_no_tk:,}"]
-        node_colors = [_PROG, _PROG, _KEEP, _DROP, _DROP]
+        labels = [f"Submissions  {n_sub:,}", f"Had interaction  {_nm:,}",
+                  f"Reached a ticket  {_tk:,}", f"No interaction  {_no_int:,}",
+                  f"No ticket  {_no_tk:,}"]
+        node_colors = [_START, _PROG, _WIN, _DROP, _DROP]
         src = [0, 0, 1, 1]
         tgt = [1, 3, 2, 4]
         val = [_nm, _no_int, _tk, _no_tk]
-        link_colors = ["rgba(91,141,239,0.45)", "rgba(32,48,79,0.7)",
-                       "rgba(63,185,80,0.45)", "rgba(32,48,79,0.7)"]
+        link_colors = ["rgba(14,165,233,0.55)", "rgba(148,163,184,0.28)",
+                       "rgba(34,197,94,0.60)", "rgba(148,163,184,0.35)"]
         fig = go.Figure(go.Sankey(
             arrangement="snap",
-            node=dict(label=labels, color=node_colors, pad=24, thickness=20,
-                      line=dict(color="rgba(0,0,0,0)", width=0)),
-            link=dict(source=src, target=tgt, value=val, color=link_colors)))
-        fig.update_layout(height=430, margin=dict(l=10, r=10, t=30, b=10),
-                          font=dict(size=13),
-                          title="Acquisition funnel — where do submissions drop off on the way to a ticket?")
-        st.plotly_chart(fig, use_container_width=True)
+            node=dict(label=labels, color=node_colors, pad=40, thickness=22,
+                      line=dict(color="white", width=1),
+                      hovertemplate="%{label}<extra></extra>"),
+            link=dict(source=src, target=tgt, value=val, color=link_colors,
+                      hovertemplate="%{source.label} → %{target.label}<br>%{value:,}<extra></extra>")))
+        fig.update_layout(height=480, margin=dict(l=10, r=10, t=10, b=10),
+                          paper_bgcolor="white", plot_bgcolor="white",
+                          font=dict(size=13, color="#1B2430", family="Inter, system-ui, sans-serif"))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     except Exception as _e:
         st.caption(f"(Sankey unavailable: {_e})")
 
