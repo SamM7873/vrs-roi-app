@@ -221,7 +221,130 @@ def _assoc(from_obj, to_obj, from_ids):
     return out
 
 
-# ── inputs ──────────────────────────────────────────────────────────────────────────
+# ── report mode ─────────────────────────────────────────────────────────────────────
+_MODE_SIT = "Submission → Interaction → Ticket"
+_MODE_ACQ = "Acquisition funnel — Sign-up → Live → First login → First call → Keep calling"
+mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
+
+# ════════════════════════════════════════════════════════════════════════════════════
+# ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
+# ════════════════════════════════════════════════════════════════════════════════════
+if mode == _MODE_ACQ:
+    _AKEY = "journey_acq_v1"
+    st.markdown("Where do **sign-ups** drop off on the way to calling? Follows **Submission (Sign-up) → "
+                "Contact → Number**, then the number's URSA milestones: **first login → first outbound "
+                "call → second outbound call**.")
+    _t = date.today()
+    ac1, ac2 = st.columns(2)
+    alo = ac1.date_input("Sign-ups from", value=_t - timedelta(days=28), key="acq_lo")
+    ahi = ac2.date_input("to", value=_t, key="acq_hi")
+    if alo > ahi:
+        alo, ahi = ahi, alo
+        st.warning("From was after To — swapped.")
+    if st.button("▶ Build acquisition funnel", type="primary", key="acq_run"):
+        with dash_spinner("Reading sign-ups (submissions)…"):
+            _subs = fetch_all(SUB_OBJECT, ["hs_createdate", "email"], filter_groups=[{"filters": [
+                {"propertyName": "hs_createdate", "operator": "GTE", "value": _ms(alo)},
+                {"propertyName": "hs_createdate", "operator": "LTE", "value": _ms(ahi + timedelta(days=1))}]}])
+        n_signup = len(_subs)
+        _emails = sorted({(s.get("properties", {}).get("email") or "").strip().lower()
+                          for s in _subs} - {""})
+        _e2c = {}
+        for i in range(0, len(_emails), 100):
+            for c in fetch_all("contacts", ["email"], filter_groups=[{"filters": [
+                    {"propertyName": "email", "operator": "IN", "values": _emails[i:i + 100]}]}]):
+                em = (c.get("properties", {}).get("email") or "").strip().lower()
+                if em:
+                    _e2c.setdefault(em, str(c["id"]))
+        with dash_spinner("Linking contacts → numbers…"):
+            _c2n = _assoc("contacts", NUM_OBJECT, sorted(set(_e2c.values())))
+        _nids = sorted({n for v in _c2n.values() for n in v})
+        with dash_spinner(f"Reading {len(_nids):,} numbers (status + URSA milestones)…"):
+            _numof = _batch_read(NUM_OBJECT, _nids, ["number_status", "service_type", "ursa_first_login",
+                                 "ursa_first_outbound_call", "ursa_second_outbound_call"])
+
+        def _live(p):
+            return (p.get("number_status") or "").strip().lower() == "live"
+        n_live = n_login = n_call = n_keep = 0
+        for s in _subs:
+            em = (s.get("properties", {}).get("email") or "").strip().lower()
+            cid = _e2c.get(em)
+            nums = [_numof.get(n, {}) for n in _c2n.get(cid, [])] if cid else []
+            live = any(_live(p) for p in nums)
+            login = live and any((p.get("ursa_first_login") or "") for p in nums)
+            call = login and any((p.get("ursa_first_outbound_call") or "") for p in nums)
+            keep = call and any((p.get("ursa_second_outbound_call") or "") for p in nums)
+            n_live += int(live); n_login += int(login); n_call += int(call); n_keep += int(keep)
+        save_report(_AKEY, {"n_signup": n_signup, "n_live": n_live, "n_login": n_login,
+                            "n_call": n_call, "n_keep": n_keep, "lo": str(alo), "hi": str(ahi)})
+
+    ad = load_report(_AKEY)
+    if not ad:
+        st.info("Set the sign-up window and click **▶ Build acquisition funnel**.")
+        report_header_close(); st.stop()
+    _sg, _lv, _lg, _cl, _kp = ad["n_signup"], ad["n_live"], ad["n_login"], ad["n_call"], ad["n_keep"]
+    if ad.get("saved_at"):
+        st.caption(f"📌 Saved {saved_at_label(ad)} · sign-ups {ad['lo']} → {ad['hi']}")
+
+    def _rate(a, b):
+        return f"{a/b*100:.0f}% ({a:,})" if b else "—"
+
+    def _acard(col, t, v, s, c):
+        col.markdown(f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
+            padding:14px 16px 12px;background:rgba(127,127,127,0.03);height:100%;">
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#667085;">{t}</div>
+            <div style="font-size:1.7rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
+            <div style="font-size:.7rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
+
+    _ac = st.columns(5)
+    _acard(_ac[0], "Sign-ups", f"{_sg:,}", "new VRS/PSTN registrations", "#8792A2")
+    _acard(_ac[1], "Live consumers", _rate(_lv, _sg), "PSTN number ready / sign-ups", "#4C8DFF")
+    _acard(_ac[2], "First login rate", _rate(_lg, _lv), "logged in / live consumers", "#0EA5E9")
+    _acard(_ac[3], "First-call rate", _rate(_cl, _lg), "first outbound / logged in", "#14B8A6")
+    _acard(_ac[4], "Keep calling", _rate(_kp, _cl), "second outbound / first-call", "#22C55E")
+    st.markdown("")
+
+    st.markdown("**Where do consumers drop off on the way to calling?**")
+    st.markdown(
+        """<div style="display:flex;gap:20px;font-size:.8rem;color:#475467;margin:2px 0 6px;font-weight:600;">
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#0EA5E9;
+          margin-right:6px;"></span>Progressing</span>
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#22C55E;
+          margin-right:6px;"></span>Keep calling</span>
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#94A3B8;
+          margin-right:6px;"></span>Dropped off</span></div>""", unsafe_allow_html=True)
+    try:
+        import plotly.graph_objects as go
+        labels = [f"Sign-ups  {_sg:,}", f"Live consumers  {_lv:,}", f"First login  {_lg:,}",
+                  f"First call  {_cl:,}", f"Keep calling  {_kp:,}",
+                  f"Not live  {_sg-_lv:,}", f"Not logged in  {_lv-_lg:,}",
+                  f"No first call  {_lg-_cl:,}", f"No second call yet  {_cl-_kp:,}"]
+        node_colors = ["#6366F1", "#4C8DFF", "#0EA5E9", "#14B8A6", "#22C55E",
+                       "#94A3B8", "#94A3B8", "#94A3B8", "#94A3B8"]
+        src = [0, 0, 1, 1, 2, 2, 3, 3]
+        tgt = [1, 5, 2, 6, 3, 7, 4, 8]
+        val = [_lv, _sg-_lv, _lg, _lv-_lg, _cl, _lg-_cl, _kp, _cl-_kp]
+        link_colors = ["rgba(76,141,255,0.5)", "rgba(148,163,184,0.3)",
+                       "rgba(14,165,233,0.5)", "rgba(148,163,184,0.3)",
+                       "rgba(20,184,166,0.5)", "rgba(148,163,184,0.3)",
+                       "rgba(34,197,94,0.55)", "rgba(148,163,184,0.3)"]
+        fig = go.Figure(go.Sankey(arrangement="snap",
+            node=dict(label=labels, color=node_colors, pad=30, thickness=20,
+                      line=dict(color="white", width=1)),
+            link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
+        fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10),
+                          paper_bgcolor="white", plot_bgcolor="white",
+                          font=dict(size=13, color="#1B2430"))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    except Exception as _e:
+        st.caption(f"(Sankey unavailable: {_e})")
+    st.caption("Sign-ups = submissions in the window. Live = a linked Number is **Live** (PSTN ready). "
+               "First login / first call / keep calling use the Number's **ursa_first_login**, "
+               "**ursa_first_outbound_call**, **ursa_second_outbound_call**. Each gate nests inside the "
+               "previous one, so the funnel drops cleanly.")
+    report_header_close(); st.stop()
+
+# ── inputs (Submission → Interaction → Ticket) ──────────────────────────────────────
 c1, c2 = st.columns(2)
 conv_file = c1.file_uploader("1) Interactions — Convo360 CSV", type=["csv"], key="jf_conv")
 tick_file = c2.file_uploader("2) Tickets — HubSpot audit-log CSV", type=["csv"], key="jf_tick")
