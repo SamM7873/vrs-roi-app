@@ -420,12 +420,13 @@ if mode == _MODE_ACQ:
         st.caption(f"📌 Saved {saved_at_label(ad)} · sign-ups {ad['lo']} → {ad['hi']}")
 
     _adf = ad.get("df")
-    # ── toolbar: consumer segment · show each gate · type · numbers ───────────────────
-    tb1, tb2, tb3, tb4 = st.columns(4)
+    # ── toolbar: consumer · gates · type · numbers · has VRS (all drive the funnel) ────
+    tb1, tb2, tb3, tb4, tb5 = st.columns(5)
     seg = tb1.radio("Consumer", ["All", "New", "Existing"], horizontal=True, key="acq_seg")
     gate = tb2.radio("Show each gate", ["Per gate", "Of sign-ups"], horizontal=True, key="acq_gate")
     typ = tb3.radio("Type", ["All", "Personal", "Organisations"], horizontal=True, key="acq_type")
     numt = tb4.radio("Numbers", ["All", "Direct", "Ported in"], horizontal=True, key="acq_numtype")
+    hasv = tb5.radio("Has VRS", ["All", "Yes", "No"], horizontal=True, key="acq_hasvrs")
 
     _seg_df = _adf if _adf is not None else pd.DataFrame()
     if _adf is not None and not _adf.empty:
@@ -435,6 +436,8 @@ if mode == _MODE_ACQ:
             _seg_df = _seg_df[_seg_df["Type"] == typ]
         if numt != "All" and "Number type" in _seg_df.columns:
             _seg_df = _seg_df[_seg_df["Number type"] == numt]
+        if hasv != "All" and "Has VRS" in _seg_df.columns:
+            _seg_df = _seg_df[_seg_df["Has VRS"] == hasv]
         if "Registration type" in _adf.columns:
             _regopts = sorted(v for v in _adf["Registration type"].unique() if v and v != "—")
             _regpick = st.multiselect("Registration type (empty = all)", _regopts, default=[],
@@ -463,18 +466,15 @@ if mode == _MODE_ACQ:
     if _adf is not None and not _adf.empty:
         _no_vrs = int((_seg_df.get("Has VRS", pd.Series(dtype=str)) == "No").sum())
         st.markdown(f"##### Sign-up detail  ·  🚫 **{_no_vrs:,}** of {len(_seg_df):,} have **no VRS number**")
-        _sc1, _sc2, _sc3 = st.columns([1.3, 1, 2])
+        _sc1, _sc2 = st.columns([1.3, 2])
         _stopts = ["Sign-up only", "Has VRS (not live)", "Live", "First login", "First call", "Keep calling"]
         _stpick = _sc1.multiselect("Stage reached (empty = all)",
                                    [s for s in _stopts if s in set(_seg_df["Stage reached"])],
                                    default=[], key="acq_stage_filter")
-        _hv = _sc2.radio("Has VRS", ["All", "Yes", "No"], horizontal=True, key="acq_hasvrs")
-        _q = _sc3.text_input("Search email / number", key="acq_search").strip().lower()
+        _q = _sc2.text_input("Search email / number", key="acq_search").strip().lower()
         _v = _seg_df
         if _stpick:
             _v = _v[_v["Stage reached"].isin(_stpick)]
-        if _hv != "All" and "Has VRS" in _v.columns:
-            _v = _v[_v["Has VRS"] == _hv]
         if _q:
             _v = _v[_v.apply(lambda r: _q in " ".join(str(x).lower() for x in r.values), axis=1)]
         st.caption(f"{len(_v):,} of {len(_adf):,} sign-ups · segment: {seg}")
