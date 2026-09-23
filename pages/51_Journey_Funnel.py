@@ -3,7 +3,8 @@ import pandas as pd
 from datetime import date, datetime, timezone, timedelta
 import requests
 from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
-                   headers as _H, BASE_URL as _B, fetch_all, dash_spinner, log_report_view)
+                   headers as _H, BASE_URL as _B, fetch_all, dash_spinner, log_report_view,
+                   save_report, load_report, saved_at_label)
 
 st.set_page_config(page_title="Journey Funnel", layout="wide", page_icon="🫗")
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
@@ -15,6 +16,7 @@ report_header("Journey Funnel",
               section="Support")
 
 SUB_OBJECT = "2-49942763"   # submission form records
+_JF_KEY = "journey_funnel_v1"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -135,16 +137,21 @@ if run:
     tk = tk[(tk["_day"] >= lo) & (tk["_day"] <= hi)]
     n_tick = int(tk["_created"].sum())
 
-    st.session_state["_jf"] = {"n_sub": n_sub, "n_int": n_int, "n_tick": n_tick,
-                               "lo": str(lo), "hi": str(hi), "sub_df": _sub_df}
+    save_report(_JF_KEY, {"n_sub": n_sub, "n_int": n_int, "n_tick": n_tick,
+                          "lo": str(lo), "hi": str(hi), "sub_df": _sub_df})
 
-d = st.session_state.get("_jf")
+d = load_report(_JF_KEY)
 if not d:
-    st.info("Upload both CSVs, set the date range, and click **▶ Build funnel**.")
+    st.info("Upload both CSVs, set the date range, and click **▶ Build funnel**. "
+            "After that the report is **saved** — you won't need to re-upload to view it again.")
     report_header_close(); st.stop()
 
 n_sub, n_int, n_tick = d["n_sub"], d["n_int"], d["n_tick"]
-st.caption(f"📌 Window: **{d['lo']} → {d['hi']}**")
+if d.get("saved_at"):
+    st.caption(f"📌 Saved {saved_at_label(d)} · window: **{d['lo']} → {d['hi']}** "
+               "· re-upload + Build only to refresh")
+else:
+    st.caption(f"📌 Window: **{d['lo']} → {d['hi']}**")
 
 stages = [
     ("📝 Submissions", n_sub, "#7A5CFF"),
