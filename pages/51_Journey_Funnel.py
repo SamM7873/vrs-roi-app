@@ -377,43 +377,27 @@ def _card(col, t, v, s, c):
 # only those from submissions), so we show counts + a plain ratio, not
 # conversion / drop-off (which would imply a per-person funnel — that's the
 # Matched journey section below).
-_c = st.columns(4)
+_c = st.columns(3)
 _card(_c[0], "Submissions", f"{n_sub:,}", "form fills in window", "#7A5CFF")
-_ri = (n_int / n_sub) if n_sub else None
-_card(_c[1], "Interactions", f"{n_int:,}",
-      f"{_ri:.2f}× submissions" if _ri is not None else "—", "#0FB5AE")
-_rt = (n_tick / n_int) if n_int else None
-_card(_c[2], "Tickets created", f"{n_tick:,}",
-      f"{_rt:.2f}× interactions" if _rt is not None else "—", "#2DB84B")
-_rts = (n_tick / n_sub) if n_sub else None
-_card(_c[3], "Tickets per submission", f"{_rts:.2f}×" if _rts is not None else "—",
-      "volume ratio (not conversion)", "#4C8DFF")
+_card(_c[1], "Interactions", f"{n_int:,}", "calls · chats · video in window", "#0FB5AE")
+_card(_c[2], "Tickets created", f"{n_tick:,}", "new tickets in window", "#2DB84B")
 st.caption("These are **volume counts** for the window — three separate populations, not the same "
            "people tracked through stages. For true per-person conversion & drop-off, see the "
            "**Matched journey** below.")
 st.markdown("")
 
-# ── funnel bars ─────────────────────────────────────────────────────────────────────
+# ── funnel bars (counts only) ────────────────────────────────────────────────────────
 st.markdown("##### Volume by stage")
 _scale = max((s[1] for s in stages), default=1) or 1
 _html = '<div style="display:flex;flex-direction:column;gap:14px;">'
-prev = None
 for lab, cnt, color in stages:
-    pct_top = (cnt / top * 100) if top else 0
     width = max(8, cnt / _scale * 100)
-    conv = ""
-    if prev is not None:
-        c = (cnt / prev) if prev else 0
-        conv = f"{c:.2f}× the previous stage"
     _html += f'''<div>
-      <div style="display:flex;justify-content:space-between;font-size:.82rem;color:#475467;margin-bottom:4px;">
-        <span style="font-weight:800;">{lab}</span>
-        <span>{cnt:,} &middot; {pct_top:.0f}% of top</span></div>
+      <div style="font-size:.82rem;color:#475467;margin-bottom:4px;font-weight:800;">{lab}</div>
       <div style="background:#EEF1F6;border-radius:10px;overflow:hidden;height:38px;">
         <div style="width:{width}%;min-width:60px;background:{color};color:#fff;height:100%;
              display:flex;align-items:center;padding:0 14px;font-weight:800;border-radius:10px;">{cnt:,}</div></div>
-      <div style="font-size:.74rem;color:#8792A2;margin-top:3px;">{conv}</div></div>'''
-    prev = cnt
+      </div>'''
 _html += '</div>'
 st.markdown(_html, unsafe_allow_html=True)
 
@@ -421,13 +405,11 @@ st.markdown("")
 _tbl = pd.DataFrame({
     "Stage": [s[0] for s in stages],
     "Count": [s[1] for s in stages],
-    "% of top": [f"{(s[1]/top*100):.0f}%" for s in stages],
 })
 st.dataframe(_tbl, use_container_width=True, hide_index=True)
-st.caption("Volume funnel: each stage is the total count in the window. Drop-off between two stages "
-           "= 1 − (next stage ÷ previous stage). Because the sources aren't joined per person, a later "
-           "stage can exceed an earlier one (e.g. more interactions than submissions) — that just means "
-           "the stages draw from different populations, not a negative drop-off.")
+st.caption("Volume counts for the window. The three sources aren't joined per person, so a later "
+           "stage can exceed an earlier one (more interactions/tickets than submissions) — they draw "
+           "from different populations. True per-person conversion & drop-off is the Matched journey below.")
 
 # ── matched journey (per person) ─────────────────────────────────────────────────────
 _nm_match = d.get("n_match")
