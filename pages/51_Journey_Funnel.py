@@ -305,9 +305,19 @@ if mode == _MODE_ACQ:
                      format_func=lambda d: f"{d}d", key="acq_win")
     acut = ac3.date_input("New consumer on/after", value=date(2026, 9, 23), key="acq_cut",
                           help="Numbers created on/after this date = New consumer; earlier = Existing.")
-    ahi = _t - timedelta(days=1)                 # last completed day
-    alo = ahi - timedelta(days=int(_win) - 1)
-    st.caption(f"Sign-ups window: **{alo} → {ahi}** (past {_win} completed days)")
+    _custom = st.checkbox("Custom range (override rolling window)", value=False, key="acq_custom")
+    if _custom:
+        cc1, cc2 = st.columns(2)
+        alo = cc1.date_input("Sign-ups from", value=_t - timedelta(days=28), key="acq_clo")
+        ahi = cc2.date_input("to", value=_t, key="acq_chi")
+        if alo > ahi:
+            alo, ahi = ahi, alo
+            st.warning("From was after To — swapped.")
+    else:
+        ahi = _t - timedelta(days=1)              # last completed day
+        alo = ahi - timedelta(days=int(_win) - 1)
+    st.caption(f"Sign-ups window: **{alo} → {ahi}**"
+               + ("" if _custom else f" (past {_win} completed days)"))
     if st.button("▶ Build acquisition funnel", type="primary", key="acq_run"):
         with dash_spinner("Reading sign-ups (submissions)…"):
             _subs = fetch_all(SUB_OBJECT, ["hs_createdate", "email"], filter_groups=[{"filters": [
