@@ -16,7 +16,7 @@ report_header("Journey Funnel",
               section="Support")
 
 SUB_OBJECT = "2-49942763"   # submission form records
-_JF_KEY = "journey_funnel_v4_match"
+_JF_KEY = "journey_funnel_v5_gated"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -207,7 +207,8 @@ if run:
         cid_to_tids = _assoc("contacts", "tickets", sorted(set(email_to_cid.values())))
 
     # submission detail + interaction match (name for call/chat, number for SIP) + ticket match
-    _sub_rows, _n_match, _n_tk_match = [], 0, 0
+    _sub_rows = []
+    _n_match = _n_by_name = _n_by_num = _n_has_tk = _n_int_tk = 0
     for s in subs:
         p = s.get("properties", {})
         cd = str(p.get("hs_createdate") or "")
@@ -218,16 +219,18 @@ if run:
         by_name = bool(nm) and nm in _int_names
         by_num = bool(ph) and ph in _int_numbers
         matched = by_name or by_num
-        _n_match += int(matched)
+        _n_match += int(matched); _n_by_name += int(by_name); _n_by_num += int(by_num)
         # ticket via contact (email → contact → ticket association)
         em = _norm_name(p.get(_em) or "") if _em else ""
         cid = email_to_cid.get(em)
         has_ticket = bool(cid) and bool(cid_to_tids.get(cid))
-        _n_tk_match += int(has_ticket)
+        _n_has_tk += int(has_ticket)
+        if matched and has_ticket:          # sequential: ticket AMONG those with an interaction
+            _n_int_tk += 1
         row = {"Created": cd[:10],
-               "Had interaction (name match)": "Yes" if matched else "No",
-               "Match type": ("Name" if by_name else "") + (" + Number" if by_num and by_name else
-                              ("Number" if by_num else "")) or "—",
+               "Had interaction": "Yes" if matched else "No",
+               "Match type": (("Name" if by_name else "") +
+                              (" + Number" if by_num and by_name else ("Number" if by_num else ""))) or "—",
                "Has ticket (via contact)": "Yes" if has_ticket else "No"}
         for n, lab in _cprops:
             row[lab] = p.get(n) or ""
@@ -235,7 +238,11 @@ if run:
     _sub_df = pd.DataFrame(_sub_rows)
 
     save_report(_JF_KEY, {"n_sub": n_sub, "n_int": n_int, "n_tick": n_tick,
-                          "n_match": _n_match, "n_tk_match": _n_tk_match,
+                          "n_match": _n_match, "n_by_name": _n_by_name, "n_by_num": _n_by_num,
+                          "n_has_tk": _n_has_tk, "n_int_tk": _n_int_tk,
+                          "n_int_names": len(_int_names), "n_int_numbers": len(_int_numbers),
+                          "n_sub_phone": int(sum(1 for s in subs if _ph and _dig10(s.get('properties', {}).get(_ph)))),
+                          "n_sub_email": len(sub_emails),
                           "lo": str(lo), "hi": str(hi), "sub_df": _sub_df})
 
 d = load_report(_JF_KEY)
@@ -322,20 +329,34 @@ st.caption("Volume funnel: each stage is the total count in the window. Drop-off
 
 # ── matched journey (per person) ─────────────────────────────────────────────────────
 _nm_match = d.get("n_match")
-_tk_match = d.get("n_tk_match")
+_tk_match = d.get("n_int_tk")          # tickets AMONG those with an interaction (sequential)
 if _nm_match is not None:
     st.markdown("##### 🔗 Matched journey — Submission → Interaction → Ticket (per person)")
     _mpct = _pct(_nm_match, n_sub)
-    _tpct = _pct(_tk_match, _nm_match) if _tk_match is not None else None
+    _tpct = _pct(_tk_match or 0, _nm_match)
     _mc = st.columns(4)
     _card(_mc[0], "Submissions", f"{n_sub:,}", "start", "#7A5CFF")
     _card(_mc[1], "Had an interaction", f"{_nm_match:,}",
-          f"{_mpct:.0f}% · {100-_mpct:.0f}% drop-off" if _mpct is not None else "—", "#0FB5AE")
+          f"{_mpct:.1f}% · {100-_mpct:.1f}% drop-off" if _mpct is not None else "—", "#0FB5AE")
     _card(_mc[2], "…and a ticket", f"{_tk_match or 0:,}",
-          f"{_tpct:.0f}% of those" if _tpct is not None else "—", "#2DB84B")
+          f"{_tpct:.0f}% of those with an interaction" if _tpct is not None else "—", "#2DB84B")
     _ovm = _pct(_tk_match or 0, n_sub)
-    _card(_mc[3], "Overall (Sub → Ticket)", f"{_ovm:.0f}%" if _ovm is not None else "—",
+    _card(_mc[3], "Overall (Sub → Ticket)", f"{_ovm:.1f}%" if _ovm is not None else "—",
           "end-to-end", "#4C8DFF")
+
+    # diagnostic — see where the interaction match is (or isn't) landing
+    with st.expander("🔧 Match diagnostic (why these counts)", expanded=False):
+        st.markdown(
+            f"- Interaction **names** (call/chat) seen: **{d.get('n_int_names',0):,}** · "
+            f"submissions matched by name: **{d.get('n_by_name',0):,}**\n"
+            f"- Interaction **numbers** (SIP) seen: **{d.get('n_int_numbers',0):,}** · "
+            f"submissions with a phone: **{d.get('n_sub_phone',0):,}** · matched by number: "
+            f"**{d.get('n_by_num',0):,}**\n"
+            f"- Submissions with an **email**: **{d.get('n_sub_email',0):,}** · with a **ticket via "
+            f"contact** (any interaction or not): **{d.get('n_has_tk',0):,}**")
+        st.caption("If 'matched by name' is tiny, Convo360 call/chat Customer Names are likely "
+                   "first-name-only (they won't equal a full submission name). If 'matched by number' "
+                   "is 0, the submission phone field may not be detected or SIP names aren't numbers.")
     # ── Sankey flow: progression vs drop-off ──────────────────────────────────────
     _nm = _nm_match or 0
     _tk = _tk_match or 0
@@ -377,9 +398,9 @@ _sub_df = d.get("sub_df")
 if _sub_df is not None and not _sub_df.empty:
     st.markdown("##### 📝 Submission contact info")
     _fc1, _fc2 = st.columns([1, 2])
-    _match_col = "Had interaction (name match)"
+    _match_col = "Had interaction"
     if _match_col in _sub_df.columns:
-        _mfilt = _fc1.radio("Had interaction (name match)", ["All", "Yes", "No"],
+        _mfilt = _fc1.radio("Had interaction", ["All", "Yes", "No"],
                             horizontal=True, key="jf_match_filter")
     else:
         _mfilt = "All"
