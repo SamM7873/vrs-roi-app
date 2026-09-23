@@ -17,7 +17,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v9_alltypes"
+_JF_KEY = "journey_funnel_v10_typelabels"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -94,7 +94,18 @@ def _parse_conv(file):
     _is_number = _num10.str.len().eq(10)
     df["_num"] = _num10.where(_is_number, "")
     df["_cust"] = _raw.where(~_is_number, "").map(_norm_name)
-    df["_type"] = df[tcol].str.strip() if tcol else ""
+    def _type_lbl(v):
+        u = str(v).upper()
+        if "SIP" in u or "VIDEO" in u:
+            return "SIP"
+        if "CHAT" in u:
+            return "Chat"
+        if "QUERY" in u:
+            return "Query"
+        if "CALL" in u:
+            return "Call"
+        return str(v).strip() or "—"
+    df["_type"] = df[tcol].map(_type_lbl) if tcol else ""
     df["_agent"] = df[acol].astype(str).str.split("@").str[0].str.strip() if acol else ""
     df["_query"] = df[qcol].astype(str).str.strip() if qcol else ""
     df = df[df["_day"].notna()].copy()
@@ -504,15 +515,18 @@ if _sub_df is not None and not _sub_df.empty:
         _mfilt = "All"
     if "Match type" in _sub_df.columns:
         _mtopts = sorted(v for v in _sub_df["Match type"].unique() if v and v != "—")
-        _mtpick = _fc2.multiselect("Match type", _mtopts, default=[], key="jf_mt_filter",
+        _mtpick = _fc2.multiselect("Match type (empty = all)", _mtopts, default=[], key="jf_mt_filter",
                                    help="Name = call/chat name · Number = form phone · Contact# = Contact→Number phone")
     else:
         _mtpick = []
-    # interaction type filter (Call / SIP / Chat / Query …) — matches the joined type string
+    # interaction type filter (Call / SIP / Chat / Query) — matches the joined type string
     if "Interaction type" in _sub_df.columns:
-        _ittoks = sorted({t.strip() for v in _sub_df["Interaction type"] for t in str(v).split(",")
-                          if t.strip() and t.strip() != "—"})
-        _itpick = _fc3.multiselect("Interaction type", _ittoks, default=[], key="jf_it_filter")
+        _present = {t.strip() for v in _sub_df["Interaction type"] for t in str(v).split(",")
+                    if t.strip() and t.strip() != "—"}
+        _ittoks = [t for t in ["Call", "SIP", "Chat", "Query"] if t in _present] + \
+                  sorted(_present - {"Call", "SIP", "Chat", "Query"})
+        _itpick = _fc3.multiselect("Interaction type (empty = all)", _ittoks, default=[],
+                                   key="jf_it_filter")
     else:
         _itpick = []
     _s = st.text_input("Search submissions (name / email / phone / query…)").strip().lower()
