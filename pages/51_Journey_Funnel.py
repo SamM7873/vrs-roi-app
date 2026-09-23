@@ -17,7 +17,7 @@ report_header("Journey Funnel",
 
 SUB_OBJECT = "2-49942763"   # submission form records
 NUM_OBJECT = "2-40974683"   # Number object
-_JF_KEY = "journey_funnel_v10_typelabels"
+_JF_KEY = "journey_funnel_v11_callwait"
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -85,6 +85,9 @@ def _parse_conv(file):
     tcol = _find(df.columns, "type")
     acol = _find(df.columns, "agent", "rep")
     qcol = _find(df.columns, "customer query", "query", "reason")
+    ctcol = _find(df.columns, "call time", "duration", "talk time")
+    wtcol = _find(df.columns, "wait time", "wait")
+    wcol = _find(df.columns, "website", "site", "url")
     df["_day"] = pd.to_datetime(df[dcol], errors="coerce").dt.date
     _raw = df[ccol].astype(str) if ccol else pd.Series([""] * len(df))
     # Bucket by the Customer Name itself (not the Type): if it's a phone number
@@ -108,8 +111,11 @@ def _parse_conv(file):
     df["_type"] = df[tcol].map(_type_lbl) if tcol else ""
     df["_agent"] = df[acol].astype(str).str.split("@").str[0].str.strip() if acol else ""
     df["_query"] = df[qcol].astype(str).str.strip() if qcol else ""
+    df["_calltime"] = df[ctcol].astype(str).str.strip() if ctcol else ""
+    df["_wait"] = df[wtcol].astype(str).str.strip() if wtcol else ""
+    df["_web"] = df[wcol].astype(str).str.strip() if wcol else ""
     df = df[df["_day"].notna()].copy()
-    return df[["_day", "_cust", "_num", "_type", "_agent", "_query"]]
+    return df[["_day", "_cust", "_num", "_type", "_agent", "_query", "_calltime", "_wait", "_web"]]
 
 
 def _parse_tick(file):
@@ -218,7 +224,8 @@ if run:
     from collections import defaultdict as _ddict
     name_meta, num_meta = _ddict(list), _ddict(list)
     for _, rr in cv.iterrows():
-        meta = (rr.get("_type", ""), rr.get("_agent", ""), rr.get("_query", ""))
+        meta = (rr.get("_type", ""), rr.get("_agent", ""), rr.get("_query", ""),
+                rr.get("_calltime", ""), rr.get("_wait", ""), rr.get("_web", ""))
         if rr.get("_cust"):
             name_meta[rr["_cust"]].append(meta)
         if rr.get("_num"):
@@ -323,6 +330,9 @@ if run:
                "Interaction type": _join(m[0] for m in _metas) or "—",
                "Interaction agent": _join(m[1] for m in _metas) or "—",
                "Interaction query": _join(m[2] for m in _metas) or "—",
+               "Call time": _join(m[3] for m in _metas) or "—",
+               "Wait time": _join(m[4] for m in _metas) or "—",
+               "Website": _join(m[5] for m in _metas) or "—",
                "Has ticket (via contact)": "Yes" if has_ticket else "No",
                "Ticket": _tk_subj or "—",
                "Ticket owner": _tk_own or "—"}
