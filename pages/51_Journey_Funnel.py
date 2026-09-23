@@ -519,11 +519,11 @@ if _sub_df is not None and not _sub_df.empty:
                                    help="Name = call/chat name · Number = form phone · Contact# = Contact→Number phone")
     else:
         _mtpick = []
-    # interaction type filter (Call / SIP / Chat / Query) — matches the joined type string
+    # interaction type filter — always offer the full canonical set (+ any extras present)
     if "Interaction type" in _sub_df.columns:
         _present = {t.strip() for v in _sub_df["Interaction type"] for t in str(v).split(",")
                     if t.strip() and t.strip() != "—"}
-        _ittoks = [t for t in ["Call", "SIP", "Chat", "Query"] if t in _present] + \
+        _ittoks = ["Call", "SIP", "Chat", "Query"] + \
                   sorted(_present - {"Call", "SIP", "Chat", "Query"})
         _itpick = _fc3.multiselect("Interaction type (empty = all)", _ittoks, default=[],
                                    key="jf_it_filter")
