@@ -221,10 +221,67 @@ def _assoc(from_obj, to_obj, from_ids):
     return out
 
 
+def _acq_render(sg, lv, lg, cl, kp, note):
+    """Render the 5 rate cards + drop-off Sankey for an acquisition funnel."""
+    def _rate(a, b):
+        return f"{a/b*100:.0f}% ({a:,})" if b else "—"
+
+    def _acard(col, t, v, s, c):
+        col.markdown(f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
+            padding:14px 16px 12px;background:rgba(127,127,127,0.03);height:100%;">
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#667085;">{t}</div>
+            <div style="font-size:1.7rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
+            <div style="font-size:.7rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
+
+    _ac = st.columns(5)
+    _acard(_ac[0], "Sign-ups", f"{sg:,}", "new VRS/PSTN registrations", "#8792A2")
+    _acard(_ac[1], "Live consumers", _rate(lv, sg), "PSTN number ready / sign-ups", "#4C8DFF")
+    _acard(_ac[2], "First login rate", _rate(lg, lv), "logged in / live consumers", "#0EA5E9")
+    _acard(_ac[3], "First-call rate", _rate(cl, lg), "first outbound / logged in", "#14B8A6")
+    _acard(_ac[4], "Keep calling", _rate(kp, cl), "second outbound / first-call", "#22C55E")
+    st.markdown("")
+    st.markdown("**Where do consumers drop off on the way to calling?**")
+    st.markdown(
+        """<div style="display:flex;gap:20px;font-size:.8rem;color:#475467;margin:2px 0 6px;font-weight:600;">
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#0EA5E9;
+          margin-right:6px;"></span>Progressing</span>
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#22C55E;
+          margin-right:6px;"></span>Keep calling</span>
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#94A3B8;
+          margin-right:6px;"></span>Dropped off</span></div>""", unsafe_allow_html=True)
+    try:
+        import plotly.graph_objects as go
+        labels = [f"Sign-ups  {sg:,}", f"Live consumers  {lv:,}", f"First login  {lg:,}",
+                  f"First call  {cl:,}", f"Keep calling  {kp:,}",
+                  f"Not live  {sg-lv:,}", f"Not logged in  {lv-lg:,}",
+                  f"No first call  {lg-cl:,}", f"No second call yet  {cl-kp:,}"]
+        node_colors = ["#6366F1", "#4C8DFF", "#0EA5E9", "#14B8A6", "#22C55E",
+                       "#94A3B8", "#94A3B8", "#94A3B8", "#94A3B8"]
+        src = [0, 0, 1, 1, 2, 2, 3, 3]
+        tgt = [1, 5, 2, 6, 3, 7, 4, 8]
+        val = [lv, sg-lv, lg, lv-lg, cl, lg-cl, kp, cl-kp]
+        link_colors = ["rgba(76,141,255,0.5)", "rgba(148,163,184,0.3)",
+                       "rgba(14,165,233,0.5)", "rgba(148,163,184,0.3)",
+                       "rgba(20,184,166,0.5)", "rgba(148,163,184,0.3)",
+                       "rgba(34,197,94,0.55)", "rgba(148,163,184,0.3)"]
+        fig = go.Figure(go.Sankey(arrangement="snap",
+            node=dict(label=labels, color=node_colors, pad=30, thickness=20,
+                      line=dict(color="white", width=1)),
+            link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
+        fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10),
+                          paper_bgcolor="white", plot_bgcolor="white",
+                          font=dict(size=13, color="#1B2430"))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    except Exception as _e:
+        st.caption(f"(Sankey unavailable: {_e})")
+    st.caption(note)
+
+
 # ── report mode ─────────────────────────────────────────────────────────────────────
 _MODE_SIT = "Submission → Interaction → Ticket"
-_MODE_ACQ = "Acquisition funnel — Sign-up → Live → First login → First call → Keep calling"
-mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ])
+_MODE_ACQ = "Acquisition funnel (Submissions) — Sign-up → Live → First login → First call → Keep calling"
+_MODE_ACQR = "Acquisition funnel (Registrations) — matches STG_REGISTRATIONS"
+mode = st.selectbox("Report", [_MODE_SIT, _MODE_ACQ, _MODE_ACQR])
 
 # ════════════════════════════════════════════════════════════════════════════════════
 # ACQUISITION FUNNEL — Submission (Sign-up) → Contact → Number → URSA login/outbound
@@ -282,66 +339,97 @@ if mode == _MODE_ACQ:
     if not ad:
         st.info("Set the sign-up window and click **▶ Build acquisition funnel**.")
         report_header_close(); st.stop()
-    _sg, _lv, _lg, _cl, _kp = ad["n_signup"], ad["n_live"], ad["n_login"], ad["n_call"], ad["n_keep"]
     if ad.get("saved_at"):
         st.caption(f"📌 Saved {saved_at_label(ad)} · sign-ups {ad['lo']} → {ad['hi']}")
+    _acq_render(ad["n_signup"], ad["n_live"], ad["n_login"], ad["n_call"], ad["n_keep"],
+                "Sign-ups = **submissions** in the window. Live = a linked Number is **Live** (PSTN ready). "
+                "First login / first call / keep calling use the Number's **ursa_first_login**, "
+                "**ursa_first_outbound_call**, **ursa_second_outbound_call**. Each gate nests inside the "
+                "previous one, so the funnel drops cleanly.")
+    report_header_close(); st.stop()
 
-    def _rate(a, b):
-        return f"{a/b*100:.0f}% ({a:,})" if b else "—"
+# ════════════════════════════════════════════════════════════════════════════════════
+# ACQUISITION FUNNEL (Registrations) — starts from Number objects (matches STG_REGISTRATIONS)
+# ════════════════════════════════════════════════════════════════════════════════════
+if mode == _MODE_ACQR:
+    _RKEY = "journey_acqreg_v1"
+    st.markdown("Starts from **Number objects** (registrations), deduped to one per **phone number**, "
+                "**service type = VRS**, excluding **cancelled / hidden / archived**. Live = **number "
+                "status Live**; then first login → first call → keep calling on those numbers.")
+    _rt = date.today()
+    rc1, rc2, rc3 = st.columns([1, 1, 1.2])
+    rlo = rc1.date_input("Numbers created from", value=_rt - timedelta(days=28), key="reg_lo")
+    rhi = rc2.date_input("to", value=_rt, key="reg_hi")
+    seg = rc3.selectbox("Segment (usage type)", ["All", "B2C (Personal)", "B2B (Organization)"], key="reg_seg")
+    if rlo > rhi:
+        rlo, rhi = rhi, rlo
+    if st.button("▶ Build registration funnel", type="primary", key="reg_run"):
+        _rprops = _list_props(NUM_OBJECT)
+        _hidden = [n for n in _rprops if "hidden" in n.lower() or "archived" in n.lower()]
+        _want = (["number", "number_status", "service_type", "usage_type", "number_created_at",
+                  "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"] + _hidden)
+        _want = [p for p in dict.fromkeys(_want) if p in _rprops or p in (
+            "number", "number_status", "service_type", "number_created_at")]
+        with dash_spinner("Reading Number objects (registrations)…"):
+            nums = fetch_all(NUM_OBJECT, _want, filter_groups=[{"filters": [
+                {"propertyName": "number_created_at", "operator": "GTE", "value": _ms(rlo)},
+                {"propertyName": "number_created_at", "operator": "LTE", "value": _ms(rhi + timedelta(days=1))}]}])
 
-    def _acard(col, t, v, s, c):
-        col.markdown(f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
-            padding:14px 16px 12px;background:rgba(127,127,127,0.03);height:100%;">
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#667085;">{t}</div>
-            <div style="font-size:1.7rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
-            <div style="font-size:.7rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
+        def _seg_of(p):
+            u = (p.get("usage_type") or "").strip().lower()
+            if "person" in u:
+                return "B2C (Personal)"
+            if "organ" in u or "org" == u or "company" in u or "business" in u:
+                return "B2B (Organization)"
+            return "Other"
 
-    _ac = st.columns(5)
-    _acard(_ac[0], "Sign-ups", f"{_sg:,}", "new VRS/PSTN registrations", "#8792A2")
-    _acard(_ac[1], "Live consumers", _rate(_lv, _sg), "PSTN number ready / sign-ups", "#4C8DFF")
-    _acard(_ac[2], "First login rate", _rate(_lg, _lv), "logged in / live consumers", "#0EA5E9")
-    _acard(_ac[3], "First-call rate", _rate(_cl, _lg), "first outbound / logged in", "#14B8A6")
-    _acard(_ac[4], "Keep calling", _rate(_kp, _cl), "second outbound / first-call", "#22C55E")
-    st.markdown("")
+        # filter: VRS/PSTN service, exclude cancelled/hidden/archived, apply usage segment
+        by_phone = {}
+        for o in nums:
+            p = o.get("properties", {})
+            svc = (p.get("service_type") or "").lower()
+            if "vrs" not in svc:               # service type must be VRS
+                continue
+            stt = (p.get("number_status") or "").lower()
+            if "cancel" in stt or "archiv" in stt or "hidden" in stt:
+                continue
+            if any((str(p.get(h) or "").lower() in ("true", "yes", "1")) for h in _hidden):
+                continue
+            if seg != "All" and _seg_of(p) != seg:
+                continue
+            phone = _dig10(p.get("number")) or f"id{o['id']}"
+            # dedupe: keep the "most progressed" record per phone
+            prev = by_phone.get(phone)
+            score = (int(bool(p.get("ursa_second_outbound_call"))) * 8 +
+                     int(bool(p.get("ursa_first_outbound_call"))) * 4 +
+                     int(bool(p.get("ursa_first_login"))) * 2 +
+                     int((p.get("number_status") or "").lower() == "live"))
+            if prev is None or score > prev[0]:
+                by_phone[phone] = (score, p)
 
-    st.markdown("**Where do consumers drop off on the way to calling?**")
-    st.markdown(
-        """<div style="display:flex;gap:20px;font-size:.8rem;color:#475467;margin:2px 0 6px;font-weight:600;">
-        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#0EA5E9;
-          margin-right:6px;"></span>Progressing</span>
-        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#22C55E;
-          margin-right:6px;"></span>Keep calling</span>
-        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#94A3B8;
-          margin-right:6px;"></span>Dropped off</span></div>""", unsafe_allow_html=True)
-    try:
-        import plotly.graph_objects as go
-        labels = [f"Sign-ups  {_sg:,}", f"Live consumers  {_lv:,}", f"First login  {_lg:,}",
-                  f"First call  {_cl:,}", f"Keep calling  {_kp:,}",
-                  f"Not live  {_sg-_lv:,}", f"Not logged in  {_lv-_lg:,}",
-                  f"No first call  {_lg-_cl:,}", f"No second call yet  {_cl-_kp:,}"]
-        node_colors = ["#6366F1", "#4C8DFF", "#0EA5E9", "#14B8A6", "#22C55E",
-                       "#94A3B8", "#94A3B8", "#94A3B8", "#94A3B8"]
-        src = [0, 0, 1, 1, 2, 2, 3, 3]
-        tgt = [1, 5, 2, 6, 3, 7, 4, 8]
-        val = [_lv, _sg-_lv, _lg, _lv-_lg, _cl, _lg-_cl, _kp, _cl-_kp]
-        link_colors = ["rgba(76,141,255,0.5)", "rgba(148,163,184,0.3)",
-                       "rgba(14,165,233,0.5)", "rgba(148,163,184,0.3)",
-                       "rgba(20,184,166,0.5)", "rgba(148,163,184,0.3)",
-                       "rgba(34,197,94,0.55)", "rgba(148,163,184,0.3)"]
-        fig = go.Figure(go.Sankey(arrangement="snap",
-            node=dict(label=labels, color=node_colors, pad=30, thickness=20,
-                      line=dict(color="white", width=1)),
-            link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
-        fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10),
-                          paper_bgcolor="white", plot_bgcolor="white",
-                          font=dict(size=13, color="#1B2430"))
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    except Exception as _e:
-        st.caption(f"(Sankey unavailable: {_e})")
-    st.caption("Sign-ups = submissions in the window. Live = a linked Number is **Live** (PSTN ready). "
-               "First login / first call / keep calling use the Number's **ursa_first_login**, "
-               "**ursa_first_outbound_call**, **ursa_second_outbound_call**. Each gate nests inside the "
-               "previous one, so the funnel drops cleanly.")
+        recs = [p for _, p in by_phone.values()]
+        n_signup = len(recs)
+        n_live = n_login = n_call = n_keep = 0
+        for p in recs:
+            live = (p.get("number_status") or "").lower() == "live"
+            login = live and bool(p.get("ursa_first_login"))
+            call = login and bool(p.get("ursa_first_outbound_call"))
+            keep = call and bool(p.get("ursa_second_outbound_call"))
+            n_live += int(live); n_login += int(login); n_call += int(call); n_keep += int(keep)
+        save_report(_RKEY, {"n_signup": n_signup, "n_live": n_live, "n_login": n_login,
+                            "n_call": n_call, "n_keep": n_keep, "lo": str(rlo), "hi": str(rhi), "seg": seg})
+
+    rd = load_report(_RKEY)
+    if not rd:
+        st.info("Set the window (and segment) and click **▶ Build registration funnel**.")
+        report_header_close(); st.stop()
+    if rd.get("saved_at"):
+        st.caption(f"📌 Saved {saved_at_label(rd)} · numbers created {rd['lo']} → {rd['hi']} · "
+                   f"segment: {rd.get('seg','All')}")
+    _acq_render(rd["n_signup"], rd["n_live"], rd["n_login"], rd["n_call"], rd["n_keep"],
+                "Sign-ups = **Number objects created in the window** (VRS/PSTN, deduped by phone, "
+                "cancelled/hidden/archived excluded). Live = number_status **Live**. First login / call / "
+                "keep calling use **ursa_first_login / ursa_first_outbound_call / ursa_second_outbound_call**.")
     report_header_close(); st.stop()
 
 # ── inputs (Submission → Interaction → Ticket) ──────────────────────────────────────
