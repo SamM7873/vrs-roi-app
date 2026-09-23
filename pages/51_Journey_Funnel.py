@@ -336,10 +336,40 @@ if _nm_match is not None:
     _ovm = _pct(_tk_match or 0, n_sub)
     _card(_mc[3], "Overall (Sub → Ticket)", f"{_ovm:.0f}%" if _ovm is not None else "—",
           "end-to-end", "#4C8DFF")
+    # ── Sankey flow: progression vs drop-off ──────────────────────────────────────
+    _nm = _nm_match or 0
+    _tk = _tk_match or 0
+    _no_int = max(0, n_sub - _nm)
+    _no_tk = max(0, _nm - _tk)
+    try:
+        import plotly.graph_objects as go
+        _PROG, _KEEP, _DROP = "#5B8DEF", "#3FB950", "#20304F"
+        labels = [f"Submissions · {n_sub:,}", f"Had interaction · {_nm:,}",
+                  f"Has ticket · {_tk:,}", f"No interaction · {_no_int:,}",
+                  f"No ticket · {_no_tk:,}"]
+        node_colors = [_PROG, _PROG, _KEEP, _DROP, _DROP]
+        src = [0, 0, 1, 1]
+        tgt = [1, 3, 2, 4]
+        val = [_nm, _no_int, _tk, _no_tk]
+        link_colors = ["rgba(91,141,239,0.45)", "rgba(32,48,79,0.7)",
+                       "rgba(63,185,80,0.45)", "rgba(32,48,79,0.7)"]
+        fig = go.Figure(go.Sankey(
+            arrangement="snap",
+            node=dict(label=labels, color=node_colors, pad=24, thickness=20,
+                      line=dict(color="rgba(0,0,0,0)", width=0)),
+            link=dict(source=src, target=tgt, value=val, color=link_colors)))
+        fig.update_layout(height=430, margin=dict(l=10, r=10, t=30, b=10),
+                          font=dict(size=13),
+                          title="Acquisition funnel — where do submissions drop off on the way to a ticket?")
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as _e:
+        st.caption(f"(Sankey unavailable: {_e})")
+
     st.caption("Per-person match. **Interaction:** a submission matches when its **name** matches a "
                "Convo360 call/chat Customer Name, **or** its **phone number** matches a SIP call's "
                "number (last-10 digits). **Ticket:** the submission's **email → Contact → associated "
-               "Ticket** (HubSpot). Matching is loose (names/emails), so treat as a guide, not exact.")
+               "Ticket** (HubSpot). Green = progressing to a ticket · dark = dropped off. "
+               "Matching is loose (names/emails), so treat as a guide, not exact.")
     st.markdown("")
 
 # ── submission contact info (top of funnel) ─────────────────────────────────────────
