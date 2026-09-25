@@ -22,6 +22,33 @@ NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
 _key = "pixel11_giveaway_v1"
 
+# Permanent giveaway recipient list (pre-filled; editable in the box).
+GIVEAWAY_EMAILS = """Domokidz03@gmail.com
+milkakitty1995@yahoo.com
+jazmynehuerta@gmail.com
+jerrinfinite@gmail.com
+kjerstinann26@gmail.com
+luxboucle@gmail.com
+jelitchfield@icloud.com
+chrissylove33112@gmail.com
+efraincasillas90@gmail.com
+bluessrosez5@gmail.com
+miletoca@optonline.net
+cjosborn1997@icloud.com
+danielaknicks@gmail.com
+matrixrabbit13@gmail.com
+frj1982@gmail.com
+aebdc1984@gmail.com
+misssjoie@gmail.com
+herojcthe9@gmail.com
+kevinagdovin@gmail.com
+iluvblue4ever@gmail.com
+Rebecca1asl@aol.com
+sxybooty03@gmail.com
+samrh8915@gmail.com
+sbackus64@yahoo.com
+Tanner32501.25@gmail.com"""
+
 
 def _assoc(from_obj, to_obj, from_ids):
     out = defaultdict(list)
@@ -94,8 +121,9 @@ st.markdown("Paste the **giveaway recipient emails** (one per line). Each email 
             "month **forward** (past months are ignored). VRS numbers only.")
 
 c1, c2 = st.columns([2, 1])
-emails_raw = c1.text_area("Emails (one per line or comma-separated)", height=160,
-                          placeholder="alice@example.com\nbob@example.com")
+emails_raw = c1.text_area("Emails (one per line or comma-separated)", value=GIVEAWAY_EMAILS,
+                          height=200,
+                          help="Pre-filled with the giveaway recipient list — edit to add/remove.")
 _today = date.today()
 start_month = c2.text_input("Count from month (YYYY-MM)", value="2026-09",
                             help="Monthly Values on/after this month count; earlier months are ignored.")
