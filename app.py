@@ -129,13 +129,14 @@ t2_support_page = st.Page("pages/49_T2_Support.py",                       title=
 deaf_nation_page = st.Page("pages/45_Deaf_Nation.py",                    title="Deaf Nation",                  icon="🎪")
 cn_subs_page = st.Page("pages/50_ConvoNow_Submissions.py",               title="Convo Now Submissions",        icon="📝")
 journey_funnel_page = st.Page("pages/51_Journey_Funnel.py",              title="Journey Funnel",               icon="🫗")
+pixel11_page = st.Page("pages/52_Pixel11_Giveaway.py",                    title="Pixel 11 Giveaway",            icon="🎁")
 
 # Grouped sidebar navigation (sections keep the pages organized).
 # Every signed-in user gets all sections; the Admin section is shown only to
 # app admins (APP_ADMINS secret). Non-admins never see the Admin pages.
 _nav = {
     "Home": [overview_page, this_month_page, weekly_page, daily_page, lookup_page],
-    "Numbers": [numbers_page, numfunnel_page, funnel_page, registrations_page, portin_page, winback_page, yoy_page, utm_page],
+    "Numbers": [numbers_page, numfunnel_page, funnel_page, registrations_page, portin_page, winback_page, yoy_page, utm_page, pixel11_page],
     "Customers": [ursa_page, journey_page, churn_page, vrs_zero_page, vrs_react_page, retention_page, org_ret_page, school_page, cn_only_page, cn20_recon_page, react_track_page, cn_subs_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page, ivt_page, ticket_pipe_page, convo_greet_page, t2_support_page, journey_funnel_page],
     "Tools": [pendo_page, dq_page, convo360_page, data_health_page],
