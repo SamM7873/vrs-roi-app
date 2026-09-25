@@ -10,7 +10,7 @@ from utils import (dash_spinner, require_auth, fetch_all, COMMON_CSS, report_hea
                    report_header_close, norm, vrs_rate_for_month, save_report, load_report,
                    saved_at_label)
 
-CONVO_NOW_RATE = 2.60
+CONVO_NOW_RATE = 2.80
 
 def _to_float(v):
     try:
@@ -891,7 +891,7 @@ if run_clicked or _use_cache:
         total_ursa_min   = sum(v["ursa_min"]  for v in month_agg.values())
         total_cfz_min    = sum(v["cfz_min"]   for v in month_agg.values())
         total_usage_min  = sum(v["usage_min"] for v in month_agg.values())
-        # FCC cost = usage minutes (URSA + CfZ) × the FCC rate for that month
+        # VRS Convo ROI = usage minutes (URSA + CfZ) × $4.50/min
         # (Jul 2026+ = $8.61, earlier = $8.33). This reconciles with the minutes shown,
         # rather than HubSpot's pre-calc which is based on a different minute field.
         total_vrs_fcc = sum(v["usage_min"] * vrs_rate_for_month(mk) for mk, v in month_agg.items())
@@ -1411,9 +1411,9 @@ if run_clicked or _use_cache:
     <div style="font-size:0.72rem;color:#9CA3AF;">URSA + CfZ</div>
   </div>
   <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:1rem 1.25rem;">
-    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">VRS FCC Cost</div>
+    <div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6B7280;margin-bottom:0.25rem;">VRS Convo ROI</div>
     <div style="font-size:1.4rem;font-weight:800;color:#00A651;font-variant-numeric:tabular-nums;">${total_vrs_fcc:,.0f}</div>
-    <div style="font-size:0.72rem;color:#6aab85;">{total_usage_min:,.0f} min × FCC rate</div>
+    <div style="font-size:0.72rem;color:#6aab85;">{total_usage_min:,.0f} min × $4.50 ROI</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -1453,16 +1453,16 @@ if run_clicked or _use_cache:
             if jul26_mks:
                 st.markdown("<div style='font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#9dc8b0;margin:1.25rem 0 0.5rem;'>CfZ & URSA Minutes — June 2026 Onward</div>", unsafe_allow_html=True)
                 bar_rows = []
-                fcc_rows = []  # one row per month for FCC label
+                fcc_rows = []  # one row per month for Convo ROI label
                 for mk in jul26_mks:
                     label = datetime.strptime(mk, "%Y-%m").strftime("%b %Y")
                     fcc   = round((month_agg[mk]["ursa_min"] + month_agg[mk]["cfz_min"])
                                   * vrs_rate_for_month(mk), 0)
                     ursa_m = round(month_agg[mk]["ursa_min"], 1)
                     cfz_m  = round(month_agg[mk]["cfz_min"],  1)
-                    bar_rows.append({"Month": label, "Type": "URSA Minutes", "Minutes": ursa_m, "FCC Cost ($)": fcc})
-                    bar_rows.append({"Month": label, "Type": "CfZ Minutes",  "Minutes": cfz_m,  "FCC Cost ($)": fcc})
-                    fcc_rows.append({"Month": label, "Minutes": max(ursa_m, cfz_m), "FCC Cost ($)": fcc})
+                    bar_rows.append({"Month": label, "Type": "URSA Minutes", "Minutes": ursa_m, "Convo ROI ($)": fcc})
+                    bar_rows.append({"Month": label, "Type": "CfZ Minutes",  "Minutes": cfz_m,  "Convo ROI ($)": fcc})
+                    fcc_rows.append({"Month": label, "Minutes": max(ursa_m, cfz_m), "Convo ROI ($)": fcc})
 
                 bar_df = pd.DataFrame(bar_rows)
                 fcc_df = pd.DataFrame(fcc_rows)
@@ -1483,7 +1483,7 @@ if run_clicked or _use_cache:
                             alt.Tooltip("Month:N"),
                             alt.Tooltip("Type:N"),
                             alt.Tooltip("Minutes:Q", format=",.0f"),
-                            alt.Tooltip("FCC Cost ($):Q", format="$,.0f"),
+                            alt.Tooltip("Convo ROI ($):Q", format="$,.0f"),
                         ],
                     )
                 )
@@ -1493,7 +1493,7 @@ if run_clicked or _use_cache:
                     .encode(
                         x=alt.X("Month:N", sort=m_order),
                         y=alt.Y("Minutes:Q"),
-                        text=alt.Text("FCC Cost ($):Q", format="$,.0f"),
+                        text=alt.Text("Convo ROI ($):Q", format="$,.0f"),
                     )
                 )
                 st.altair_chart(

@@ -20,7 +20,7 @@ report_header("Pixel 11 Giveaway — VRS ROI",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "pixel11_giveaway_v1"
+_key = "pixel11_giveaway_v2_roi"
 
 # Permanent giveaway recipient list (pre-filled; editable in the box).
 GIVEAWAY_EMAILS = """Domokidz03@gmail.com
@@ -210,7 +210,7 @@ if run:
             "Status": ", ".join(stat) or "—",
             "Has VRS": "Yes" if nids else "No",
             "VRS Minutes (from " + _cut + ")": tmin,
-            "FCC $": tfcc,
+            "Convo ROI $": tfcc,
         }
         for mk in all_months:
             row[mk] = round(by_month.get(mk, 0.0), 1)
@@ -218,7 +218,7 @@ if run:
     df = pd.DataFrame(rows)
     mv_rows = [{"Month": mk,
                 "VRS Minutes": round(sum(num_month[n].get(mk, 0.0) for n in num_month), 1),
-                "FCC $": round(sum(num_month[n].get(mk, 0.0) for n in num_month) * vrs_rate_for_month(mk), 2)}
+                "Convo ROI $": round(sum(num_month[n].get(mk, 0.0) for n in num_month) * vrs_rate_for_month(mk), 2)}
                for mk in all_months]
     save_report(_key, {"df": df, "mv_df": pd.DataFrame(mv_rows), "cut": _cut,
                        "n_emails": len(_emails)})
@@ -248,12 +248,12 @@ N = len(df)
 hv = int((df["Has VRS"] == "Yes").sum())
 _mincol = next((c for c in df.columns if c.startswith("VRS Minutes")), None)
 tot_min = int(round(df[_mincol].sum())) if _mincol else 0
-tot_fcc = round(df["FCC $"].sum(), 2) if "FCC $" in df.columns else 0
+tot_fcc = round(df["Convo ROI $"].sum(), 2) if "Convo ROI $" in df.columns else 0
 k = st.columns(4)
 _card(k[0], "🎁 Emails", f"{N:,}", "giveaway recipients", "#7A5CFF")
 _card(k[1], "📞 Have VRS number", f"{hv:,}", f"{hv/N*100:.0f}% of emails" if N else "—", "#0FB5AE")
 _card(k[2], "⏱️ VRS minutes", f"{tot_min:,}", f"from {saved.get('cut','')} →", "#4C8DFF")
-_card(k[3], "💵 FCC value", f"${tot_fcc:,.0f}", "minutes × FCC rate", "#2DB84B")
+_card(k[3], "💵 Convo ROI", f"${tot_fcc:,.0f}", "VRS min × $4.50", "#2DB84B")
 st.markdown("")
 
 _mv = saved.get("mv_df")

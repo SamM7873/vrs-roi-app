@@ -20,7 +20,7 @@ report_header("Convo Greeting",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "convo_greeting_v14_cnrate"
+_key = "convo_greeting_v15_roi"
 
 
 def _batch_read(obj, ids, props):
@@ -148,7 +148,7 @@ _labels = sorted(_cg_options.keys())
 
 st.markdown("Pulls every ticket in the **Convo Greeting** pipeline, then follows "
             "**ticket → Contact → Number → Monthly Values**. Shows which tickets have a contact / "
-            "number and the ROI (usage minutes × FCC rate) from those numbers.")
+            "number and the Convo ROI (VRS $4.50/min · CN $2.80/min) from those numbers.")
 
 c1, c2 = st.columns([2, 1])
 pipe_label = c1.selectbox("Ticket pipeline", _labels,
@@ -328,7 +328,7 @@ if run:
             _row[f"{mk} CN"] = round(_by_c.get(mk, 0.0), 1)
         rows.append(_row)
     df = pd.DataFrame(rows)
-    _mrows = [{"Month": mk, "VRS Minutes": round(v["min"], 1), "FCC $": round(v["fcc"], 2),
+    _mrows = [{"Month": mk, "VRS Minutes": round(v["min"], 1), "VRS Convo ROI $": round(v["fcc"], 2),
                "Convo Now Minutes": round(v["cn"], 1), "Convo Now $": round(v["cn_val"], 2)}
               for mk, v in sorted(monthly.items())]
     mv_df = pd.DataFrame(_mrows)
@@ -344,7 +344,7 @@ if run:
                 "VRS Number": num,
                 "Month": mk,
                 "VRS Minutes": round(vmin, 1),
-                "FCC $": round(vmin * vrs_rate_for_month(mk), 2),
+                "VRS Convo ROI $": round(vmin * vrs_rate_for_month(mk), 2),
                 "Convo Now Minutes": round(cmin, 1),
                 "Convo Now $": round(cmin * CONVO_NOW_RATE_PER_MINUTE, 2),
                 "Since close?": "Yes" if mk >= since else "No",
@@ -412,10 +412,10 @@ _n_active = int((df.get(_vmcol, pd.Series(dtype=float)) > 0).sum()) if _vmcol in
 st.markdown("##### 💵 ROI from Monthly Values (closed date → present · associated numbers)")
 _cards([
     ("⏱️ Total VRS minutes", f"{_tot_min:,.0f}", "from associated numbers", "#4C8DFF"),
-    ("💵 FCC value (VRS)", f"${_tot_fcc:,.0f}", "VRS min × FCC rate", "#2DB84B"),
+    ("💵 VRS Convo ROI", f"${_tot_fcc:,.0f}", "VRS min × $4.50", "#2DB84B"),
     ("📱 Total Convo Now minutes", f"{_tot_cn:,.0f}", "from Convo Now numbers", "#B4883F"),
-    (f"💲 Convo Now value", f"${_tot_cn_val:,.0f}", f"CN min × ${CONVO_NOW_RATE_PER_MINUTE:.2f}/min", "#E8A33D"),
-    ("Total value (VRS + CN)", f"${_tot_fcc + _tot_cn_val:,.0f}", "combined", "#7A5CFF"),
+    ("💲 CN Convo ROI", f"${_tot_cn_val:,.0f}", f"CN min × ${CONVO_NOW_RATE_PER_MINUTE:.2f}/min", "#E8A33D"),
+    ("Total Convo ROI (VRS + CN)", f"${_tot_fcc + _tot_cn_val:,.0f}", "combined", "#7A5CFF"),
 ])
 _mv = saved.get("mv_df")
 if _mv is not None and not _mv.empty:
@@ -448,8 +448,8 @@ if _det is not None and not _det.empty:
             except Exception:
                 pass
 st.caption(f"VRS / Convo Now minutes = usage on the tickets' associated numbers from the ticket's **closed-date "
-           f"month → present** (Monthly Values month_date ≥ closed date). FCC value = **VRS** minutes × the VRS FCC "
-           f"rate. Convo Now value = **Convo Now** minutes × **${CONVO_NOW_RATE_PER_MINUTE:.2f}/min**.")
+           f"month → present** (Monthly Values month_date ≥ closed date). VRS Convo ROI = **VRS** minutes × "
+           f"**$4.50/min**. CN Convo ROI = **Convo Now** minutes × **${CONVO_NOW_RATE_PER_MINUTE:.2f}/min**.")
 st.markdown("")
 
 # breakdown by association type
@@ -484,9 +484,9 @@ with _ex2:
         ("Has Contact", f"{hc:,}"),
         ("Has Number", f"{hn:,}"),
         ("Total VRS minutes", f"{_tot_min:,.0f}"),
-        ("FCC value (VRS)", f"${_tot_fcc:,.0f}"),
+        ("VRS Convo ROI", f"${_tot_fcc:,.0f}"),
         ("Total Convo Now minutes", f"{_tot_cn:,.0f}"),
-        ("Convo Now value", f"${_tot_cn_val:,.0f}"),
+        ("CN Convo ROI", f"${_tot_cn_val:,.0f}"),
     ]
     _pdf_charts = []
     if _mv is not None and not _mv.empty:

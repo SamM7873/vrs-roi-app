@@ -1066,43 +1066,17 @@ def to_float(v):
         return None
 
 
-CONVO_NOW_RATE_PER_MINUTE = 2.60
+# ── Convo ROI rates (what we keep per minute, not the FCC reimbursement rate) ──
+# Labeled "Convo ROI" in reports. VRS = $4.50/min, Convo Now = $2.80/min.
+VRS_ROI_PER_MINUTE = 4.50
+CN_ROI_PER_MINUTE = 2.80
+CONVO_NOW_RATE_PER_MINUTE = CN_ROI_PER_MINUTE   # kept for existing imports
 
-# VRS FCC rate schedule: (year, month) >= threshold → rate.
-#  • July 2026 onward .......... $8.61
-#  • July 2025 – June 2026 ..... $8.33
-_VRS_RATE_SCHEDULE = [
-    ((2026, 7), 8.61),   # July 2026 onward
-    ((2000, 1), 8.33),   # all earlier months (incl. Jul 2025–Jun 2026)
-]
 
-def vrs_rate_for_month(month_str):
-    """Return the VRS FCC rate for a given month.
-    Accepts YYYY-MM, MM/DD/YYYY, MM/01/YYYY, or a datetime object.
-    """
-    from datetime import datetime as _dt
-    ym = None
-    if not month_str:
-        return 8.33
-    try:
-        if isinstance(month_str, _dt):
-            ym = (month_str.year, month_str.month)
-        elif "-" in str(month_str):
-            parts = str(month_str)[:7].split("-")
-            ym = (int(parts[0]), int(parts[1]))
-        elif "/" in str(month_str):
-            parts = str(month_str).split("/")
-            if len(parts) == 3:
-                # MM/DD/YYYY or MM/01/YYYY
-                ym = (int(parts[2]), int(parts[0]))
-    except Exception:
-        pass
-    if not ym:
-        return 8.33
-    for threshold, rate in _VRS_RATE_SCHEDULE:
-        if ym >= threshold:
-            return rate
-    return 8.33
+def vrs_rate_for_month(month_str=None):
+    """VRS **Convo ROI** per minute — a flat $4.50 (what we keep, not the FCC
+    reimbursement rate). Kept month-arg signature for existing callers."""
+    return VRS_ROI_PER_MINUTE
 
 
 COMMON_CSS = """

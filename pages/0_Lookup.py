@@ -122,7 +122,7 @@ def to_float(v):
 
 # Current VRS FCC rate from the shared schedule (July 2026+ = $8.61, earlier = $8.33).
 VRS_RATE_PER_MINUTE = _vrs_rate(datetime.now().strftime("%Y-%m"))
-CONVO_NOW_RATE_PER_MINUTE = 2.60
+CONVO_NOW_RATE_PER_MINUTE = 2.80
 
 def classify_roi(vrs_minutes, convo_minutes):
     vrs = to_float(vrs_minutes) or 0
