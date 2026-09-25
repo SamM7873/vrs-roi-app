@@ -120,17 +120,19 @@ st.markdown("Paste the **giveaway recipient emails** (one per line). Each email 
             "**Contact → VRS Number**, then **Monthly Values** usage is summed from the chosen start "
             "month **forward** (past months are ignored). VRS numbers only.")
 
-c1, c2 = st.columns([2, 1])
-emails_raw = c1.text_area("Emails (one per line or comma-separated)", value=GIVEAWAY_EMAILS,
-                          height=200,
-                          help="Pre-filled with the giveaway recipient list — edit to add/remove.")
-_today = date.today()
-start_month = c2.text_input("Count from month (YYYY-MM)", value="2026-09",
-                            help="Monthly Values on/after this month count; earlier months are ignored.")
-c2.caption("Default September 2026 → future.")
-run = c2.button("▶ Run", type="primary", use_container_width=True)
-
+emails_raw = GIVEAWAY_EMAILS
 _emails = sorted({e.strip().lower() for e in emails_raw.replace(",", "\n").splitlines() if e.strip()})
+
+c1, c2 = st.columns([2, 1])
+start_month = c1.text_input("Count from month (YYYY-MM)", value="2026-09",
+                            help="Monthly Values on/after this month count; earlier months are ignored.")
+c1.caption(f"{len(_emails)} giveaway recipients · from September 2026 → future.")
+c2.markdown("<div style='height:1.7rem'></div>", unsafe_allow_html=True)
+run = c2.button("▶ Run", type="primary", use_container_width=True)
+with st.expander("✏️ Edit recipient list", expanded=False):
+    emails_raw = st.text_area("Recipient emails", value=GIVEAWAY_EMAILS, height=200,
+                              label_visibility="collapsed")
+    _emails = sorted({e.strip().lower() for e in emails_raw.replace(",", "\n").splitlines() if e.strip()})
 
 if run:
     if not _emails:
