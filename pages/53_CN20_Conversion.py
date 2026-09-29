@@ -19,7 +19,7 @@ report_header("CN20 w/o Convo VRS: Conversion",
 SUB_OBJECT = "2-49942763"   # submission form records
 REG_OBJECT = "2-58833629"   # registration
 NUM_OBJECT = "2-40974683"   # Number object
-_key = "cn20_conversion_v2_cols"
+_key = "cn20_conversion_v3_regtype"
 
 CAMPAIGN_DEFAULT = "51155747-VRS/IVCS Cross Sell via CN20 - US B2C Sign Up - Q3 2026"
 
@@ -83,7 +83,7 @@ if run:
     # 3) Number objects by email OR number → keep VRS + Live
     live_emails, live_numbers, num_rows = set(), set(), {}
     num_by_email, num_by_number = {}, {}
-    nprops = ["number", "email", "service_type", "number_status", "usage_type"]
+    nprops = ["number", "email", "service_type", "number_status", "usage_type", "registration_type"]
 
     def _keep(o):
         p = o.get("properties", {})
@@ -146,6 +146,7 @@ if run:
             "Number Status": (_np.get("number_status") or "").strip().title() or "—",
             "Usage type": (_np.get("usage_type") or "").strip().title() or "—",
             "Service type": (_np.get("service_type") or "").strip() or "—",
+            "Registration type": (_np.get("registration_type") or "").strip() or "—",
             "Live VRS": "Yes" if live else "No",
         })
     df = pd.DataFrame(rows)
