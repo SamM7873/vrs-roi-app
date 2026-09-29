@@ -19,7 +19,7 @@ report_header("CN20 w/o Convo VRS: Conversion",
 SUB_OBJECT = "2-49942763"   # submission form records
 REG_OBJECT = "2-58833629"   # registration
 NUM_OBJECT = "2-40974683"   # Number object
-_key = "cn20_conversion_v1"
+_key = "cn20_conversion_v2_cols"
 
 CAMPAIGN_DEFAULT = "51155747-VRS/IVCS Cross Sell via CN20 - US B2C Sign Up - Q3 2026"
 
@@ -82,7 +82,8 @@ if run:
 
     # 3) Number objects by email OR number → keep VRS + Live
     live_emails, live_numbers, num_rows = set(), set(), {}
-    nprops = ["number", "email", "service_type", "number_status"]
+    num_by_email, num_by_number = {}, {}
+    nprops = ["number", "email", "service_type", "number_status", "usage_type"]
 
     def _keep(o):
         p = o.get("properties", {})
@@ -102,10 +103,9 @@ if run:
                 if p:
                     em = _norm(p.get("email")); nb = str(p.get("number") or "").strip()
                     if em:
-                        live_emails.add(em)
+                        live_emails.add(em); num_by_email[em] = p
                     if nb:
-                        live_numbers.add(nb)
-                        num_rows[nb] = p
+                        live_numbers.add(nb); num_rows[nb] = p; num_by_number[nb] = p
         for i in range(0, len(reg_numbers), 100):
             chunk = reg_numbers[i:i + 100]
             for o in fetch_all(NUM_OBJECT, nprops, filter_groups=[{"filters": [
@@ -115,10 +115,9 @@ if run:
                 if p:
                     em = _norm(p.get("email")); nb = str(p.get("number") or "").strip()
                     if em:
-                        live_emails.add(em)
+                        live_emails.add(em); num_by_email[em] = p
                     if nb:
-                        live_numbers.add(nb)
-                        num_rows[nb] = p
+                        live_numbers.add(nb); num_rows[nb] = p; num_by_number[nb] = p
 
     # 4) per-submission conversion
     rows = []
@@ -131,12 +130,22 @@ if run:
         _rnums = [str(r.get("number") or "").strip() for r in regs if str(r.get("number") or "").strip()]
         live = (em in live_emails) or any(n in live_numbers for n in _rnums)
         _live_num = next((n for n in _rnums if n in live_numbers), "")
+        # matched number's props (prefer by number, else by email)
+        _np = num_by_number.get(_live_num) or num_by_email.get(em) or {}
+        # names: prefer registration's, else submission's
+        _rg = regs[0] if regs else {}
+        _fn = (_rg.get("first_name") or p.get("firstname") or "").strip()
+        _ln = (_rg.get("last_name") or p.get("lastname") or "").strip()
         rows.append({
             "Email": em or "—",
-            "Name": f"{(p.get('firstname') or '').strip()} {(p.get('lastname') or '').strip()}".strip() or "—",
+            "First name": _fn or "—",
+            "Last name": _ln or "—",
             "Created": str(p.get("hs_createdate") or "")[:10],
             "Registered": "Yes" if registered else "No",
             "VRS Number": _live_num or (", ".join(sorted(set(_rnums))) if _rnums else "—"),
+            "Number Status": (_np.get("number_status") or "").strip().title() or "—",
+            "Usage type": (_np.get("usage_type") or "").strip().title() or "—",
+            "Service type": (_np.get("service_type") or "").strip() or "—",
             "Live VRS": "Yes" if live else "No",
         })
     df = pd.DataFrame(rows)
