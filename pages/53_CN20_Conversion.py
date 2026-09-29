@@ -19,7 +19,7 @@ report_header("CN20 w/o Convo VRS: Conversion",
 SUB_OBJECT = "2-49942763"   # submission form records
 REG_OBJECT = "2-58833629"   # registration
 NUM_OBJECT = "2-40974683"   # Number object
-_key = "cn20_conversion_v3_regtype"
+_key = "cn20_conversion_v4_utm"
 
 CAMPAIGN_DEFAULT = "51155747-VRS/IVCS Cross Sell via CN20 - US B2C Sign Up - Q3 2026"
 
@@ -53,9 +53,13 @@ run = c2.button("▶ Run", type="primary", use_container_width=True)
 def _norm(v):
     return str(v or "").strip().lower()
 
+_utm_fields = sorted(n for n in prop_names if "utm" in n.lower())
+
 if run:
     # 1) submissions in the campaign
-    sub_props = [_utm, "hs_createdate"] + [p for p in ("email", "firstname", "lastname") if p in prop_names]
+    sub_props = list(dict.fromkeys(
+        [_utm, "hs_createdate", "email", "firstname", "lastname"] + _utm_fields))
+    sub_props = [p for p in sub_props if p in prop_names or p == "hs_createdate"]
     with dash_spinner("Reading campaign submissions…"):
         subs = fetch_all(SUB_OBJECT, sub_props, filter_groups=[{"filters": [
             {"propertyName": _utm, "operator": "EQ", "value": campaign}]}])
@@ -149,6 +153,8 @@ if run:
             "Registration type": (_np.get("registration_type") or "").strip() or "—",
             "Live VRS": "Yes" if live else "No",
         })
+        for _uf in _utm_fields:
+            rows[-1][_uf.replace("_", " ").title()] = (p.get(_uf) or "—")
     df = pd.DataFrame(rows)
     # dedupe by email (one row per person)
     df = df.sort_values("Live VRS", ascending=False).drop_duplicates("Email", keep="first")
