@@ -20,7 +20,7 @@ report_header("Pixel 11 Giveaway — VRS ROI",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "pixel11_giveaway_v2_roi"
+_key = "pixel11_giveaway_v3_regtype"
 
 # Permanent giveaway recipient list (pre-filled; editable in the box).
 GIVEAWAY_EMAILS = """Domokidz03@gmail.com
@@ -158,7 +158,7 @@ if run:
     with dash_spinner("Linking contacts → Number objects…"):
         cid_to_nids = _assoc("contacts", NUM_OBJECT, all_cids)
     all_nids = sorted({n for v in cid_to_nids.values() for n in v})
-    nprops = ["number", "email", "service_type", "number_status"]
+    nprops = ["number", "email", "service_type", "number_status", "registration_type"]
     num_of = _batch_read(NUM_OBJECT, all_nids, nprops) if all_nids else {}
 
     def _is_vrs(nid):
@@ -196,6 +196,7 @@ if run:
         nids = email_to_vrs.get(em, [])
         nums = sorted({nid_num.get(n, "") for n in nids} - {""})
         stat = sorted({(num_of.get(n, {}).get("number_status") or "").strip().title() for n in nids} - {""})
+        regt = sorted({(num_of.get(n, {}).get("registration_type") or "").strip() for n in nids} - {""})
         by_month = defaultdict(float)
         for x in nums:
             for mk, m in num_month.get(x, {}).items():
@@ -208,6 +209,7 @@ if run:
             "Name": f"{(cm.get('firstname') or '').strip()} {(cm.get('lastname') or '').strip()}".strip() or "—",
             "VRS Number(s)": ", ".join(nums) or "—",
             "Status": ", ".join(stat) or "—",
+            "Registration type": ", ".join(regt) or "—",
             "Has VRS": "Yes" if nids else "No",
             "VRS Minutes (from " + _cut + ")": tmin,
             "Convo ROI $": tfcc,
