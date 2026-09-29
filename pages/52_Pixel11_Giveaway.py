@@ -20,7 +20,7 @@ report_header("Pixel 11 Giveaway — VRS ROI",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "pixel11_giveaway_v4_portin"
+_key = "pixel11_giveaway_v5_ticket"
 
 # Permanent giveaway recipient list (pre-filled; editable in the box).
 GIVEAWAY_EMAILS = """Domokidz03@gmail.com
@@ -126,6 +126,8 @@ _emails = sorted({e.strip().lower() for e in emails_raw.replace(",", "\n").split
 c1, c2 = st.columns([2, 1])
 start_month = c1.text_input("Count from month (YYYY-MM)", value="2026-09",
                             help="Monthly Values on/after this month count; earlier months are ignored.")
+tk_after = c1.date_input("Ticket created after", value=date(2026, 9, 22), key="px_tkafter",
+                         help="Counts each recipient's tickets created after this date.")
 c1.caption(f"{len(_emails)} giveaway recipients · from September 2026 → future.")
 c2.markdown("<div style='height:1.7rem'></div>", unsafe_allow_html=True)
 run = c2.button("▶ Run", type="primary", use_container_width=True)
@@ -160,6 +162,27 @@ if run:
     all_nids = sorted({n for v in cid_to_nids.values() for n in v})
     nprops = ["number", "email", "service_type", "number_status", "registration_type", "portin_status"]
     num_of = _batch_read(NUM_OBJECT, all_nids, nprops) if all_nids else {}
+
+    # contact → tickets created after the cutoff date
+    with dash_spinner("Checking tickets created after cutoff…"):
+        cid_to_tids = _assoc("contacts", "tickets", all_cids)
+        _all_tids = sorted({t for v in cid_to_tids.values() for t in v})
+        _tk_of = _batch_read("tickets", _all_tids, ["createdate"]) if _all_tids else {}
+
+    def _tk_date(v):
+        v = str(v or "").strip()
+        try:
+            if v.isdigit():
+                return datetime.fromtimestamp(int(v) / 1000, tz=timezone.utc).date()
+            return datetime.fromisoformat(v.replace("Z", "+00:00")).date()
+        except Exception:
+            return None
+
+    email_to_tkafter = {}
+    for em, cids in email_to_cids.items():
+        tids = {t for c in cids for t in cid_to_tids.get(c, [])}
+        n = sum(1 for t in tids if (_tk_date(_tk_of.get(t, {}).get("createdate")) or date.min) > tk_after)
+        email_to_tkafter[em] = n
 
     def _is_vrs(nid):
         return "vrs" in (num_of.get(nid, {}).get("service_type") or "").lower()
@@ -215,6 +238,8 @@ if run:
             "Registration type": ", ".join(regt) or "—",
             "Number type": _numtype,
             "Has VRS": "Yes" if nids else "No",
+            "Tickets after cutoff": email_to_tkafter.get(em, 0),
+            "Has ticket after": "Yes" if email_to_tkafter.get(em, 0) else "No",
             "VRS Minutes (from " + _cut + ")": tmin,
             "Convo ROI $": tfcc,
         }
@@ -227,7 +252,7 @@ if run:
                 "Convo ROI $": round(sum(num_month[n].get(mk, 0.0) for n in num_month) * vrs_rate_for_month(mk), 2)}
                for mk in all_months]
     save_report(_key, {"df": df, "mv_df": pd.DataFrame(mv_rows), "cut": _cut,
-                       "n_emails": len(_emails)})
+                       "n_emails": len(_emails), "tk_after": str(tk_after)})
 
 saved = load_report(_key)
 if saved is None:
@@ -268,15 +293,19 @@ if _mv is not None and not _mv.empty:
     st.dataframe(_mv.sort_values("Month"), use_container_width=True, hide_index=True)
 
 st.markdown("##### Recipients")
-f1, f2, f3 = st.columns([1, 1.2, 2])
+f1, f2, f3, f4 = st.columns([1, 1.2, 1.2, 2])
 hvp = f1.radio("Has VRS", ["All", "Yes", "No"], horizontal=True, key="px_hasvrs")
 ntp = f2.radio("Number type", ["Both", "Port-in", "New"], horizontal=True, key="px_numtype")
-q = f3.text_input("Search email / name / number").strip().lower()
+tkp = f3.radio(f"Ticket after {saved.get('tk_after','')}", ["All", "Yes", "No"],
+               horizontal=True, key="px_tkfilter")
+q = f4.text_input("Search email / name / number").strip().lower()
 view = df.copy()
 if hvp != "All":
     view = view[view["Has VRS"] == hvp]
 if ntp != "Both" and "Number type" in view.columns:
     view = view[view["Number type"] == ntp]
+if tkp != "All" and "Has ticket after" in view.columns:
+    view = view[view["Has ticket after"] == tkp]
 if q:
     view = view[view.apply(lambda r: q in " ".join(str(x).lower() for x in r.values), axis=1)]
 st.caption(f"{len(view):,} of {N:,}")
