@@ -19,7 +19,7 @@ report_header("CN20 w/o Convo VRS: Conversion",
 SUB_OBJECT = "2-49942763"   # submission form records
 REG_OBJECT = "2-58833629"   # registration
 NUM_OBJECT = "2-40974683"   # Number object
-_key = "cn20_conversion_v4_utm"
+_key = "cn20_conversion_v5_rates"
 
 CAMPAIGN_DEFAULT = "51155747-VRS/IVCS Cross Sell via CN20 - US B2C Sign Up - Q3 2026"
 
@@ -52,6 +52,19 @@ run = c2.button("▶ Run", type="primary", use_container_width=True)
 
 def _norm(v):
     return str(v or "").strip().lower()
+
+
+def _fmtd(v):
+    from datetime import datetime as _dt, timezone as _tz
+    v = str(v or "").strip()
+    if not v:
+        return "—"
+    try:
+        if v.isdigit():
+            return _dt.fromtimestamp(int(v) / 1000, tz=_tz.utc).strftime("%Y-%m-%d")
+        return v[:10]
+    except Exception:
+        return v
 
 _utm_fields = sorted(n for n in prop_names if "utm" in n.lower())
 
@@ -87,7 +100,9 @@ if run:
     # 3) Number objects by email OR number → keep VRS + Live
     live_emails, live_numbers, num_rows = set(), set(), {}
     num_by_email, num_by_number = {}, {}
-    nprops = ["number", "email", "service_type", "number_status", "usage_type", "registration_type"]
+    nprops = ["number", "email", "service_type", "number_status", "usage_type", "registration_type",
+              "registered_at", "number_created_at", "ursa_first_login",
+              "ursa_first_outbound_call", "ursa_second_outbound_call"]
 
     def _keep(o):
         p = o.get("properties", {})
@@ -151,6 +166,11 @@ if run:
             "Usage type": (_np.get("usage_type") or "").strip().title() or "—",
             "Service type": (_np.get("service_type") or "").strip() or "—",
             "Registration type": (_np.get("registration_type") or "").strip() or "—",
+            "Registration at": _fmtd(_np.get("registered_at")),
+            "Number created at": _fmtd(_np.get("number_created_at")),
+            "First login": "Yes" if (live and _np.get("ursa_first_login")) else "No",
+            "First call": "Yes" if (live and _np.get("ursa_first_outbound_call")) else "No",
+            "Second call": "Yes" if (live and _np.get("ursa_second_outbound_call")) else "No",
             "Live VRS": "Yes" if live else "No",
         })
         for _uf in _utm_fields:
@@ -161,7 +181,10 @@ if run:
     save_report(_key, {"df": df, "campaign": campaign,
                        "n_sub": int(df.shape[0]),
                        "n_reg": int((df["Registered"] == "Yes").sum()),
-                       "n_live": int((df["Live VRS"] == "Yes").sum())})
+                       "n_live": int((df["Live VRS"] == "Yes").sum()),
+                       "n_login": int((df["First login"] == "Yes").sum()),
+                       "n_call": int((df["First call"] == "Yes").sum()),
+                       "n_second": int((df["Second call"] == "Yes").sum())})
 
 saved = load_report(_key)
 if saved is None:
@@ -185,6 +208,13 @@ def _card(col, t, v, s, c):
         <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
 
+_nlg, _ncl, _nsc = saved.get("n_login", 0), saved.get("n_call", 0), saved.get("n_second", 0)
+
+
+def _pct(a, b):
+    return f"{a/b*100:.0f}% ({a:,})" if b else "—"
+
+
 k = st.columns(4)
 _card(k[0], "📝 Submissions", f"{_ns:,}", "in the CN20 campaign", "#7A5CFF")
 _card(k[1], "📋 Registered", f"{_nr:,}", f"{_nr/_ns*100:.0f}% of submissions" if _ns else "—", "#0EA5E9")
@@ -192,8 +222,18 @@ _card(k[2], "📞 Live VRS", f"{_nl:,}", f"{_nl/_ns*100:.0f}% of submissions" if
 _card(k[3], "🎯 Conversion", f"{_nl/_ns*100:.0f}%" if _ns else "—", "submission → live VRS", "#4C8DFF")
 st.markdown("")
 
+st.markdown("##### Rates")
+r = st.columns(4)
+_card(r[0], "📝 Sign-up rate", _pct(_nl, _ns), "live VRS / submissions", "#7A5CFF")
+_card(r[1], "🔑 First login rate", _pct(_nlg, _nl), "logged in / live VRS", "#0EA5E9")
+_card(r[2], "📲 First-call rate", _pct(_ncl, _nlg), "first outbound / logged in", "#14B8A6")
+_card(r[3], "🔁 Second-call rate", _pct(_nsc, _ncl), "second outbound / first-call", "#22C55E")
+st.markdown("")
+
 st.markdown("##### Conversion funnel")
-stages = [("📝 Submissions", _ns, "#7A5CFF"), ("📋 Registered", _nr, "#0EA5E9"), ("📞 Live VRS", _nl, "#2DB84B")]
+stages = [("📝 Submissions", _ns, "#7A5CFF"), ("📋 Registered", _nr, "#0EA5E9"),
+          ("📞 Live VRS", _nl, "#2DB84B"), ("🔑 First login", _nlg, "#0EA5E9"),
+          ("📲 First call", _ncl, "#14B8A6"), ("🔁 Second call", _nsc, "#22C55E")]
 _scale = max((s[1] for s in stages), default=1) or 1
 _html = '<div style="display:flex;flex-direction:column;gap:12px;">'
 for lab, cnt, color in stages:
