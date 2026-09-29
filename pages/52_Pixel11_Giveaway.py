@@ -20,7 +20,7 @@ report_header("Pixel 11 Giveaway — VRS ROI",
 
 NUM_OBJECT = "2-40974683"   # Number object
 MV_OBJECT = "2-46246179"    # Monthly Values
-_key = "pixel11_giveaway_v3_regtype"
+_key = "pixel11_giveaway_v4_portin"
 
 # Permanent giveaway recipient list (pre-filled; editable in the box).
 GIVEAWAY_EMAILS = """Domokidz03@gmail.com
@@ -158,7 +158,7 @@ if run:
     with dash_spinner("Linking contacts → Number objects…"):
         cid_to_nids = _assoc("contacts", NUM_OBJECT, all_cids)
     all_nids = sorted({n for v in cid_to_nids.values() for n in v})
-    nprops = ["number", "email", "service_type", "number_status", "registration_type"]
+    nprops = ["number", "email", "service_type", "number_status", "registration_type", "portin_status"]
     num_of = _batch_read(NUM_OBJECT, all_nids, nprops) if all_nids else {}
 
     def _is_vrs(nid):
@@ -197,6 +197,9 @@ if run:
         nums = sorted({nid_num.get(n, "") for n in nids} - {""})
         stat = sorted({(num_of.get(n, {}).get("number_status") or "").strip().title() for n in nids} - {""})
         regt = sorted({(num_of.get(n, {}).get("registration_type") or "").strip() for n in nids} - {""})
+        _ported = any((str(num_of.get(n, {}).get("portin_status") or "").strip().lower()
+                       not in ("", "none", "n/a", "not ported", "direct")) for n in nids)
+        _numtype = "Port-in" if _ported else ("New" if nids else "—")
         by_month = defaultdict(float)
         for x in nums:
             for mk, m in num_month.get(x, {}).items():
@@ -210,6 +213,7 @@ if run:
             "VRS Number(s)": ", ".join(nums) or "—",
             "Status": ", ".join(stat) or "—",
             "Registration type": ", ".join(regt) or "—",
+            "Number type": _numtype,
             "Has VRS": "Yes" if nids else "No",
             "VRS Minutes (from " + _cut + ")": tmin,
             "Convo ROI $": tfcc,
@@ -264,12 +268,15 @@ if _mv is not None and not _mv.empty:
     st.dataframe(_mv.sort_values("Month"), use_container_width=True, hide_index=True)
 
 st.markdown("##### Recipients")
-f1, f2 = st.columns([1, 3])
+f1, f2, f3 = st.columns([1, 1.2, 2])
 hvp = f1.radio("Has VRS", ["All", "Yes", "No"], horizontal=True, key="px_hasvrs")
-q = f2.text_input("Search email / name / number").strip().lower()
+ntp = f2.radio("Number type", ["Both", "Port-in", "New"], horizontal=True, key="px_numtype")
+q = f3.text_input("Search email / name / number").strip().lower()
 view = df.copy()
 if hvp != "All":
     view = view[view["Has VRS"] == hvp]
+if ntp != "Both" and "Number type" in view.columns:
+    view = view[view["Number type"] == ntp]
 if q:
     view = view[view.apply(lambda r: q in " ".join(str(x).lower() for x in r.values), axis=1)]
 st.caption(f"{len(view):,} of {N:,}")
