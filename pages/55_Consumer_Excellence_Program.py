@@ -19,7 +19,7 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v5_vrsalign"
+_key = "consumer_excellence_v6_daterange"
 
 UTM_PROPS = ["utm_campaign", "utm_source", "utm_medium", "utm_content",
              "referral_source", "referral_source_b2b"]
@@ -79,13 +79,18 @@ w1, w2 = st.columns([2.4, 1])
 _win = w1.radio("Rolling window", [7, 14, 28, 30, 56, 60, 84, 90], index=2, horizontal=True,
                 format_func=lambda d: f"{d}d", key="cep_win")
 _custom = w2.checkbox("Custom start date", value=False, key="cep_custom")
+def _pretty(d):
+    return d.strftime("%b %-d, %Y")
+
+
 if _custom:
     since = w2.date_input("Numbers created on/after", value=date(2026, 9, 1), key="cep_since")
     _until = date.today()
+    w1.caption(f"📅 **{_pretty(since)} – {_pretty(_until)}**")
 else:
-    _until = date.today()
-    since = _until - timedelta(days=int(_win))
-    w1.caption(f"📅 **{since} → {_until}**  ·  {_win}-day window")
+    _until = date.today() - timedelta(days=1)            # last completed day (PST)
+    since = _until - timedelta(days=int(_win) - 1)
+    w1.caption(f"📅 past {_win} completed days (PST) · **{_pretty(since)} – {_pretty(_until)}**")
 run = st.button("▶ Run", type="primary")
 
 if run:
@@ -94,7 +99,9 @@ if run:
               "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"]
     with dash_spinner("Reading new Number objects…"):
         allnums = _seek(NUM_OBJECT, nprops, [
-            {"propertyName": "number_created_at", "operator": "GTE", "value": _ms(since)}])
+            {"propertyName": "number_created_at", "operator": "GTE", "value": _ms(since)},
+            {"propertyName": "number_created_at", "operator": "LT",
+             "value": _ms(_until + timedelta(days=1))}])
     if not allnums:
         st.warning("No numbers found on/after that date."); report_header_close(); st.stop()
 
@@ -257,7 +264,12 @@ if saved is None:
 
 df = saved["df"]
 if saved.get("saved_at"):
-    _rng = f"{saved.get('since','')} → {saved.get('until','')}" if saved.get('until') else saved.get('since','')
+    def _pp(s):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").strftime("%b %-d, %Y")
+        except Exception:
+            return s
+    _rng = f"{_pp(saved.get('since',''))} – {_pp(saved.get('until',''))}" if saved.get('until') else _pp(saved.get('since',''))
     st.caption(f"📌 Saved {saved_at_label(saved)} · numbers created {_rng}")
 if df.empty:
     st.warning("No rows."); report_header_close(); st.stop()
@@ -373,7 +385,7 @@ if numt != "All" and "Number type" in base.columns:
 N = len(base)
 hu = int((base["Has UTM"] == "Yes").sum())
 k = st.columns(3)
-_card(k[0], "📞 New live VRS numbers", f"{N:,}", f"{saved.get('since','')} → {saved.get('until', '')} · {typ}/{numt}", "#4C8DFF")
+_card(k[0], "📞 New live VRS numbers", f"{N:,}", f"{_rng} · {typ}/{numt}", "#4C8DFF")
 _card(k[1], "🎯 With UTM", f"{hu:,}", f"{hu/N*100:.0f}% attributed" if N else "—", "#2DB84B")
 _card(k[2], "❓ No UTM", f"{N-hu:,}", f"{(N-hu)/N*100:.0f}% unattributed" if N else "—", "#E5484D")
 st.markdown("")
