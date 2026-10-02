@@ -473,35 +473,39 @@ if _ac:
     _acard(a[3], "First-call rate", _rate(cl, lg), "made a first outbound call / consumers who logged in", _TEAL, "call")
     _acard(a[4], "Keep calling", _rate(kp, cl), "made a 2nd outbound call / first-call consumers", _GREEN, "keep")
 
+    st.markdown("<div style='color:#C9D1D9;font-weight:700;margin-top:4px;'>Where do consumers drop "
+                "off on the way to calling?</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""<div style="display:flex;gap:20px;font-size:.8rem;color:#8B949E;margin:4px 0 6px;font-weight:600;">
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:{_BLUE};
+          margin-right:6px;"></span>Progressing</span>
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:{_GREEN};
+          margin-right:6px;"></span>Keep calling</span>
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#2B3444;
+          margin-right:6px;"></span>Dropped off</span></div>""", unsafe_allow_html=True)
     try:
         import plotly.graph_objects as go
-        labels = [f"Sign-ups ({sg:,})", f"Live ({lv:,})", f"First login ({lg:,})",
-                  f"First call ({cl:,})", f"Keep calling ({kp:,})"]
-        stages = [sg, lv, lg, cl, kp]
-        node_labels = list(labels)
-        node_colors = [_WHITE, _BLUE, _CYAN, _TEAL, _GREEN]
-        drop_names = ["Not live", "Not logged in", "No first call", "No second call yet"]
-        src, tgt, val, lcol = [], [], [], []
-        for i in range(4):
-            keep = stages[i + 1]
-            drop = stages[i] - stages[i + 1]
-            if keep > 0:
-                src.append(i); tgt.append(i + 1); val.append(keep)
-                lcol.append("rgba(91,141,239,0.35)")
-            if drop > 0:
-                di = len(node_labels)
-                node_labels.append(f"{drop_names[i]} ({drop:,})")
-                node_colors.append("#2B3444")
-                src.append(i); tgt.append(di); val.append(drop)
-                lcol.append("rgba(139,148,158,0.25)")
-        fig = go.Figure(go.Sankey(
-            node=dict(label=node_labels, color=node_colors, pad=18, thickness=16,
-                      line=dict(color="#0D1117", width=0.5)),
-            link=dict(source=src, target=tgt, value=val, color=lcol)))
-        fig.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
-                          font=dict(color="#E6EDF3", size=12), height=340,
-                          margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+        labels = [f"Sign-ups  {sg:,}", f"Live consumers  {lv:,}", f"First login  {lg:,}",
+                  f"First call  {cl:,}", f"Keep calling  {kp:,}",
+                  f"Not live  {sg-lv:,}", f"Not logged in  {lv-lg:,}",
+                  f"No first call  {lg-cl:,}", f"No second call yet  {cl-kp:,}"]
+        node_colors = ["#6366F1", _BLUE, _CYAN, _TEAL, _GREEN,
+                       "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
+        src = [0, 0, 1, 1, 2, 2, 3, 3]
+        tgt = [1, 5, 2, 6, 3, 7, 4, 8]
+        val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
+        link_colors = ["rgba(91,141,239,0.55)", "rgba(43,52,68,0.65)",
+                       "rgba(76,154,224,0.55)", "rgba(43,52,68,0.65)",
+                       "rgba(63,176,122,0.55)", "rgba(43,52,68,0.65)",
+                       "rgba(63,185,80,0.6)", "rgba(43,52,68,0.65)"]
+        fig = go.Figure(go.Sankey(arrangement="snap",
+            node=dict(label=labels, color=node_colors, pad=30, thickness=18,
+                      line=dict(color="#0D1117", width=1)),
+            link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
+        fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10),
+                          paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
+                          font=dict(size=13, color="#E6EDF3"))
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     except Exception:
         pass
 
