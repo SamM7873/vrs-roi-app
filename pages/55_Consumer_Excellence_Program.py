@@ -492,8 +492,8 @@ if _ac:
                        "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
         # progressing flow pinned along the TOP; drops peel downward
         node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
-        # progressing on top; all drops (esp. Not live / Not logged in) pinned to the bottom
-        node_y = [0.22, 0.22, 0.22, 0.22, 0.22, 0.97, 0.89, 0.80, 0.70]
+        # progressing on top; ALL drops pinned to the very bottom
+        node_y = [0.18, 0.18, 0.18, 0.18, 0.18, 0.99, 0.99, 0.99, 0.99]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
@@ -519,8 +519,8 @@ if _ac:
                              yanchor="bottom", showarrow=False, align=ha,
                              text=_hdr(nm, ct), font=dict(color="#E6EDF3", size=13)))
         # drop-off labels (name + count), placed near each drop node
-        _dl = [("Not live", sg - lv, 0.24, 0.04), ("Not logged in", lv - lg, 0.49, 0.12),
-               ("No first call", lg - cl, 0.74, 0.21), ("No second call yet", cl - kp, 0.90, 0.31)]
+        _dl = [("Not live", sg - lv, 0.24, 0.05), ("Not logged in", lv - lg, 0.49, 0.05),
+               ("No first call", lg - cl, 0.74, 0.05), ("No second call yet", cl - kp, 0.90, 0.05)]
         for nm, ct, dx, dy in _dl:
             anns.append(dict(x=dx, y=dy, xref="paper", yref="paper", xanchor="left",
                              yanchor="middle", showarrow=False, align="left",
