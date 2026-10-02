@@ -289,8 +289,22 @@ st.markdown("")
 
 _mv = saved.get("mv_df")
 if _mv is not None and not _mv.empty:
-    st.markdown("##### Monthly trend (this month → future)")
-    st.dataframe(_mv.sort_values("Month"), use_container_width=True, hide_index=True)
+    st.markdown("##### Convo ROI by month")
+    _mvs = _mv.sort_values("Month")
+    _palette = ["#2DB84B", "#4C8DFF", "#0FB5AE", "#7A5CFF", "#E8952A", "#E5484D",
+                "#14B8A6", "#0EA5E9", "#8B5CF6", "#F59E0B"]
+    _mrecs = _mvs.to_dict("records")
+    for _i in range(0, len(_mrecs), 6):
+        _chunk = _mrecs[_i:_i + 6]
+        _cols = st.columns(len(_chunk))
+        for _col, _r in zip(_cols, _chunk):
+            _roi = _r.get("Convo ROI $", 0) or 0
+            _min = _r.get("VRS Minutes", 0) or 0
+            _c = _palette[_mrecs.index(_r) % len(_palette)]
+            _card(_col, _r.get("Month", "—"), f"${_roi:,.0f}", f"{_min:,.0f} VRS min", _c)
+    st.markdown("")
+    with st.expander("Monthly trend table", expanded=False):
+        st.dataframe(_mvs, use_container_width=True, hide_index=True)
 
 st.markdown("##### Recipients")
 f1, f2, f3, f4 = st.columns([1, 1.2, 1.2, 2])
