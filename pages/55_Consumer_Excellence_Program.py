@@ -118,6 +118,56 @@ if run:
     acq_counts = {"sign": a_sign, "live": len(a_live), "login": len(a_login),
                   "call": len(a_call), "keep": len(a_keep)}
 
+    # ── 12-month history for the per-card sparklines (VRS numbers by created month) ────
+    def _ym(v):
+        v = str(v or "").strip()
+        if not v:
+            return ""
+        try:
+            if v.isdigit():
+                return datetime.fromtimestamp(int(v) / 1000, tz=timezone.utc).strftime("%Y-%m")
+            return v[:7]
+        except Exception:
+            return v[:7]
+
+    _t = date.today()
+    _months, _y, _m = [], _t.year, _t.month
+    for _ in range(12):
+        _months.append(f"{_y:04d}-{_m:02d}")
+        _m -= 1
+        if _m == 0:
+            _m, _y = 12, _y - 1
+    _months = _months[::-1]
+    _hstart = date(int(_months[0][:4]), int(_months[0][5:7]), 1)
+    with dash_spinner("Reading 12-month history…"):
+        hnums = _seek(NUM_OBJECT, ["number", "number_created_at", "number_status", "service_type",
+                                   "ursa_first_login", "ursa_first_outbound_call",
+                                   "ursa_second_outbound_call"],
+                      [{"propertyName": "number_created_at", "operator": "GTE", "value": _ms(_hstart)}])
+    _hist = {mo: {"sign": 0, "live": 0, "login": 0, "call": 0, "keep": 0} for mo in _months}
+    _seen2 = set()
+    for o in hnums:
+        p = o.get("properties", {})
+        if "vrs" not in _norm(p.get("service_type")):
+            continue
+        ph = str(p.get("number") or "").strip() or ("id:" + str(o.get("id")))
+        if ph in _seen2:
+            continue
+        _seen2.add(ph)
+        mo = _ym(p.get("number_created_at"))
+        if mo not in _hist:
+            continue
+        _hist[mo]["sign"] += 1
+        if _norm(p.get("number_status")) == "live":
+            _hist[mo]["live"] += 1
+            if _has(p.get("ursa_first_login")):
+                _hist[mo]["login"] += 1
+                if _has(p.get("ursa_first_outbound_call")):
+                    _hist[mo]["call"] += 1
+                    if _has(p.get("ursa_second_outbound_call")):
+                        _hist[mo]["keep"] += 1
+    acq_counts["hist"] = [{"month": mo, **_hist[mo]} for mo in _months]
+
     # keep live only for the UTM attribution table (status compared case-insensitively)
     nums = [o for o in allnums if _norm(o.get("properties", {}).get("number_status")) == "live"]
     if not nums:
@@ -203,53 +253,62 @@ if df.empty:
 _ac = saved.get("acq")
 if _ac:
     _WHITE, _BLUE, _CYAN, _TEAL, _GREEN = "#E6EDF3", "#5B8DEF", "#4C9AE0", "#3FB07A", "#3FB950"
-
-    def _acard(col, t, v, s, c):
-        col.markdown(f"""<div style="border:1px solid #232A36;border-radius:16px;padding:18px 20px 16px;
-            background:#121722;height:100%;">
-            <div style="font-size:.74rem;font-weight:700;color:#C9D1D9;text-align:center;">{t}</div>
-            <div style="font-size:2rem;font-weight:800;color:{c};line-height:1.1;margin:8px 0 6px;text-align:center;">{v}</div>
-            <div style="font-size:.7rem;color:#8B949E;text-align:center;">{s}</div></div>""",
-            unsafe_allow_html=True)
-
     sg, lv, lg, cl, kp = (_ac["sign"], _ac["live"], _ac["login"], _ac["call"], _ac["keep"])
+    _hrows = _ac.get("hist") or []
 
     def _pct(n):
         return f"{n/sg*100:.0f}% of sign-ups" if sg else "—"
 
+    def _mlabel(mo):
+        try:
+            return datetime.strptime(mo, "%Y-%m").strftime("%b %Y")
+        except Exception:
+            return mo
+
+    def _spark_fig(stage, color):
+        import plotly.graph_objects as go
+        xs = [_mlabel(r["month"]) for r in _hrows]
+        ys = [r.get(stage, 0) for r in _hrows]
+        bar_cols = [color if i == len(xs) - 1 else "#39414F" for i in range(len(xs))]
+        f = go.Figure(go.Bar(x=xs, y=ys, marker_color=bar_cols,
+                             hovertemplate="%{x}<br><b>%{y:,}</b><extra></extra>"))
+        f.update_layout(height=74, margin=dict(l=4, r=4, t=2, b=2),
+                        paper_bgcolor="#121722", plot_bgcolor="#121722",
+                        xaxis=dict(visible=False), yaxis=dict(visible=False),
+                        showlegend=False, bargap=0.28,
+                        hoverlabel=dict(bgcolor="#1C2430", font=dict(color="#E6EDF3")))
+        return f
+
+    def _acard(col, t, v, s, c, stage):
+        col.markdown(f"""<div style="border:1px solid #232A36;border-radius:16px 16px 0 0;
+            border-bottom:none;padding:16px 18px 6px;background:#121722;">
+            <div style="font-size:.74rem;font-weight:700;color:#C9D1D9;text-align:center;">{t}</div>
+            <div style="font-size:2rem;font-weight:800;color:{c};line-height:1.1;margin:8px 0 4px;text-align:center;">{v}</div>
+            <div style="font-size:.7rem;color:#8B949E;text-align:center;">{s}</div></div>""",
+            unsafe_allow_html=True)
+        if _hrows:
+            col.plotly_chart(_spark_fig(stage, c), use_container_width=True,
+                             config={"displayModeBar": False})
+        col.markdown("""<div style="border:1px solid #232A36;border-top:none;border-radius:0 0 16px 16px;
+            background:#121722;padding:0 18px 10px;margin-top:-18px;">
+            <div style="font-size:.64rem;color:#6E7681;text-align:center;">1-year history</div></div>""",
+            unsafe_allow_html=True)
+
     st.markdown("##### 🚀 Acquisition funnel")
     st.caption("New VRS number registrations → activation milestones (deduped by number). "
-               "Sign-ups = new VRS numbers in the window; stages are nested (each is a subset of the prior).")
+               "Sign-ups = new VRS numbers in the window; stages are nested (each is a subset of the prior). "
+               "Bars show the last 12 months by number-created month — hover for the value.")
     a = st.columns(5)
-    _acard(a[0], "Sign-ups", f"{sg:,}", "new registrations", _WHITE)
-    _acard(a[1], "Live", f"{lv:,}", _pct(lv), _BLUE)
-    _acard(a[2], "First login", f"{lg:,}", _pct(lg), _CYAN)
-    _acard(a[3], "First call", f"{cl:,}", _pct(cl), _TEAL)
-    _acard(a[4], "Keep calling", f"{kp:,}", _pct(kp), _GREEN)
+    _acard(a[0], "Sign-ups", f"{sg:,}", "new registrations", _WHITE, "sign")
+    _acard(a[1], "Live", f"{lv:,}", _pct(lv), _BLUE, "live")
+    _acard(a[2], "First login", f"{lg:,}", _pct(lg), _CYAN, "login")
+    _acard(a[3], "First call", f"{cl:,}", _pct(cl), _TEAL, "call")
+    _acard(a[4], "Keep calling", f"{kp:,}", _pct(kp), _GREEN, "keep")
 
     try:
         import plotly.graph_objects as go
-        # ── vertical bar funnel (one bar per stage) ──────────────────────────────
-        stage_names = ["Sign-ups", "Live", "First login", "First call", "Keep calling"]
-        stage_vals = [sg, lv, lg, cl, kp]
-        stage_cols = [_WHITE, _BLUE, _CYAN, _TEAL, _GREEN]
-        bar_text = [f"{v:,}<br>{(v/sg*100 if sg else 0):.0f}%" for v in stage_vals]
-        bfig = go.Figure(go.Bar(
-            x=stage_names, y=stage_vals, text=bar_text, textposition="outside",
-            marker=dict(color=stage_cols, line=dict(color="#0D1117", width=0)),
-            textfont=dict(color="#E6EDF3", size=13), cliponaxis=False))
-        bfig.update_layout(
-            height=340, margin=dict(l=10, r=10, t=30, b=10),
-            paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
-            font=dict(color="#E6EDF3", size=12),
-            yaxis=dict(showgrid=True, gridcolor="#232A36", zeroline=False,
-                       tickfont=dict(color="#8B949E")),
-            xaxis=dict(tickfont=dict(color="#C9D1D9")))
-        st.plotly_chart(bfig, use_container_width=True, config={"displayModeBar": False})
-
         labels = [f"Sign-ups ({sg:,})", f"Live ({lv:,})", f"First login ({lg:,})",
                   f"First call ({cl:,})", f"Keep calling ({kp:,})"]
-        # drop-off nodes between stages
         stages = [sg, lv, lg, cl, kp]
         node_labels = list(labels)
         node_colors = [_WHITE, _BLUE, _CYAN, _TEAL, _GREEN]
