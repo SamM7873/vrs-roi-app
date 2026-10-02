@@ -19,7 +19,7 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v6_daterange"
+_key = "consumer_excellence_v7_enlive"
 
 UTM_PROPS = ["utm_campaign", "utm_source", "utm_medium", "utm_content",
              "referral_source", "referral_source_b2b"]
@@ -96,6 +96,7 @@ run = st.button("▶ Run", type="primary")
 if run:
     nprops = ["number", "number_created_at", "number_status", "email", "first_name", "last_name",
               "state", "service_type", "usage_type", "registration_type", "referrer", "portin_status",
+              "language_preference",
               "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"]
     with dash_spinner("Reading new Number objects…"):
         allnums = _seek(NUM_OBJECT, nprops, [
@@ -105,22 +106,30 @@ if run:
     if not allnums:
         st.warning("No numbers found on/after that date."); report_header_close(); st.stop()
 
-    # ── acquisition funnel: all new numbers = sign-ups, deduped by phone ──────────────
+    # ── acquisition funnel: VRS + English, deduped by phone (preferring the LIVE record) ──
     def _has(v):
         return bool(str(v or "").strip())
 
-    seen_ph, acq = set(), []
+    def _en_ok(v):                       # English (blank treated as English, app convention)
+        return _norm(v) in ("en", "english", "")
+
+    def _is_live(p):
+        return _norm(p.get("number_status")) == "live"
+
+    best = {}
     for o in allnums:
         p = o.get("properties", {})
-        if "vrs" not in _norm(p.get("service_type")):   # VRS sign-ups only
+        if "vrs" not in _norm(p.get("service_type")):          # VRS only
+            continue
+        if not _en_ok(p.get("language_preference")):           # English only
             continue
         ph = str(p.get("number") or "").strip() or ("id:" + str(o.get("id")))
-        if ph in seen_ph:
-            continue
-        seen_ph.add(ph)
-        acq.append(p)
+        cur = best.get(ph)
+        if cur is None or (_is_live(p) and not _is_live(cur)):  # prefer the live record
+            best[ph] = p
+    acq = list(best.values())
     a_sign = len(acq)
-    a_live = [p for p in acq if _norm(p.get("number_status")) == "live"]
+    a_live = [p for p in acq if _is_live(p)]
     a_login = [p for p in a_live if _has(p.get("ursa_first_login"))]
     a_call = [p for p in a_login if _has(p.get("ursa_first_outbound_call"))]
     a_keep = [p for p in a_call if _has(p.get("ursa_second_outbound_call"))]
@@ -150,19 +159,22 @@ if run:
     _hstart = date(int(_months[0][:4]), int(_months[0][5:7]), 1)
     with dash_spinner("Reading 12-month history…"):
         hnums = _seek(NUM_OBJECT, ["number", "number_created_at", "number_status", "service_type",
-                                   "ursa_first_login", "ursa_first_outbound_call",
-                                   "ursa_second_outbound_call"],
+                                   "language_preference", "ursa_first_login",
+                                   "ursa_first_outbound_call", "ursa_second_outbound_call"],
                       [{"propertyName": "number_created_at", "operator": "GTE", "value": _ms(_hstart)}])
     _hist = {mo: {"sign": 0, "live": 0, "login": 0, "call": 0, "keep": 0} for mo in _months}
-    _seen2 = set()
+    _hbest = {}
     for o in hnums:
         p = o.get("properties", {})
         if "vrs" not in _norm(p.get("service_type")):
             continue
-        ph = str(p.get("number") or "").strip() or ("id:" + str(o.get("id")))
-        if ph in _seen2:
+        if not _en_ok(p.get("language_preference")):
             continue
-        _seen2.add(ph)
+        ph = str(p.get("number") or "").strip() or ("id:" + str(o.get("id")))
+        cur = _hbest.get(ph)
+        if cur is None or (_is_live(p) and not _is_live(cur)):
+            _hbest[ph] = p
+    for p in _hbest.values():
         mo = _ym(p.get("number_created_at"))
         if mo not in _hist:
             continue
@@ -177,11 +189,13 @@ if run:
                         _hist[mo]["keep"] += 1
     acq_counts["hist"] = [{"month": mo, **_hist[mo]} for mo in _months]
 
-    # UTM attribution table: VRS-only + Live + deduped by number (aligned with the funnel's Live)
+    # UTM attribution table: VRS + English + Live + deduped by number (aligned with the funnel's Live)
     nums, _seen_nt = [], set()
     for o in allnums:
         p = o.get("properties", {})
         if "vrs" not in _norm(p.get("service_type")):
+            continue
+        if not _en_ok(p.get("language_preference")):
             continue
         if _norm(p.get("number_status")) != "live":
             continue
@@ -321,8 +335,9 @@ if _ac:
             unsafe_allow_html=True)
 
     st.markdown("##### 🚀 Acquisition funnel")
-    st.caption("New VRS number registrations → activation milestones (deduped by number). "
-               "Sign-ups = new VRS numbers in the window; stages are nested (each is a subset of the prior). "
+    st.caption("New VRS (English) number registrations → activation milestones (deduped by number, "
+               "preferring the live record). Sign-ups = new VRS + English numbers in the window; "
+               "stages are nested (each is a subset of the prior). "
                "Bars show the last 12 months by number-created month — hover for the value.")
     a = st.columns(5)
     _acard(a[0], "Sign-ups", f"{sg:,}", "new registrations", _WHITE, "sign")
