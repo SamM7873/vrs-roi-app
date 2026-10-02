@@ -6,10 +6,12 @@
 
 ## The issue in one sentence
 
-Consumers on the **Convo Now: Access Complimentary** plan whose billing cycle
-**crosses a calendar month** are given their 20 free minutes **twice** — once for each
-month the cycle touches — so they can use up to **40 free minutes** in a single
-20-minute billing cycle.
+The **usage minutes recorded on the Monthly Values records are not correct**, so the
+resulting **reminder / remainder balance** for Convo Now: Access Complimentary consumers
+is wrong — and because the data is tracked per calendar month, a billing cycle that
+crosses a month ends up showing a **double 20-minute allowance** (up to **40 min** for a
+single 20-min cycle). **Root cause sits on the data-engineering side** — in how the usage
+minutes are calculated and written to the Monthly Values records.
 
 ---
 
@@ -21,14 +23,17 @@ month the cycle touches — so they can use up to **40 free minutes** in a singl
 
 ## Why the problem happens
 
-- HubSpot tracks usage in **"Monthly Values"** records — **one per calendar month** —
-  and each record has its own `remainder_balance` that **resets to 20 at the start of
-  each month**.
-- When one billing cycle spans **two calendar months** (e.g. Sept *and* Oct), HubSpot
-  creates **two** Monthly Values, each starting at 20, and treats them as **two separate
-  20-minute buckets** instead of one shared bucket for the cycle.
-- **Net effect:** the cycle's allowance effectively becomes **40 minutes (20 + 20)**
-  instead of 20.
+**Primary cause — incorrect usage minutes (data engineering).**
+The `convo_now_minutes_used` value written to the **Monthly Values** records is not being
+calculated correctly by the data pipeline. Since the remainder is derived from usage
+(`remainder = 20 − minutes used`), wrong usage minutes produce a wrong remainder balance.
+
+**Compounding factor — per-month tracking across cycle boundaries.**
+Usage is stored in Monthly Values **one per calendar month**, each resetting to a fresh 20.
+When one billing cycle spans **two calendar months** (e.g. Sept *and* Oct), there are
+**two** records, each starting at 20, treated as **two separate 20-minute buckets** instead
+of one shared bucket for the cycle. Combined with the incorrect usage minutes, the cycle's
+allowance effectively becomes **40 minutes (20 + 20)** instead of 20.
 
 ---
 
@@ -83,9 +88,14 @@ For every **Convo Now + Live + Convo Now: Access Complimentary** number, the pag
 
 ## Recommendation
 
-Calculate the remainder **per billing cycle, not per calendar month** — a single
-20-minute bucket that **carries over** when the cycle crosses a month boundary, instead of
-resetting to 20 at the start of each calendar month.
+**Owner: Data Engineering.** The fix belongs at the source — in the pipeline that computes
+and writes usage minutes to the Monthly Values records:
 
-Until the source system is fixed, the QA page gives the **correct per-cycle remainder** and
+1. **Correct the usage-minutes calculation** so `convo_now_minutes_used` on each Monthly
+   Value reflects true usage.
+2. **Aggregate the allowance per billing cycle, not per calendar month** — one 20-minute
+   bucket that **carries over** when the cycle crosses a month boundary, instead of
+   resetting to 20 each calendar month.
+
+Until the pipeline is corrected, the QA page gives the **correct per-cycle remainder** and
 the **list of over-credited numbers** for manual review or correction.
