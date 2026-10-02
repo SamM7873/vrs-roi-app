@@ -28,7 +28,7 @@ REQUIRED_ACCOUNT_STATUS = "live"
 EXCLUDED_CREDIT_TYPE = "guest"
 DEFAULT_CREDIT_MINIMUM = 20
 
-_key = "convonow_reminder_balance_v1"
+_key = "convonow_reminder_balance_v2_flags"
 
 
 def _norm(v):
@@ -166,8 +166,8 @@ st.markdown("Reviews every **Convo Now + Live** number: pulls its **Subscription
             "the billing cycle, and recomputes the remainder as "
             "**20 − billing-cycle minutes** (clamped at 0). The Monthly Values `remainder_balance` "
             "is shown for reference only, with a flag where it disagrees.")
-c1, c2 = st.columns([1, 3])
-_allow = c1.number_input("Credit allowance (min)", value=DEFAULT_CREDIT_MINIMUM, min_value=0, step=5)
+st.caption(f"Credit allowance is fixed at **{DEFAULT_CREDIT_MINIMUM} minutes** per billing cycle.")
+_allow = DEFAULT_CREDIT_MINIMUM
 run = st.button("▶ Run QA", type="primary")
 
 if run:
@@ -235,6 +235,7 @@ if run:
             prog.progress(i / len(nid_list)); continue
 
         minutes_total, applicable, src_rem_sum = 0.0, 0, 0.0
+        guest_excluded, guest_leaked = 0, 0
         for mid in nid_mvs.get(nid, []):
             mv = mv_of.get(str(mid), {})
             credit_type = mv.get("credit_type")
@@ -249,6 +250,7 @@ if run:
                  "source_remainder_balance": src_rem, "credit_type": credit_type,
                  "included": False, "exclude_reason": ""}
             if _norm(credit_type) == EXCLUDED_CREDIT_TYPE:
+                guest_excluded += 1
                 d["exclude_reason"] = "Guest credit type"; detail_rows.append(d); continue
             if month_date is None:
                 d["exclude_reason"] = "Missing month_date"; detail_rows.append(d); continue
@@ -271,15 +273,23 @@ if run:
         mismatch = ""
         if applicable and abs((src_rem_sum) - remainder) > 0.01:
             mismatch = f"Δ {src_rem_sum - remainder:+.1f}"
+        # red flags
+        flags = []
+        if mismatch:
+            flags.append("🚩 MV remainder incorrect")
+        if guest_leaked:
+            flags.append(f"🚩 Guest leaked ({guest_leaked})")
+        red_flag = " · ".join(flags)
         consumer_rows.append({**base, "subscription_id": sub_ids[0],
                               "billing_start": bs, "billing_end": be,
                               "billing_days": billing["billing_days"],
                               "billing_type": sp.get("billing_cycle_type"),
                               "billing_source": billing["source"], "monthly_values": applicable,
+                              "guest_excluded": guest_excluded,
                               "minutes_used": round(minutes_total, 1), "credit_allowance": _allow,
                               "remainder": round(remainder, 1),
                               "source_remainder_sum": round(src_rem_sum, 1) if applicable else None,
-                              "mismatch": mismatch, "status": billing["status"]})
+                              "mismatch": mismatch, "red_flag": red_flag, "status": billing["status"]})
         prog.progress(i / len(nid_list))
     prog.empty()
 
@@ -302,7 +312,17 @@ if consumer_df.empty:
 _ok = consumer_df["status"].isin(["OK", "OK - CALCULATED"])
 calc_df = consumer_df[_ok]
 issues_df = consumer_df[~_ok]
-mism_df = calc_df[calc_df["mismatch"].astype(str).str.len() > 0]
+if "red_flag" not in consumer_df.columns:
+    consumer_df["red_flag"] = ""
+mism_df = calc_df[calc_df.get("mismatch", "").astype(str).str.len() > 0]
+flag_df = consumer_df[consumer_df["red_flag"].astype(str).str.len() > 0]
+
+# Guest safety: no Guest record may be included in any calculation
+guest_excluded_total = int(detail_df["credit_type"].apply(lambda c: _norm(c) == EXCLUDED_CREDIT_TYPE).sum()) if not detail_df.empty else 0
+guest_leaked_total = 0
+if not detail_df.empty and "included" in detail_df.columns:
+    guest_leaked_total = int(detail_df[(detail_df["included"]) &
+                             (detail_df["credit_type"].apply(lambda c: _norm(c) == EXCLUDED_CREDIT_TYPE))].shape[0])
 
 
 def _card(col, t, v, s, c):
@@ -317,14 +337,39 @@ k = st.columns(4)
 _card(k[0], "📞 Eligible (Convo Now + Live)", f"{saved.get('n_eligible', 0):,}",
       f"of {saved.get('n_numbers', 0):,} scanned", "#4C8DFF")
 _card(k[1], "✅ Billing calculated", f"{len(calc_df):,}", "valid billing cycle", "#2DB84B")
-_card(k[2], "⚠️ Issues", f"{len(issues_df):,}", "missing / invalid billing", "#E5A23D")
-_card(k[3], "🔺 Remainder mismatches", f"{len(mism_df):,}",
-      "source ≠ recomputed", "#E5484D")
+_card(k[2], "🚩 Red flags", f"{len(flag_df):,}",
+      "Monthly Values not correct", "#E5484D")
+_card(k[3], "⚠️ Issues", f"{len(issues_df):,}", "missing / invalid billing", "#E5A23D")
 st.markdown("")
 
-tab1, tab2, tab3, tab4 = st.tabs(
-    [f"Results ({len(consumer_df):,})", f"Mismatches ({len(mism_df):,})",
-     f"Issues ({len(issues_df):,})", f"Monthly detail ({len(detail_df):,})"])
+# Guest-exclusion safety banner
+if guest_leaked_total == 0:
+    st.success(f"🛡️ Guest check passed — **{guest_excluded_total:,}** Guest monthly-value "
+               f"record(s) excluded, **0** leaked into any remainder calculation.")
+else:
+    st.error(f"🚨 Guest check FAILED — **{guest_leaked_total:,}** Guest record(s) were counted in "
+             f"a remainder calculation. These must be excluded.")
+st.markdown("")
+
+tab0, tab1, tab2, tab3, tab4 = st.tabs(
+    [f"🚩 Red flags ({len(flag_df):,})", f"Results ({len(consumer_df):,})",
+     f"Mismatches ({len(mism_df):,})", f"Issues ({len(issues_df):,})",
+     f"Monthly detail ({len(detail_df):,})"])
+
+with tab0:
+    st.caption("Numbers whose **Monthly Values are not correct** — the stored `remainder_balance` "
+               "disagrees with the recomputed (20 − billing-cycle minutes) remainder, or a Guest "
+               "record leaked into the calculation.")
+    if flag_df.empty:
+        st.success("No red flags — every Monthly Values remainder is correct.")
+    else:
+        _cols = [c for c in ["number", "red_flag", "billing_start", "billing_end", "minutes_used",
+                             "credit_allowance", "remainder", "source_remainder_sum", "mismatch",
+                             "guest_excluded", "status"] if c in flag_df.columns]
+        st.dataframe(flag_df[_cols].sort_values("number"),
+                     use_container_width=True, hide_index=True, height=500)
+        st.download_button("📥 Export red flags", flag_df.to_csv(index=False),
+                           "convonow_red_flags.csv", "text/csv", key="flag_dl")
 
 with tab1:
     q = st.text_input("Search number", key="rb_q").strip()
