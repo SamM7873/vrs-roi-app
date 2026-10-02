@@ -25,10 +25,11 @@ SUBSCRIPTION_OBJECT = "2-39730970"
 
 REQUIRED_SERVICE_TYPE = "convo now"
 REQUIRED_ACCOUNT_STATUS = "live"
+REQUIRED_CREDIT_PLAN = "convo now: access complimentary"   # 20-min complimentary plan
 EXCLUDED_CREDIT_TYPE = "guest"
 DEFAULT_CREDIT_MINIMUM = 20
 
-_key = "convonow_reminder_balance_v3_fields"
+_key = "convonow_reminder_balance_v4_plan"
 
 
 def _norm(v):
@@ -173,11 +174,12 @@ def _overlap(month_start, billing_start, billing_end):
 
 
 # ── controls ──────────────────────────────────────────────────────────────────────────
-st.markdown("Reviews every **Convo Now + Live** number: pulls its **Subscription** billing cycle "
-            "and **Monthly Values**, excludes **Guest** credit type, keeps only months overlapping "
-            "the billing cycle, and recomputes the remainder as "
-            "**20 − billing-cycle minutes** (clamped at 0). The Monthly Values `remainder_balance` "
-            "is shown for reference only, with a flag where it disagrees.")
+st.markdown("Reviews every **Convo Now + Live** number on the **Convo Now: Access Complimentary** "
+            "plan: pulls its **Subscription** billing cycle and **Monthly Values**, excludes "
+            "**Guest** credit type, keeps only months overlapping the billing cycle, and recomputes "
+            "the remainder as **20 − billing-cycle minutes** (clamped at 0) — **one 20-min allowance "
+            "per cycle**, not 20 per calendar month. The Monthly Values `remainder_balance` is shown "
+            "for reference only, with a 🚩 flag where it double-counts (e.g. 40 across two months).")
 st.caption(f"Credit allowance is fixed at **{DEFAULT_CREDIT_MINIMUM} minutes** per billing cycle.")
 _allow = DEFAULT_CREDIT_MINIMUM
 run = st.button("▶ Run QA", type="primary")
@@ -185,15 +187,20 @@ run = st.button("▶ Run QA", type="primary")
 if run:
     with dash_spinner("Reading Convo Now numbers…"):
         nums = _seek(NUMBER_OBJECT,
-                     ["number", "service_type", "account_status", "number_status", "credit_type"],
+                     ["number", "service_type", "account_status", "number_status",
+                      "credit_type", "credit_plan_name"],
                      [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}])
 
     def _is_live(pp):   # Live status lives in account_status OR number_status
         return _norm(pp.get("account_status") or pp.get("number_status")) == REQUIRED_ACCOUNT_STATUS
 
+    def _is_plan(pp):   # 20-min complimentary plan only
+        return _norm(pp.get("credit_plan_name")) == REQUIRED_CREDIT_PLAN
+
     eligible = [o for o in nums
                 if _norm(o.get("properties", {}).get("service_type")) == REQUIRED_SERVICE_TYPE
-                and _is_live(o.get("properties", {}))]
+                and _is_live(o.get("properties", {}))
+                and _is_plan(o.get("properties", {}))]
     if not eligible:
         st.warning("No Convo Now + Live numbers found."); report_header_close(); st.stop()
 
@@ -222,7 +229,8 @@ if run:
         number_value = p.get("number") or "—"
         base = {"number": number_value, "number_id": nid,
                 "service_type": p.get("service_type") or "—",
-                "account_status": p.get("account_status") or "—"}
+                "account_status": p.get("account_status") or p.get("number_status") or "—",
+                "credit_plan_name": p.get("credit_plan_name") or "—"}
 
         sub_ids = nid_subs.get(nid, [])
         if not sub_ids:
@@ -346,8 +354,8 @@ def _card(col, t, v, s, c):
 
 
 k = st.columns(4)
-_card(k[0], "📞 Eligible (Convo Now + Live)", f"{saved.get('n_eligible', 0):,}",
-      f"of {saved.get('n_numbers', 0):,} scanned", "#4C8DFF")
+_card(k[0], "📞 Eligible (Convo Now · Live · Complimentary)", f"{saved.get('n_eligible', 0):,}",
+      f"of {saved.get('n_numbers', 0):,} Convo Now scanned", "#4C8DFF")
 _card(k[1], "✅ Billing calculated", f"{len(calc_df):,}", "valid billing cycle", "#2DB84B")
 _card(k[2], "🚩 Red flags", f"{len(flag_df):,}",
       "Monthly Values not correct", "#E5484D")
