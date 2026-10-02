@@ -1,0 +1,373 @@
+import streamlit as st
+import pandas as pd
+import time
+from calendar import monthrange
+from datetime import datetime, date, timedelta, timezone
+from collections import defaultdict
+import requests
+from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
+                   headers as _H, BASE_URL as _B, dash_spinner,
+                   save_report, load_report, saved_at_label, log_report_view)
+
+st.set_page_config(page_title="Convo Now Reminder Balance", layout="wide", page_icon="⏱️")
+st.markdown(COMMON_CSS, unsafe_allow_html=True)
+require_auth()
+log_report_view("Convo Now Reminder Balance")
+
+report_header("Convo Now Reminder Balance (QA)",
+              "Billing-cycle remainder = 20-min allowance − cycle minutes (NOT remainder_balance)",
+              section="Support")
+
+# ── object types ──────────────────────────────────────────────────────────────────────
+NUMBER_OBJECT = "2-40974683"
+MONTHLY_VALUES_OBJECT = "2-46246179"
+SUBSCRIPTION_OBJECT = "2-39730970"
+
+REQUIRED_SERVICE_TYPE = "convo now"
+REQUIRED_ACCOUNT_STATUS = "live"
+EXCLUDED_CREDIT_TYPE = "guest"
+DEFAULT_CREDIT_MINIMUM = 20
+
+_key = "convonow_reminder_balance_v1"
+
+
+def _norm(v):
+    return " ".join(str(v or "").strip().lower().split())
+
+
+def _parse_date(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    v = str(value).strip()
+    if v.isdigit():                       # epoch millis
+        try:
+            return datetime.fromtimestamp(int(v) / 1000, tz=timezone.utc).date()
+        except Exception:
+            return None
+    if "T" in v:
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00")).date()
+        except Exception:
+            pass
+    try:
+        return datetime.strptime(v[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _seek(obj, props, filters):
+    """Search with hs_object_id cursor pagination (bypasses the 10k cap)."""
+    url = f"{_B}/crm/v3/objects/{obj}/search"
+    out, last = [], "0"
+    while True:
+        body = {"limit": 100, "properties": props,
+                "sorts": [{"propertyName": "hs_object_id", "direction": "ASCENDING"}],
+                "filterGroups": [{"filters": filters + [
+                    {"propertyName": "hs_object_id", "operator": "GT", "value": last}]}]}
+        r = None
+        for attempt in range(5):
+            r = requests.post(url, headers=_H, json=body, timeout=60)
+            if r.status_code == 429:
+                time.sleep(1.0 * (attempt + 1)); continue
+            break
+        if r is None or r.status_code != 200:
+            break
+        batch = r.json().get("results", [])
+        out.extend(batch)
+        if len(batch) < 100:
+            break
+        last = str(batch[-1]["id"]); time.sleep(0.03)
+    return out
+
+
+def _assoc(from_obj, to_obj, from_ids):
+    out = defaultdict(list)
+    for i in range(0, len(from_ids), 100):
+        chunk = [str(x) for x in from_ids[i:i + 100]]
+        try:
+            r = requests.post(f"{_B}/crm/v4/associations/{from_obj}/{to_obj}/batch/read",
+                              headers=_H, json={"inputs": [{"id": s} for s in chunk]}, timeout=60)
+            if r.status_code in (200, 207):
+                for res in r.json().get("results", []):
+                    fid = str(res.get("from", {}).get("id", ""))
+                    for a in res.get("to", []):
+                        tid = str(a.get("toObjectId") or a.get("id") or "")
+                        if tid:
+                            out[fid].append(tid)
+        except requests.exceptions.RequestException:
+            pass
+        time.sleep(0.03)
+    return out
+
+
+def _batch_read(obj, ids, props):
+    out = {}
+    ids = [str(x) for x in ids]
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
+        try:
+            r = requests.post(f"{_B}/crm/v3/objects/{obj}/batch/read", headers=_H,
+                              json={"inputs": [{"id": c} for c in chunk], "properties": props},
+                              timeout=60)
+            if r.status_code in (200, 207):
+                for o in r.json().get("results", []):
+                    out[str(o["id"])] = o.get("properties", {})
+        except requests.exceptions.RequestException:
+            pass
+        time.sleep(0.03)
+    return out
+
+
+def _determine_billing_period(billing_start, billing_end, billing_type):
+    bs = _parse_date(billing_start)
+    be = _parse_date(billing_end)
+    bt = _norm(billing_type)
+    if bs is None:
+        return dict(billing_start=None, billing_end=None, billing_days=None,
+                    status="MISSING BILLING START", source=None)
+    if be is not None:
+        if be > bs:
+            return dict(billing_start=bs, billing_end=be, billing_days=(be - bs).days,
+                        status="OK", source="HubSpot")
+        return dict(billing_start=bs, billing_end=be, billing_days=None,
+                    status="INVALID BILLING PERIOD", source="HubSpot")
+    # billing end missing → calculate from cycle type
+    if "30" in bt:
+        ce = bs + timedelta(days=30)
+        return dict(billing_start=bs, billing_end=ce, billing_days=30,
+                    status="OK - CALCULATED", source="Calculated 30-day")
+    if "month" in bt:
+        y, m = bs.year, bs.month
+        ny, nm = (y + 1, 1) if m == 12 else (y, m + 1)
+        nd = min(bs.day, monthrange(ny, nm)[1])
+        ce = date(ny, nm, nd)
+        return dict(billing_start=bs, billing_end=ce, billing_days=(ce - bs).days,
+                    status="OK - CALCULATED", source="Calculated monthly")
+    return dict(billing_start=bs, billing_end=None, billing_days=None,
+                status="UNKNOWN BILLING TYPE", source=None)
+
+
+def _overlap(month_start, billing_start, billing_end):
+    last = monthrange(month_start.year, month_start.month)[1]
+    month_end = month_start + timedelta(days=last)       # exclusive
+    os_, oe = max(month_start, billing_start), min(month_end, billing_end)
+    if os_ >= oe:
+        return None
+    return dict(overlap_start=os_, overlap_end=oe, overlap_days=(oe - os_).days)
+
+
+# ── controls ──────────────────────────────────────────────────────────────────────────
+st.markdown("Reviews every **Convo Now + Live** number: pulls its **Subscription** billing cycle "
+            "and **Monthly Values**, excludes **Guest** credit type, keeps only months overlapping "
+            "the billing cycle, and recomputes the remainder as "
+            "**20 − billing-cycle minutes** (clamped at 0). The Monthly Values `remainder_balance` "
+            "is shown for reference only, with a flag where it disagrees.")
+c1, c2 = st.columns([1, 3])
+_allow = c1.number_input("Credit allowance (min)", value=DEFAULT_CREDIT_MINIMUM, min_value=0, step=5)
+run = st.button("▶ Run QA", type="primary")
+
+if run:
+    with dash_spinner("Reading Convo Now + Live numbers…"):
+        nums = _seek(NUMBER_OBJECT, ["number", "service_type", "account_status", "credit_type"],
+                     [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
+                      {"propertyName": "account_status", "operator": "EQ", "value": "Live"}])
+    # client-side safety filter
+    eligible = [o for o in nums
+                if _norm(o.get("properties", {}).get("service_type")) == REQUIRED_SERVICE_TYPE
+                and _norm(o.get("properties", {}).get("account_status")) == REQUIRED_ACCOUNT_STATUS]
+    if not eligible:
+        st.warning("No Convo Now + Live numbers found."); report_header_close(); st.stop()
+
+    nid_list = [str(o["id"]) for o in eligible]
+    num_of = {str(o["id"]): o.get("properties", {}) for o in eligible}
+
+    with dash_spinner("Linking subscriptions & monthly values…"):
+        nid_subs = _assoc(NUMBER_OBJECT, SUBSCRIPTION_OBJECT, nid_list)
+        nid_mvs = _assoc(NUMBER_OBJECT, MONTHLY_VALUES_OBJECT, nid_list)
+
+    all_sub_ids = sorted({s for v in nid_subs.values() for s in v})
+    all_mv_ids = sorted({m for v in nid_mvs.values() for m in v})
+    with dash_spinner(f"Reading {len(all_sub_ids):,} subscriptions…"):
+        sub_of = _batch_read(SUBSCRIPTION_OBJECT, all_sub_ids,
+                             ["billing_start_date", "current_billing_period_end_date",
+                              "billing_cycle_type"])
+    with dash_spinner(f"Reading {len(all_mv_ids):,} monthly values…"):
+        mv_of = _batch_read(MONTHLY_VALUES_OBJECT, all_mv_ids,
+                            ["month_date", "convo_now_minutes_used", "remainder_balance",
+                             "number", "credit_type"])
+
+    consumer_rows, detail_rows = [], []
+    prog = st.progress(0.0)
+    for i, nid in enumerate(nid_list, 1):
+        p = num_of.get(nid, {})
+        number_value = p.get("number") or "—"
+        base = {"number": number_value, "number_id": nid,
+                "service_type": p.get("service_type") or "—",
+                "account_status": p.get("account_status") or "—"}
+
+        sub_ids = nid_subs.get(nid, [])
+        if not sub_ids:
+            consumer_rows.append({**base, "billing_start": None, "billing_end": None,
+                                  "billing_days": None, "billing_type": None, "billing_source": None,
+                                  "monthly_values": 0, "minutes_used": 0,
+                                  "credit_allowance": _allow, "remainder": None,
+                                  "source_remainder_sum": None, "mismatch": "",
+                                  "status": "NO SUBSCRIPTION"})
+            prog.progress(i / len(nid_list)); continue
+
+        sp = sub_of.get(str(sub_ids[0]), {})
+        billing = _determine_billing_period(sp.get("billing_start_date"),
+                                            sp.get("current_billing_period_end_date"),
+                                            sp.get("billing_cycle_type"))
+        bs, be = billing["billing_start"], billing["billing_end"]
+        if bs is None or be is None:
+            consumer_rows.append({**base, "billing_start": bs, "billing_end": be,
+                                  "billing_days": billing["billing_days"],
+                                  "billing_type": sp.get("billing_cycle_type"),
+                                  "billing_source": billing["source"], "monthly_values": 0,
+                                  "minutes_used": 0, "credit_allowance": _allow, "remainder": None,
+                                  "source_remainder_sum": None, "mismatch": "",
+                                  "status": billing["status"]})
+            prog.progress(i / len(nid_list)); continue
+
+        minutes_total, applicable, src_rem_sum = 0.0, 0, 0.0
+        for mid in nid_mvs.get(nid, []):
+            mv = mv_of.get(str(mid), {})
+            credit_type = mv.get("credit_type")
+            month_date = _parse_date(mv.get("month_date"))
+            src_rem = mv.get("remainder_balance")
+            try:
+                src_rem_v = float(src_rem) if src_rem not in (None, "") else None
+            except Exception:
+                src_rem_v = None
+            d = {"number": number_value, "number_id": nid, "monthly_value_id": mid,
+                 "month_date": mv.get("month_date"), "minutes_used": mv.get("convo_now_minutes_used"),
+                 "source_remainder_balance": src_rem, "credit_type": credit_type,
+                 "included": False, "exclude_reason": ""}
+            if _norm(credit_type) == EXCLUDED_CREDIT_TYPE:
+                d["exclude_reason"] = "Guest credit type"; detail_rows.append(d); continue
+            if month_date is None:
+                d["exclude_reason"] = "Missing month_date"; detail_rows.append(d); continue
+            ov = _overlap(month_date.replace(day=1), bs, be)
+            if ov is None:
+                d["exclude_reason"] = "No billing-cycle overlap"; detail_rows.append(d); continue
+            try:
+                minutes = float(mv.get("convo_now_minutes_used") or 0)
+            except Exception:
+                minutes = 0.0
+            minutes_total += minutes; applicable += 1
+            if src_rem_v is not None:
+                src_rem_sum += src_rem_v
+            d.update({"minutes_used": minutes, "included": True,
+                      "overlap_start": ov["overlap_start"], "overlap_end": ov["overlap_end"],
+                      "overlap_days": ov["overlap_days"]})
+            detail_rows.append(d)
+
+        remainder = max(_allow - minutes_total, 0)
+        mismatch = ""
+        if applicable and abs((src_rem_sum) - remainder) > 0.01:
+            mismatch = f"Δ {src_rem_sum - remainder:+.1f}"
+        consumer_rows.append({**base, "subscription_id": sub_ids[0],
+                              "billing_start": bs, "billing_end": be,
+                              "billing_days": billing["billing_days"],
+                              "billing_type": sp.get("billing_cycle_type"),
+                              "billing_source": billing["source"], "monthly_values": applicable,
+                              "minutes_used": round(minutes_total, 1), "credit_allowance": _allow,
+                              "remainder": round(remainder, 1),
+                              "source_remainder_sum": round(src_rem_sum, 1) if applicable else None,
+                              "mismatch": mismatch, "status": billing["status"]})
+        prog.progress(i / len(nid_list))
+    prog.empty()
+
+    consumer_df = pd.DataFrame(consumer_rows)
+    detail_df = pd.DataFrame(detail_rows)
+    save_report(_key, {"consumer": consumer_df, "detail": detail_df,
+                       "n_numbers": len(nums), "n_eligible": len(eligible), "allowance": _allow})
+
+saved = load_report(_key)
+if saved is None:
+    st.info("Click **▶ Run QA**."); report_header_close(); st.stop()
+
+consumer_df = saved["consumer"]
+detail_df = saved["detail"]
+if saved.get("saved_at"):
+    st.caption(f"📌 Saved {saved_at_label(saved)} · allowance {saved.get('allowance', 20)} min")
+if consumer_df.empty:
+    st.warning("No results."); report_header_close(); st.stop()
+
+_ok = consumer_df["status"].isin(["OK", "OK - CALCULATED"])
+calc_df = consumer_df[_ok]
+issues_df = consumer_df[~_ok]
+mism_df = calc_df[calc_df["mismatch"].astype(str).str.len() > 0]
+
+
+def _card(col, t, v, s, c):
+    col.markdown(f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
+        padding:14px 16px 12px;background:rgba(127,127,127,0.03);">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#667085;">{t}</div>
+        <div style="font-size:1.9rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
+        <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
+
+
+k = st.columns(4)
+_card(k[0], "📞 Eligible (Convo Now + Live)", f"{saved.get('n_eligible', 0):,}",
+      f"of {saved.get('n_numbers', 0):,} scanned", "#4C8DFF")
+_card(k[1], "✅ Billing calculated", f"{len(calc_df):,}", "valid billing cycle", "#2DB84B")
+_card(k[2], "⚠️ Issues", f"{len(issues_df):,}", "missing / invalid billing", "#E5A23D")
+_card(k[3], "🔺 Remainder mismatches", f"{len(mism_df):,}",
+      "source ≠ recomputed", "#E5484D")
+st.markdown("")
+
+tab1, tab2, tab3, tab4 = st.tabs(
+    [f"Results ({len(consumer_df):,})", f"Mismatches ({len(mism_df):,})",
+     f"Issues ({len(issues_df):,})", f"Monthly detail ({len(detail_df):,})"])
+
+with tab1:
+    q = st.text_input("Search number", key="rb_q").strip()
+    v = consumer_df if not q else consumer_df[consumer_df["number"].astype(str).str.contains(q, case=False, na=False)]
+    st.dataframe(v.sort_values("number"), use_container_width=True, hide_index=True, height=520)
+    st.download_button("📥 Export CSV", consumer_df.to_csv(index=False),
+                       "convonow_reminder_balance.csv", "text/csv")
+
+with tab2:
+    st.caption("Numbers where the summed Monthly Values `remainder_balance` ≠ the recomputed "
+               "(20 − cycle minutes) remainder.")
+    if mism_df.empty:
+        st.success("No mismatches — every remainder matches the recomputed value.")
+    else:
+        st.dataframe(mism_df[["number", "billing_start", "billing_end", "minutes_used",
+                              "credit_allowance", "remainder", "source_remainder_sum", "mismatch",
+                              "status"]].sort_values("number"),
+                     use_container_width=True, hide_index=True, height=480)
+        st.download_button("📥 Export mismatches", mism_df.to_csv(index=False),
+                           "convonow_reminder_mismatches.csv", "text/csv", key="mm_dl")
+
+with tab3:
+    if issues_df.empty:
+        st.success("No billing-cycle issues.")
+    else:
+        st.dataframe(issues_df.sort_values("status"), use_container_width=True, hide_index=True, height=480)
+        st.download_button("📥 Export issues", issues_df.to_csv(index=False),
+                           "convonow_reminder_issues.csv", "text/csv", key="iss_dl")
+
+with tab4:
+    if detail_df.empty:
+        st.caption("No monthly values.")
+    else:
+        only_inc = st.checkbox("Included months only", value=False, key="rb_inc")
+        dv = detail_df[detail_df["included"]] if only_inc else detail_df
+        st.dataframe(dv.sort_values(["number", "month_date"]),
+                     use_container_width=True, hide_index=True, height=480)
+        st.download_button("📥 Export monthly detail", detail_df.to_csv(index=False),
+                           "convonow_reminder_detail.csv", "text/csv", key="det_dl")
+
+# status breakdown
+with st.expander("📊 Billing status breakdown"):
+    sc = consumer_df["status"].value_counts().rename_axis("status").reset_index(name="count")
+    st.dataframe(sc, use_container_width=True, hide_index=True)
+
+report_header_close()
