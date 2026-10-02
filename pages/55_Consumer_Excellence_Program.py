@@ -81,9 +81,11 @@ _win = w1.radio("Rolling window", [7, 14, 28, 30, 56, 60, 84, 90], index=2, hori
 _custom = w2.checkbox("Custom start date", value=False, key="cep_custom")
 if _custom:
     since = w2.date_input("Numbers created on/after", value=date(2026, 9, 1), key="cep_since")
+    _until = date.today()
 else:
-    since = date.today() - timedelta(days=int(_win))
-    w1.caption(f"Numbers created on/after **{since}** (past {_win} days)")
+    _until = date.today()
+    since = _until - timedelta(days=int(_win))
+    w1.caption(f"📅 **{since} → {_until}**  ·  {_win}-day window")
 run = st.button("▶ Run", type="primary")
 
 if run:
@@ -246,7 +248,7 @@ if run:
             "Has UTM": "Yes" if has_utm else "No",
         })
     df = pd.DataFrame(rows).sort_values(["Has UTM", "Number created"], ascending=[False, True])
-    save_report(_key, {"df": df, "since": str(since), "acq": acq_counts})
+    save_report(_key, {"df": df, "since": str(since), "until": str(_until), "acq": acq_counts})
 
 saved = load_report(_key)
 if saved is None:
@@ -255,7 +257,8 @@ if saved is None:
 
 df = saved["df"]
 if saved.get("saved_at"):
-    st.caption(f"📌 Saved {saved_at_label(saved)} · numbers since {saved.get('since','')}")
+    _rng = f"{saved.get('since','')} → {saved.get('until','')}" if saved.get('until') else saved.get('since','')
+    st.caption(f"📌 Saved {saved_at_label(saved)} · numbers created {_rng}")
 if df.empty:
     st.warning("No rows."); report_header_close(); st.stop()
 
@@ -370,7 +373,7 @@ if numt != "All" and "Number type" in base.columns:
 N = len(base)
 hu = int((base["Has UTM"] == "Yes").sum())
 k = st.columns(3)
-_card(k[0], "📞 New live VRS numbers", f"{N:,}", f"since {saved.get('since','')} · {typ}/{numt}", "#4C8DFF")
+_card(k[0], "📞 New live VRS numbers", f"{N:,}", f"{saved.get('since','')} → {saved.get('until', '')} · {typ}/{numt}", "#4C8DFF")
 _card(k[1], "🎯 With UTM", f"{hu:,}", f"{hu/N*100:.0f}% attributed" if N else "—", "#2DB84B")
 _card(k[2], "❓ No UTM", f"{N-hu:,}", f"{(N-hu)/N*100:.0f}% unattributed" if N else "—", "#E5484D")
 st.markdown("")
