@@ -586,6 +586,13 @@ if _ac:
                     _stage_popup(int(_ni))
         except Exception:
             pass
+        # reliable fallback: pick a group to open the same pop-up
+        _label_to_idx = {v[0]: k for k, v in _NODE_FILTERS.items()}
+        _pick = st.selectbox("…or open a group's numbers", ["—"] + list(_label_to_idx),
+                             key="acq_pick")
+        if _pick != "—" and st.session_state.get("_acq_pick_last") != _pick:
+            st.session_state["_acq_pick_last"] = _pick
+            _stage_popup(_label_to_idx[_pick])
     except Exception:
         pass
 
