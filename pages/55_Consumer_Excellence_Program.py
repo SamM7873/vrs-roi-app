@@ -543,10 +543,15 @@ if _ac:
                        "rgba(70,150,215,0.55)", "rgba(43,52,68,0.70)",
                        "rgba(63,176,122,0.55)", "rgba(43,52,68,0.70)",
                        "rgba(63,185,80,0.60)", "rgba(43,52,68,0.70)"]
+        _names = ["Sign-ups", "Live consumers", "First login", "First call", "Keep calling",
+                  "Not live", "Not logged in", "No first call", "No second call yet"]
         fig = go.Figure(go.Sankey(arrangement="fixed",
             node=dict(label=node_labels, color=node_colors, pad=18, thickness=14,
-                      x=node_x, y=node_y, line=dict(color="#0D1117", width=0.5)),
-            link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
+                      x=node_x, y=node_y, line=dict(color="#0D1117", width=0.5),
+                      customdata=_names, hovertemplate="%{customdata}: %{value}<extra></extra>"),
+            link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors,
+                      customdata=[_names[t] for t in tgt],
+                      hovertemplate="%{customdata}: %{value}<extra></extra>")))
 
         def _hdr(nm, ct):
             return f"<b>{nm}</b><br><span style='font-size:11px;color:#8B949E'>{ct:,}</span>"
@@ -589,12 +594,20 @@ if _ac:
     except Exception as _e:
         st.caption(f"(chart unavailable: {_e})")
 
-    # reliable fallback picker (always rendered, outside the chart try/except)
+    # picker → show the list table right here on the page (reliable, no modal needed)
     _label_to_idx = {v[0]: k for k, v in _NODE_FILTERS.items()}
-    _pick = st.selectbox("Open a group's numbers", ["—"] + list(_label_to_idx), key="acq_pick")
-    if _pick != "—" and st.session_state.get("_acq_pick_last") != _pick:
-        st.session_state["_acq_pick_last"] = _pick
-        _stage_popup(_label_to_idx[_pick])
+    _pick = st.selectbox("👥 See the people in a group", ["—"] + list(_label_to_idx), key="acq_pick")
+    if _pick != "—":
+        _title, _stages = _NODE_FILTERS[_label_to_idx[_pick]]
+        _rows = _pop if _stages is None else [r for r in _pop if r.get("Stage reached") in _stages]
+        st.markdown(f"**{_title} — {len(_rows):,} numbers**")
+        if _rows:
+            _pdf = pd.DataFrame(_rows)
+            st.dataframe(_pdf, use_container_width=True, hide_index=True, height=420)
+            st.download_button("📥 Export CSV", _pdf.to_csv(index=False),
+                               f"{_title.lower().replace(' ', '_')}.csv", "text/csv", key="pick_dl")
+        else:
+            st.caption("No numbers in this group.")
 
     # ── per-number detail table ───────────────────────────────────────────────────────
     _arows = _ff if _frows else (_ac.get("rows") or [])
