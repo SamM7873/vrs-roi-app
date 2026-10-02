@@ -28,11 +28,23 @@ REQUIRED_ACCOUNT_STATUS = "live"
 EXCLUDED_CREDIT_TYPE = "guest"
 DEFAULT_CREDIT_MINIMUM = 20
 
-_key = "convonow_reminder_balance_v2_flags"
+_key = "convonow_reminder_balance_v3_fields"
 
 
 def _norm(v):
     return " ".join(str(v or "").strip().lower().split())
+
+
+def _mv_minutes(mv):
+    """Minutes used on a Monthly Values record: prefer convo_now_minutes_used, else usage_minutes."""
+    for k in ("convo_now_minutes_used", "usage_minutes"):
+        v = mv.get(k)
+        if v not in (None, ""):
+            try:
+                return float(v)
+            except Exception:
+                pass
+    return 0.0
 
 
 def _parse_date(value):
@@ -171,14 +183,17 @@ _allow = DEFAULT_CREDIT_MINIMUM
 run = st.button("▶ Run QA", type="primary")
 
 if run:
-    with dash_spinner("Reading Convo Now + Live numbers…"):
-        nums = _seek(NUMBER_OBJECT, ["number", "service_type", "account_status", "credit_type"],
-                     [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"},
-                      {"propertyName": "account_status", "operator": "EQ", "value": "Live"}])
-    # client-side safety filter
+    with dash_spinner("Reading Convo Now numbers…"):
+        nums = _seek(NUMBER_OBJECT,
+                     ["number", "service_type", "account_status", "number_status", "credit_type"],
+                     [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}])
+
+    def _is_live(pp):   # Live status lives in account_status OR number_status
+        return _norm(pp.get("account_status") or pp.get("number_status")) == REQUIRED_ACCOUNT_STATUS
+
     eligible = [o for o in nums
                 if _norm(o.get("properties", {}).get("service_type")) == REQUIRED_SERVICE_TYPE
-                and _norm(o.get("properties", {}).get("account_status")) == REQUIRED_ACCOUNT_STATUS]
+                and _is_live(o.get("properties", {}))]
     if not eligible:
         st.warning("No Convo Now + Live numbers found."); report_header_close(); st.stop()
 
@@ -197,8 +212,8 @@ if run:
                               "billing_cycle_type"])
     with dash_spinner(f"Reading {len(all_mv_ids):,} monthly values…"):
         mv_of = _batch_read(MONTHLY_VALUES_OBJECT, all_mv_ids,
-                            ["month_date", "convo_now_minutes_used", "remainder_balance",
-                             "number", "credit_type"])
+                            ["month_date", "convo_now_minutes_used", "usage_minutes", "service_type",
+                             "remainder_balance", "number", "credit_type"])
 
     consumer_rows, detail_rows = [], []
     prog = st.progress(0.0)
@@ -246,7 +261,7 @@ if run:
             except Exception:
                 src_rem_v = None
             d = {"number": number_value, "number_id": nid, "monthly_value_id": mid,
-                 "month_date": mv.get("month_date"), "minutes_used": mv.get("convo_now_minutes_used"),
+                 "month_date": mv.get("month_date"), "minutes_used": _mv_minutes(mv),
                  "source_remainder_balance": src_rem, "credit_type": credit_type,
                  "included": False, "exclude_reason": ""}
             if _norm(credit_type) == EXCLUDED_CREDIT_TYPE:
@@ -257,10 +272,7 @@ if run:
             ov = _overlap(month_date.replace(day=1), bs, be)
             if ov is None:
                 d["exclude_reason"] = "No billing-cycle overlap"; detail_rows.append(d); continue
-            try:
-                minutes = float(mv.get("convo_now_minutes_used") or 0)
-            except Exception:
-                minutes = 0.0
+            minutes = _mv_minutes(mv)
             minutes_total += minutes; applicable += 1
             if src_rem_v is not None:
                 src_rem_sum += src_rem_v
