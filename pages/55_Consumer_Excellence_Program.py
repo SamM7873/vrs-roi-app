@@ -480,6 +480,7 @@ if _ac:
         stages = [sg, lv, lg, cl, kp]
         node_labels = list(labels)
         node_colors = [_WHITE, _BLUE, _CYAN, _TEAL, _GREEN]
+        drop_names = ["Not live", "Not logged in", "No first call", "No second call yet"]
         src, tgt, val, lcol = [], [], [], []
         for i in range(4):
             keep = stages[i + 1]
@@ -489,7 +490,7 @@ if _ac:
                 lcol.append("rgba(91,141,239,0.35)")
             if drop > 0:
                 di = len(node_labels)
-                node_labels.append(f"Dropped ({drop:,})")
+                node_labels.append(f"{drop_names[i]} ({drop:,})")
                 node_colors.append("#2B3444")
                 src.append(i); tgt.append(di); val.append(drop)
                 lcol.append("rgba(139,148,158,0.25)")
