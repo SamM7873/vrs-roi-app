@@ -19,7 +19,7 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v2_toolbar"
+_key = "consumer_excellence_v3_acqfunnel"
 
 UTM_PROPS = ["utm_campaign", "utm_source", "utm_medium", "utm_content",
              "referral_source", "referral_source_b2b"]
@@ -88,12 +88,36 @@ run = st.button("▶ Run", type="primary")
 
 if run:
     nprops = ["number", "number_created_at", "number_status", "email", "first_name", "last_name",
-              "state", "service_type", "usage_type", "registration_type", "referrer", "portin_status"]
+              "state", "service_type", "usage_type", "registration_type", "referrer", "portin_status",
+              "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"]
     with dash_spinner("Reading new Number objects…"):
-        nums = _seek(NUM_OBJECT, nprops, [
+        allnums = _seek(NUM_OBJECT, nprops, [
             {"propertyName": "number_created_at", "operator": "GTE", "value": _ms(since)}])
-    # keep live only (status compared case-insensitively)
-    nums = [o for o in nums if _norm(o.get("properties", {}).get("number_status")) == "live"]
+    if not allnums:
+        st.warning("No numbers found on/after that date."); report_header_close(); st.stop()
+
+    # ── acquisition funnel: all new numbers = sign-ups, deduped by phone ──────────────
+    def _has(v):
+        return bool(str(v or "").strip())
+
+    seen_ph, acq = set(), []
+    for o in allnums:
+        p = o.get("properties", {})
+        ph = str(p.get("number") or "").strip() or ("id:" + str(o.get("id")))
+        if ph in seen_ph:
+            continue
+        seen_ph.add(ph)
+        acq.append(p)
+    a_sign = len(acq)
+    a_live = [p for p in acq if _norm(p.get("number_status")) == "live"]
+    a_login = [p for p in a_live if _has(p.get("ursa_first_login"))]
+    a_call = [p for p in a_login if _has(p.get("ursa_first_outbound_call"))]
+    a_keep = [p for p in a_call if _has(p.get("ursa_second_outbound_call"))]
+    acq_counts = {"sign": a_sign, "live": len(a_live), "login": len(a_login),
+                  "call": len(a_call), "keep": len(a_keep)}
+
+    # keep live only for the UTM attribution table (status compared case-insensitively)
+    nums = [o for o in allnums if _norm(o.get("properties", {}).get("number_status")) == "live"]
     if not nums:
         st.warning("No live numbers found on/after that date."); report_header_close(); st.stop()
 
@@ -159,7 +183,7 @@ if run:
             "Has UTM": "Yes" if has_utm else "No",
         })
     df = pd.DataFrame(rows).sort_values(["Has UTM", "Number created"], ascending=[False, True])
-    save_report(_key, {"df": df, "since": str(since)})
+    save_report(_key, {"df": df, "since": str(since), "acq": acq_counts})
 
 saved = load_report(_key)
 if saved is None:
@@ -171,6 +195,68 @@ if saved.get("saved_at"):
     st.caption(f"📌 Saved {saved_at_label(saved)} · numbers since {saved.get('since','')}")
 if df.empty:
     st.warning("No rows."); report_header_close(); st.stop()
+
+
+# ── Acquisition funnel (dark) : Sign-ups → Live → First login → First call → Keep calling ──
+_ac = saved.get("acq")
+if _ac:
+    _WHITE, _BLUE, _CYAN, _TEAL, _GREEN = "#E6EDF3", "#5B8DEF", "#4C9AE0", "#3FB07A", "#3FB950"
+
+    def _acard(col, t, v, s, c):
+        col.markdown(f"""<div style="border:1px solid #232A36;border-radius:16px;padding:18px 20px 16px;
+            background:#121722;height:100%;">
+            <div style="font-size:.74rem;font-weight:700;color:#C9D1D9;text-align:center;">{t}</div>
+            <div style="font-size:2rem;font-weight:800;color:{c};line-height:1.1;margin:8px 0 6px;text-align:center;">{v}</div>
+            <div style="font-size:.7rem;color:#8B949E;text-align:center;">{s}</div></div>""",
+            unsafe_allow_html=True)
+
+    sg, lv, lg, cl, kp = (_ac["sign"], _ac["live"], _ac["login"], _ac["call"], _ac["keep"])
+
+    def _pct(n):
+        return f"{n/sg*100:.0f}% of sign-ups" if sg else "—"
+
+    st.markdown("##### 🚀 Acquisition funnel")
+    st.caption("New number registrations → activation milestones (deduped by number). "
+               "Sign-ups = all new numbers in the window; stages are nested (each is a subset of the prior).")
+    a = st.columns(5)
+    _acard(a[0], "Sign-ups", f"{sg:,}", "new registrations", _WHITE)
+    _acard(a[1], "Live", f"{lv:,}", _pct(lv), _BLUE)
+    _acard(a[2], "First login", f"{lg:,}", _pct(lg), _CYAN)
+    _acard(a[3], "First call", f"{cl:,}", _pct(cl), _TEAL)
+    _acard(a[4], "Keep calling", f"{kp:,}", _pct(kp), _GREEN)
+
+    try:
+        import plotly.graph_objects as go
+        labels = [f"Sign-ups ({sg:,})", f"Live ({lv:,})", f"First login ({lg:,})",
+                  f"First call ({cl:,})", f"Keep calling ({kp:,})"]
+        # drop-off nodes between stages
+        stages = [sg, lv, lg, cl, kp]
+        node_labels = list(labels)
+        node_colors = [_WHITE, _BLUE, _CYAN, _TEAL, _GREEN]
+        src, tgt, val, lcol = [], [], [], []
+        for i in range(4):
+            keep = stages[i + 1]
+            drop = stages[i] - stages[i + 1]
+            if keep > 0:
+                src.append(i); tgt.append(i + 1); val.append(keep)
+                lcol.append("rgba(91,141,239,0.35)")
+            if drop > 0:
+                di = len(node_labels)
+                node_labels.append(f"Dropped ({drop:,})")
+                node_colors.append("#2B3444")
+                src.append(i); tgt.append(di); val.append(drop)
+                lcol.append("rgba(139,148,158,0.25)")
+        fig = go.Figure(go.Sankey(
+            node=dict(label=node_labels, color=node_colors, pad=18, thickness=16,
+                      line=dict(color="#0D1117", width=0.5)),
+            link=dict(source=src, target=tgt, value=val, color=lcol)))
+        fig.update_layout(paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
+                          font=dict(color="#E6EDF3", size=12), height=340,
+                          margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        pass
+    st.markdown("")
 
 
 def _card(col, t, v, s, c):
