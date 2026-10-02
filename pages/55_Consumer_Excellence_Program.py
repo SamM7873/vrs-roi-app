@@ -506,7 +506,47 @@ if _ac:
         fig.update_layout(height=420, margin=dict(l=10, r=10, t=10, b=10),
                           paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
                           font=dict(size=13, color="#E6EDF3"))
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.caption("💡 Click a node in the Sankey to open its numbers in a pop-up.")
+        _pop = _ff if _frows else (_ac.get("rows") or [])
+        # node index → (title, row-filter over "Stage reached")
+        _NODE_FILTERS = {
+            0: ("Sign-ups", None),
+            1: ("Live consumers", {"Live", "First login", "First call", "Keep calling"}),
+            2: ("First login", {"First login", "First call", "Keep calling"}),
+            3: ("First call", {"First call", "Keep calling"}),
+            4: ("Keep calling", {"Keep calling"}),
+            5: ("Not live", {"Sign-up (not live)"}),
+            6: ("Not logged in", {"Live"}),
+            7: ("No first call", {"First login"}),
+            8: ("No second call yet", {"First call"}),
+        }
+
+        @st.dialog("Numbers", width="large")
+        def _stage_popup(ni):
+            title, stages = _NODE_FILTERS.get(ni, ("Numbers", None))
+            rows = _pop if stages is None else [r for r in _pop if r.get("Stage reached") in stages]
+            st.markdown(f"### {title} — {len(rows):,} numbers")
+            if rows:
+                _d = pd.DataFrame(rows)
+                st.dataframe(_d, use_container_width=True, hide_index=True, height=440)
+                st.download_button("📥 Export CSV", _d.to_csv(index=False),
+                                   f"{title.lower().replace(' ', '_')}.csv", "text/csv",
+                                   key="pop_dl")
+            else:
+                st.caption("No numbers in this group.")
+
+        _ev = st.plotly_chart(fig, use_container_width=True, key="acq_sankey",
+                              on_select="rerun", config={"displayModeBar": False})
+        try:
+            _pts = (_ev.get("selection", {}) or {}).get("points", []) if _ev else []
+            if _pts:
+                _p = _pts[0]
+                _ni = _p.get("point_number", _p.get("pointNumber", _p.get("point_index")))
+                if _ni is not None and st.session_state.get("_acq_last_click") != _ni:
+                    st.session_state["_acq_last_click"] = _ni
+                    _stage_popup(int(_ni))
+        except Exception:
+            pass
     except Exception:
         pass
 
