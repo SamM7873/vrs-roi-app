@@ -19,7 +19,7 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v10_segfunnel"
+_key = "consumer_excellence_v11_regat"
 
 
 def _seg(container, label, options, key, default=None, format_func=None):
@@ -115,7 +115,7 @@ run = st.button("▶ Run", type="primary")
 if run:
     nprops = ["number", "number_created_at", "number_status", "email", "first_name", "last_name",
               "state", "service_type", "usage_type", "registration_type", "referrer", "portin_status",
-              "language_preference", "number_deleted_at", "deleted_reason",
+              "language_preference", "number_deleted_at", "deleted_reason", "registered_at",
               "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"]
     with dash_spinner("Reading new Number objects…"):
         allnums = _seek(NUM_OBJECT, nprops, [
@@ -185,6 +185,7 @@ if run:
             "Stage reached": _stage_of(p),
             "Type": _seg_type(p),
             "Number type": _seg_numt(p),
+            "Registered at": _fmtd(p.get("registered_at")) or "—",
             "Number created at": _fmtd(p.get("number_created_at")) or "—",
             "Number deleted at": _fmtd(p.get("number_deleted_at")) or "—",
             "Delete reason": p.get("deleted_reason") or "—",
