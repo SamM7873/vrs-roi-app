@@ -29,7 +29,7 @@ REQUIRED_CREDIT_PLAN = "convo now: access complimentary"   # 20-min complimentar
 EXCLUDED_CREDIT_TYPE = "guest"
 DEFAULT_CREDIT_MINIMUM = 20
 
-_key = "convonow_reminder_balance_v4_plan"
+_key = "convonow_reminder_balance_v5_derive"
 
 
 def _norm(v):
@@ -280,19 +280,29 @@ if run:
             ov = _overlap(month_date.replace(day=1), bs, be)
             if ov is None:
                 d["exclude_reason"] = "No billing-cycle overlap"; detail_rows.append(d); continue
-            minutes = _mv_minutes(mv)
+            # Minutes used this month: prefer the raw minutes field; if it's empty/0,
+            # derive from the month's own remainder (20 − remainder_balance). Each month
+            # resets to 20, so this recovers the usage and avoids the double-count.
+            raw = _mv_minutes(mv)
+            if raw > 0:
+                minutes = raw
+            elif src_rem_v is not None:
+                minutes = max(_allow - src_rem_v, 0)
+            else:
+                minutes = 0.0
             minutes_total += minutes; applicable += 1
             if src_rem_v is not None:
                 src_rem_sum += src_rem_v
-            d.update({"minutes_used": minutes, "included": True,
+            d.update({"minutes_used": minutes, "month_remainder": src_rem_v, "included": True,
                       "overlap_start": ov["overlap_start"], "overlap_end": ov["overlap_end"],
                       "overlap_days": ov["overlap_days"]})
             detail_rows.append(d)
 
+        # Correct billing-cycle remainder = 20 − total minutes used across the cycle's months.
         remainder = max(_allow - minutes_total, 0)
         mismatch = ""
         if applicable and abs((src_rem_sum) - remainder) > 0.01:
-            mismatch = f"Δ {src_rem_sum - remainder:+.1f}"
+            mismatch = f"sum {src_rem_sum:.0f} vs correct {remainder:.0f} (Δ{src_rem_sum - remainder:+.0f})"
         # red flags
         flags = []
         if mismatch:
