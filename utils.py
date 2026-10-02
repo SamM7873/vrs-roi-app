@@ -19,11 +19,23 @@ except Exception:
 _AUTH_COOKIE = "vrs_auth"
 
 def get_secret(key, default=""):
-    """Read a secret, tolerating a missing secrets.toml (env var fallback)."""
+    """Read a secret, tolerating a missing secrets.toml (env var fallback).
+
+    Resolution order: environment variable, then ``st.secrets``, then the
+    default. Every access to ``st.secrets`` is guarded so that no error from
+    the secrets machinery (missing secrets.toml, a parse/interpolation error,
+    or a KeyError on a missing key) can ever propagate — important because
+    this runs at import time.
+    """
+    env_val = os.environ.get(key)
+    if env_val is not None:
+        return env_val
     try:
-        return st.secrets.get(key, os.environ.get(key, default))
+        if key in st.secrets:
+            return st.secrets[key]
     except Exception:
-        return os.environ.get(key, default)
+        pass
+    return default
 
 
 HUBSPOT_TOKEN = get_secret("HUBSPOT_TOKEN")
