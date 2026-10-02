@@ -19,7 +19,7 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v7_enlive"
+_key = "consumer_excellence_v8_detailtbl"
 
 UTM_PROPS = ["utm_campaign", "utm_source", "utm_medium", "utm_content",
              "referral_source", "referral_source_b2b"]
@@ -135,6 +135,30 @@ if run:
     a_keep = [p for p in a_call if _has(p.get("ursa_second_outbound_call"))]
     acq_counts = {"sign": a_sign, "live": len(a_live), "login": len(a_login),
                   "call": len(a_call), "keep": len(a_keep)}
+
+    # per-number detail table for the funnel population (VRS + English, deduped)
+    def _stage_of(p):
+        if not _is_live(p):
+            return "Sign-up (not live)"
+        if not _has(p.get("ursa_first_login")):
+            return "Live"
+        if not _has(p.get("ursa_first_outbound_call")):
+            return "First login"
+        if not _has(p.get("ursa_second_outbound_call")):
+            return "First call"
+        return "Keep calling"
+
+    acq_counts["rows"] = sorted((
+        {
+            "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—",
+            "Email": p.get("email") or "—",
+            "Number": p.get("number") or "—",
+            "Status": p.get("number_status") or "—",
+            "Stage reached": _stage_of(p),
+            "ursa_first_login": _fmtd(p.get("ursa_first_login")) or "—",
+            "ursa_first_outbound_call": _fmtd(p.get("ursa_first_outbound_call")) or "—",
+            "ursa_second_outbound_call": _fmtd(p.get("ursa_second_outbound_call")) or "—",
+        } for p in acq), key=lambda r: r["Name"])
 
     # ── 12-month history for the per-card sparklines (VRS numbers by created month) ────
     def _ym(v):
@@ -376,6 +400,27 @@ if _ac:
         st.plotly_chart(fig, use_container_width=True)
     except Exception:
         pass
+
+    # ── per-number detail table ───────────────────────────────────────────────────────
+    _arows = _ac.get("rows") or []
+    if _arows:
+        _adf = pd.DataFrame(_arows)
+        with st.expander(f"📋 Funnel detail — {len(_adf):,} numbers (name · email · number · URSA milestones)",
+                         expanded=True):
+            _sf1, _sf2 = st.columns([1.3, 2])
+            _stg = _sf1.multiselect("Stage reached",
+                                    ["Sign-up (not live)", "Live", "First login", "First call", "Keep calling"],
+                                    default=[])
+            _aq = _sf2.text_input("Search name / email / number", key="acq_tbl_q").strip().lower()
+            _av = _adf.copy()
+            if _stg:
+                _av = _av[_av["Stage reached"].isin(_stg)]
+            if _aq:
+                _av = _av[_av.apply(lambda r: _aq in " ".join(str(x).lower() for x in r.values), axis=1)]
+            st.caption(f"{len(_av):,} of {len(_adf):,}")
+            st.dataframe(_av, use_container_width=True, hide_index=True, height=440)
+            st.download_button("📥 Export funnel detail CSV", _av.to_csv(index=False),
+                               "acquisition_funnel_detail.csv", "text/csv", key="acq_tbl_dl")
     st.markdown("")
 
 
