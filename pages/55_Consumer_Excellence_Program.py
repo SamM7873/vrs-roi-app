@@ -492,7 +492,7 @@ if _ac:
                        "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
         # progressing on top; drops just below it so the bands run almost straight (no S-curve)
         node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
-        node_y = [0.26, 0.26, 0.26, 0.26, 0.26, 0.66, 0.58, 0.62, 0.52]
+        node_y = [0.26, 0.26, 0.26, 0.26, 0.26, 0.93, 0.85, 0.62, 0.52]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
@@ -518,7 +518,7 @@ if _ac:
                              yanchor="bottom", showarrow=False, align=ha,
                              text=_hdr(nm, ct), font=dict(color="#E6EDF3", size=13)))
         # drop-off labels (name + count), placed near each drop node
-        _dl = [("Not live", sg - lv, 0.24, 0.30), ("Not logged in", lv - lg, 0.49, 0.38),
+        _dl = [("Not live", sg - lv, 0.24, 0.06), ("Not logged in", lv - lg, 0.49, 0.14),
                ("No first call", lg - cl, 0.74, 0.34), ("No second call yet", cl - kp, 0.90, 0.44)]
         for nm, ct, dx, dy in _dl:
             anns.append(dict(x=dx, y=dy, xref="paper", yref="paper", xanchor="left",
