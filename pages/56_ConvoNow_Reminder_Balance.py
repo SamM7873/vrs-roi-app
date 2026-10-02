@@ -29,7 +29,7 @@ REQUIRED_CREDIT_PLAN = "convo now: access complimentary"   # 20-min complimentar
 EXCLUDED_CREDIT_TYPE = "guest"
 DEFAULT_CREDIT_MINIMUM = 20
 
-_key = "convonow_reminder_balance_v5_derive"
+_key = "convonow_reminder_balance_v6_overgrant"
 
 
 def _norm(v):
@@ -300,13 +300,17 @@ if run:
 
         # Correct billing-cycle remainder = 20 − total minutes used across the cycle's months.
         remainder = max(_allow - minutes_total, 0)
+        # HubSpot grants a fresh 20 for EACH monthly value the cycle touches → over-grant.
+        cycle_months = applicable
+        hubspot_allowance = cycle_months * _allow
+        over_grant = max(hubspot_allowance - _allow, 0)
         mismatch = ""
         if applicable and abs((src_rem_sum) - remainder) > 0.01:
-            mismatch = f"sum {src_rem_sum:.0f} vs correct {remainder:.0f} (Δ{src_rem_sum - remainder:+.0f})"
+            mismatch = f"HubSpot offers {src_rem_sum:.0f} free min, should be {remainder:.0f} (over by {src_rem_sum - remainder:+.0f})"
         # red flags
         flags = []
-        if mismatch:
-            flags.append("🚩 MV remainder incorrect")
+        if over_grant > 0:
+            flags.append(f"🚩 Cross-month cycle — grants {hubspot_allowance:.0f} min, should be {_allow} (+{over_grant:.0f})")
         if guest_leaked:
             flags.append(f"🚩 Guest leaked ({guest_leaked})")
         red_flag = " · ".join(flags)
@@ -314,9 +318,11 @@ if run:
                               "billing_start": bs, "billing_end": be,
                               "billing_days": billing["billing_days"],
                               "billing_type": sp.get("billing_cycle_type"),
-                              "billing_source": billing["source"], "monthly_values": applicable,
+                              "billing_source": billing["source"],
+                              "cycle_months": cycle_months, "monthly_values": applicable,
                               "guest_excluded": guest_excluded,
                               "minutes_used": round(minutes_total, 1), "credit_allowance": _allow,
+                              "hubspot_allowance": hubspot_allowance, "over_grant": over_grant,
                               "remainder": round(remainder, 1),
                               "source_remainder_sum": round(src_rem_sum, 1) if applicable else None,
                               "mismatch": mismatch, "red_flag": red_flag, "status": billing["status"]})
@@ -368,7 +374,7 @@ _card(k[0], "📞 Eligible (Convo Now · Live · Complimentary)", f"{saved.get('
       f"of {saved.get('n_numbers', 0):,} Convo Now scanned", "#4C8DFF")
 _card(k[1], "✅ Billing calculated", f"{len(calc_df):,}", "valid billing cycle", "#2DB84B")
 _card(k[2], "🚩 Red flags", f"{len(flag_df):,}",
-      "Monthly Values not correct", "#E5484D")
+      "cross-month double allowance", "#E5484D")
 _card(k[3], "⚠️ Issues", f"{len(issues_df):,}", "missing / invalid billing", "#E5A23D")
 st.markdown("")
 
@@ -387,14 +393,16 @@ tab0, tab1, tab2, tab3, tab4 = st.tabs(
      f"Monthly detail ({len(detail_df):,})"])
 
 with tab0:
-    st.caption("Numbers whose **Monthly Values are not correct** — the stored `remainder_balance` "
-               "disagrees with the recomputed (20 − billing-cycle minutes) remainder, or a Guest "
-               "record leaked into the calculation.")
+    st.caption("Numbers whose billing cycle **crosses a calendar month**, so HubSpot creates a "
+               "second Monthly Value that resets `remainder_balance` to 20 — granting **more than "
+               "20 minutes** for a single 20-min cycle (e.g. Sept + Oct = 40). The correct remainder "
+               "is **20 − total `convo_now_minutes_used`** across the cycle.")
     if flag_df.empty:
-        st.success("No red flags — every Monthly Values remainder is correct.")
+        st.success("No red flags — no cross-month double allowances found.")
     else:
-        _cols = [c for c in ["number", "red_flag", "billing_start", "billing_end", "minutes_used",
-                             "credit_allowance", "remainder", "source_remainder_sum", "mismatch",
+        _cols = [c for c in ["number", "red_flag", "billing_start", "billing_end", "cycle_months",
+                             "minutes_used", "credit_allowance", "hubspot_allowance", "over_grant",
+                             "remainder", "source_remainder_sum", "mismatch",
                              "guest_excluded", "status"] if c in flag_df.columns]
         st.dataframe(flag_df[_cols].sort_values("number"),
                      use_container_width=True, hide_index=True, height=500)
