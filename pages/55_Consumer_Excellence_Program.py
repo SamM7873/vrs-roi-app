@@ -486,26 +486,48 @@ if _ac:
           margin-right:6px;"></span>Dropped off</span></div>""", unsafe_allow_html=True)
     try:
         import plotly.graph_objects as go
-        labels = [f"Sign-ups ({sg:,})", f"Live ({lv:,})", f"First login ({lg:,})",
-                  f"First call ({cl:,})", f"Keep calling ({kp:,})",
-                  f"Not live ({sg-lv:,})", f"Not logged in ({lv-lg:,})",
-                  f"No first call ({lg-cl:,})", f"No second call yet ({cl-kp:,})"]
-        node_colors = [_WHITE, _BLUE, _CYAN, _TEAL, _GREEN,
+        # blank node labels — all text drawn as annotations (column headers + drop labels)
+        node_labels = [""] * 9
+        node_colors = [_BLUE, "#4C9AE0", "#43A98C", _TEAL, _GREEN,
                        "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
+        # progressing flow pinned along the TOP; drops peel downward
+        node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
+        node_y = [0.10, 0.10, 0.10, 0.10, 0.10, 0.93, 0.70, 0.80, 0.55]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
-        link_colors = ["rgba(91,141,239,0.45)", "rgba(43,52,68,0.65)",
-                       "rgba(91,141,239,0.45)", "rgba(43,52,68,0.65)",
-                       "rgba(63,176,122,0.50)", "rgba(43,52,68,0.65)",
-                       "rgba(63,185,80,0.55)", "rgba(43,52,68,0.65)"]
-        fig = go.Figure(go.Sankey(arrangement="snap",
-            node=dict(label=labels, color=node_colors, pad=22, thickness=16,
-                      line=dict(color="#0D1117", width=0.5)),
+        link_colors = ["rgba(91,141,239,0.55)", "rgba(43,52,68,0.70)",
+                       "rgba(70,150,215,0.55)", "rgba(43,52,68,0.70)",
+                       "rgba(63,176,122,0.55)", "rgba(43,52,68,0.70)",
+                       "rgba(63,185,80,0.60)", "rgba(43,52,68,0.70)"]
+        fig = go.Figure(go.Sankey(arrangement="fixed",
+            node=dict(label=node_labels, color=node_colors, pad=18, thickness=14,
+                      x=node_x, y=node_y, line=dict(color="#0D1117", width=0.5)),
             link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
-        fig.update_layout(height=460, margin=dict(l=10, r=10, t=10, b=10),
+
+        def _hdr(nm, ct):
+            return f"<b>{nm}</b><br><span style='font-size:11px;color:#8B949E'>{ct:,}</span>"
+
+        anns = []
+        # top column headers (stage name + count)
+        _cols = [("Sign-ups", sg, 0.02, "left"), ("Live consumers", lv, 0.265, "center"),
+                 ("First login", lg, 0.51, "center"), ("First call", cl, 0.755, "center"),
+                 ("Keep calling", kp, 0.995, "right")]
+        for nm, ct, hx, ha in _cols:
+            anns.append(dict(x=hx, y=1.07, xref="paper", yref="paper", xanchor=ha,
+                             yanchor="bottom", showarrow=False, align=ha,
+                             text=_hdr(nm, ct), font=dict(color="#E6EDF3", size=13)))
+        # drop-off labels (name + count), placed near each drop node
+        _dl = [("Not live", sg - lv, 0.24, 0.06), ("Not logged in", lv - lg, 0.49, 0.30),
+               ("No first call", lg - cl, 0.74, 0.18), ("No second call yet", cl - kp, 0.90, 0.44)]
+        for nm, ct, dx, dy in _dl:
+            anns.append(dict(x=dx, y=dy, xref="paper", yref="paper", xanchor="left",
+                             yanchor="middle", showarrow=False, align="left",
+                             text=f"{nm}<br><span style='font-size:11px;color:#8B949E'>{ct:,}</span>",
+                             font=dict(color="#C9D1D9", size=12)))
+        fig.update_layout(height=470, margin=dict(l=10, r=10, t=60, b=10),
                           paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
-                          font=dict(size=13, color="#E6EDF3"))
+                          annotations=anns, font=dict(size=13, color="#E6EDF3"))
         st.caption("💡 Click a node in the Sankey to open its numbers in a pop-up.")
         _pop = _ff if _frows else (_ac.get("rows") or [])
         # node index → (title, row-filter over "Stage reached")
