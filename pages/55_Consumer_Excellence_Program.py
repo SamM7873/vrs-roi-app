@@ -492,9 +492,6 @@ if _ac:
                   f"No first call ({lg-cl:,})", f"No second call yet ({cl-kp:,})"]
         node_colors = [_WHITE, _BLUE, _CYAN, _TEAL, _GREEN,
                        "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
-        # progressing flow stays on TOP; all four drop-offs sit along the BOTTOM
-        node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
-        node_y = [0.33, 0.33, 0.33, 0.33, 0.33, 0.80, 0.86, 0.97, 0.78]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
@@ -502,11 +499,11 @@ if _ac:
                        "rgba(91,141,239,0.45)", "rgba(43,52,68,0.65)",
                        "rgba(63,176,122,0.50)", "rgba(43,52,68,0.65)",
                        "rgba(63,185,80,0.55)", "rgba(43,52,68,0.65)"]
-        fig = go.Figure(go.Sankey(arrangement="fixed",
-            node=dict(label=labels, color=node_colors, pad=18, thickness=16,
-                      x=node_x, y=node_y, line=dict(color="#0D1117", width=0.5)),
+        fig = go.Figure(go.Sankey(arrangement="snap",
+            node=dict(label=labels, color=node_colors, pad=22, thickness=16,
+                      line=dict(color="#0D1117", width=0.5)),
             link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
-        fig.update_layout(height=440, margin=dict(l=10, r=10, t=10, b=10),
+        fig.update_layout(height=460, margin=dict(l=10, r=10, t=10, b=10),
                           paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
                           font=dict(size=13, color="#E6EDF3"))
         st.caption("💡 Click a node in the Sankey to open its numbers in a pop-up.")
