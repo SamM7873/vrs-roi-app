@@ -19,7 +19,7 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v4_vrsacq"
+_key = "consumer_excellence_v5_vrsalign"
 
 UTM_PROPS = ["utm_campaign", "utm_source", "utm_medium", "utm_content",
              "referral_source", "referral_source_b2b"]
@@ -168,10 +168,21 @@ if run:
                         _hist[mo]["keep"] += 1
     acq_counts["hist"] = [{"month": mo, **_hist[mo]} for mo in _months]
 
-    # keep live only for the UTM attribution table (status compared case-insensitively)
-    nums = [o for o in allnums if _norm(o.get("properties", {}).get("number_status")) == "live"]
+    # UTM attribution table: VRS-only + Live + deduped by number (aligned with the funnel's Live)
+    nums, _seen_nt = [], set()
+    for o in allnums:
+        p = o.get("properties", {})
+        if "vrs" not in _norm(p.get("service_type")):
+            continue
+        if _norm(p.get("number_status")) != "live":
+            continue
+        ph = str(p.get("number") or "").strip() or ("id:" + str(o.get("id")))
+        if ph in _seen_nt:
+            continue
+        _seen_nt.add(ph)
+        nums.append(o)
     if not nums:
-        st.warning("No live numbers found on/after that date."); report_header_close(); st.stop()
+        st.warning("No live VRS numbers found on/after that date."); report_header_close(); st.stop()
 
     emails = sorted({_norm(o.get("properties", {}).get("email")) for o in nums} - {""})
 
@@ -359,12 +370,12 @@ if numt != "All" and "Number type" in base.columns:
 N = len(base)
 hu = int((base["Has UTM"] == "Yes").sum())
 k = st.columns(3)
-_card(k[0], "📞 New live numbers", f"{N:,}", f"since {saved.get('since','')} · {typ}/{numt}", "#4C8DFF")
+_card(k[0], "📞 New live VRS numbers", f"{N:,}", f"since {saved.get('since','')} · {typ}/{numt}", "#4C8DFF")
 _card(k[1], "🎯 With UTM", f"{hu:,}", f"{hu/N*100:.0f}% attributed" if N else "—", "#2DB84B")
 _card(k[2], "❓ No UTM", f"{N-hu:,}", f"{(N-hu)/N*100:.0f}% unattributed" if N else "—", "#E5484D")
 st.markdown("")
 
-st.markdown("##### New live numbers")
+st.markdown("##### New live VRS numbers")
 f1, f2, f3 = st.columns([1, 1.4, 2])
 hup = f1.radio("Has UTM", ["All", "Yes", "No"], horizontal=True, key="cep_hasutm")
 svc = f2.multiselect("Service type", sorted(x for x in base["Service type"].unique() if x != "—"), default=[])
