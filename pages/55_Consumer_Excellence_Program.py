@@ -19,7 +19,26 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v9_delcols"
+_key = "consumer_excellence_v10_segfunnel"
+
+
+def _seg(container, label, options, key, default=None, format_func=None):
+    """Segmented pill control (st.segmented_control) with a radio fallback."""
+    default = default if default is not None else options[0]
+    fn = getattr(container, "segmented_control", None)
+    if fn is not None:
+        kw = {"default": default, "key": key}
+        if format_func:
+            kw["format_func"] = format_func
+        try:
+            v = fn(label, options, **kw)
+            return v if v is not None else default
+        except Exception:
+            pass
+    kw = {"horizontal": True, "key": key + "_r"}
+    if format_func:
+        kw["format_func"] = format_func
+    return container.radio(label, options, **kw)
 
 UTM_PROPS = ["utm_campaign", "utm_source", "utm_medium", "utm_content",
              "referral_source", "referral_source_b2b"]
@@ -76,8 +95,8 @@ st.caption("Note: the Snowflake registration-tracking join (promo_code / rt_utm_
            "through the HubSpot API, so those columns are omitted.")
 
 w1, w2 = st.columns([2.4, 1])
-_win = w1.radio("Rolling window", [7, 14, 28, 30, 56, 60, 84, 90], index=2, horizontal=True,
-                format_func=lambda d: f"{d}d", key="cep_win")
+_win = _seg(w1, "Rolling window", [7, 14, 28, 30, 56, 60, 84, 90], "cep_win",
+            default=28, format_func=lambda d: f"{d}d")
 _custom = w2.checkbox("Custom start date", value=False, key="cep_custom")
 def _pretty(d):
     return d.strftime("%b %-d, %Y")
@@ -148,6 +167,15 @@ if run:
             return "First call"
         return "Keep calling"
 
+    def _seg_type(p):
+        _ut = _norm(p.get("usage_type"))
+        return ("Personal" if "person" in _ut else
+                "Organisations" if any(x in _ut for x in ("organ", "business", "company")) else "—")
+
+    def _seg_numt(p):
+        return ("Ported in" if _norm(p.get("portin_status")) not in
+                ("", "none", "n/a", "not ported", "direct") else "Direct (New)")
+
     acq_counts["rows"] = sorted((
         {
             "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—",
@@ -155,6 +183,8 @@ if run:
             "Number": p.get("number") or "—",
             "Status": p.get("number_status") or "—",
             "Stage reached": _stage_of(p),
+            "Type": _seg_type(p),
+            "Number type": _seg_numt(p),
             "Number created at": _fmtd(p.get("number_created_at")) or "—",
             "Number deleted at": _fmtd(p.get("number_deleted_at")) or "—",
             "Delete reason": p.get("deleted_reason") or "—",
@@ -316,12 +346,36 @@ if df.empty:
     st.warning("No rows."); report_header_close(); st.stop()
 
 
+# ── toolbar: Type · Numbers (drives the funnel, Sankey AND the table) ─────────────────
+_tb1, _tb2 = st.columns(2)
+typ = _seg(_tb1, "Type", ["All", "Personal", "Organisations"], "cep_type")
+numt = _seg(_tb2, "Numbers", ["All", "Direct (New)", "Ported in"], "cep_numt")
+
+
 # ── Acquisition funnel (dark) : Sign-ups → Live → First login → First call → Keep calling ──
 _ac = saved.get("acq")
 if _ac:
     _WHITE, _BLUE, _CYAN, _TEAL, _GREEN = "#E6EDF3", "#5B8DEF", "#4C9AE0", "#3FB07A", "#3FB950"
     sg, lv, lg, cl, kp = (_ac["sign"], _ac["live"], _ac["login"], _ac["call"], _ac["keep"])
     _hrows = _ac.get("hist") or []
+
+    # Type/Numbers drive the funnel + Sankey — recompute gates from the filtered rows
+    _frows = _ac.get("rows") or []
+    if _frows:
+        _ff = _frows
+        if typ != "All":
+            _ff = [r for r in _ff if r.get("Type") == typ]
+        if numt != "All":
+            _ff = [r for r in _ff if r.get("Number type") == numt]
+
+        def _cnt(stages):
+            return sum(1 for r in _ff if r.get("Stage reached") in stages)
+
+        sg = len(_ff)
+        lv = _cnt({"Live", "First login", "First call", "Keep calling"})
+        lg = _cnt({"First login", "First call", "Keep calling"})
+        cl = _cnt({"First call", "Keep calling"})
+        kp = _cnt({"Keep calling"})
 
     def _pct(n):
         return f"{n/sg*100:.0f}% of sign-ups" if sg else "—"
@@ -408,7 +462,7 @@ if _ac:
         pass
 
     # ── per-number detail table ───────────────────────────────────────────────────────
-    _arows = _ac.get("rows") or []
+    _arows = _ff if _frows else (_ac.get("rows") or [])
     if _arows:
         _adf = pd.DataFrame(_arows)
         with st.expander(f"📋 Funnel detail — {len(_adf):,} numbers (name · email · number · URSA milestones)",
@@ -443,10 +497,7 @@ def _card(col, t, v, s, c):
         <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
 
-# ── toolbar: type · numbers (drive cards + table) ────────────────────────────────────
-t1, t2 = st.columns(2)
-typ = t1.radio("Type", ["All", "Personal", "Organisations"], horizontal=True, key="cep_type")
-numt = t2.radio("Numbers", ["All", "Direct (New)", "Ported in"], horizontal=True, key="cep_numt")
+# ── bottom table uses the same Type/Numbers toolbar selected above ───────────────────
 base = df.copy()
 if typ != "All" and "Type" in base.columns:
     base = base[base["Type"] == typ]
