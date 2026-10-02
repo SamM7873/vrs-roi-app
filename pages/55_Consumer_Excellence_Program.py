@@ -494,7 +494,7 @@ if _ac:
                        "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
         # progressing flow stays on TOP; all four drop-offs sit along the BOTTOM
         node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
-        node_y = [0.10, 0.10, 0.10, 0.10, 0.10, 0.70, 0.78, 0.92, 0.70]
+        node_y = [0.33, 0.33, 0.33, 0.33, 0.33, 0.80, 0.86, 0.97, 0.78]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
