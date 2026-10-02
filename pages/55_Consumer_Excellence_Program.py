@@ -363,12 +363,15 @@ if _ac:
                "preferring the live record). Sign-ups = new VRS + English numbers in the window; "
                "stages are nested (each is a subset of the prior). "
                "Bars show the last 12 months by number-created month — hover for the value.")
+    def _rate(n, d):            # "91% (329)" — share of the previous gate
+        return f"{n/d*100:.0f}% ({n:,})" if d else f"({n:,})"
+
     a = st.columns(5)
-    _acard(a[0], "Sign-ups", f"{sg:,}", "new registrations", _WHITE, "sign")
-    _acard(a[1], "Live", f"{lv:,}", _pct(lv), _BLUE, "live")
-    _acard(a[2], "First login", f"{lg:,}", _pct(lg), _CYAN, "login")
-    _acard(a[3], "First call", f"{cl:,}", _pct(cl), _TEAL, "call")
-    _acard(a[4], "Keep calling", f"{kp:,}", _pct(kp), _GREEN, "keep")
+    _acard(a[0], "Sign-ups", f"{sg:,}", "new VRS/PSTN registrations", _WHITE, "sign")
+    _acard(a[1], "Live consumers", _rate(lv, sg), "have a PSTN number ready to call / sign-ups", _BLUE, "live")
+    _acard(a[2], "First login rate", _rate(lg, lv), "logged in to the app / live consumers", _CYAN, "login")
+    _acard(a[3], "First-call rate", _rate(cl, lg), "made a first outbound call / consumers who logged in", _TEAL, "call")
+    _acard(a[4], "Keep calling", _rate(kp, cl), "made a 2nd outbound call / first-call consumers", _GREEN, "keep")
 
     try:
         import plotly.graph_objects as go
