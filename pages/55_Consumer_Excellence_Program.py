@@ -229,6 +229,24 @@ if _ac:
 
     try:
         import plotly.graph_objects as go
+        # ── vertical bar funnel (one bar per stage) ──────────────────────────────
+        stage_names = ["Sign-ups", "Live", "First login", "First call", "Keep calling"]
+        stage_vals = [sg, lv, lg, cl, kp]
+        stage_cols = [_WHITE, _BLUE, _CYAN, _TEAL, _GREEN]
+        bar_text = [f"{v:,}<br>{(v/sg*100 if sg else 0):.0f}%" for v in stage_vals]
+        bfig = go.Figure(go.Bar(
+            x=stage_names, y=stage_vals, text=bar_text, textposition="outside",
+            marker=dict(color=stage_cols, line=dict(color="#0D1117", width=0)),
+            textfont=dict(color="#E6EDF3", size=13), cliponaxis=False))
+        bfig.update_layout(
+            height=340, margin=dict(l=10, r=10, t=30, b=10),
+            paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
+            font=dict(color="#E6EDF3", size=12),
+            yaxis=dict(showgrid=True, gridcolor="#232A36", zeroline=False,
+                       tickfont=dict(color="#8B949E")),
+            xaxis=dict(tickfont=dict(color="#C9D1D9")))
+        st.plotly_chart(bfig, use_container_width=True, config={"displayModeBar": False})
+
         labels = [f"Sign-ups ({sg:,})", f"Live ({lv:,})", f"First login ({lg:,})",
                   f"First call ({cl:,})", f"Keep calling ({kp:,})"]
         # drop-off nodes between stages
