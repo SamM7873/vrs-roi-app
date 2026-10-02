@@ -94,6 +94,48 @@ st.markdown("New **live Number objects** created on/after the cutoff, joined by 
 st.caption("Note: the Snowflake registration-tracking join (promo_code / rt_utm_*) isn't available "
            "through the HubSpot API, so those columns are omitted.")
 
+with st.expander("ℹ️ How to read this page (plain-language guide)"):
+    st.markdown("""
+**What this page answers:** *Of the people who signed up for a VRS number recently, how many
+actually got activated and started making calls — and where do they drop off?*
+
+**Who is counted (the population)**
+- **VRS numbers only** (`service_type` = VRS) — Convo Now / other services are excluded.
+- **English only** (`language_preference` = English; blank is treated as English).
+- **One row per phone number** (deduped). If a number has two records, we keep the **live** one.
+- Within the **date window** you pick at the top (by *number created* date).
+
+**The acquisition funnel (the 5 cards).** Each stage is a *subset* of the one before it, and the
+big **%** is the share **of the previous stage** (with the count in parentheses):
+| Stage | What it means |
+|---|---|
+| **Sign-ups** | New VRS + English numbers created in the window |
+| **Live consumers** | …that have a working (Live) PSTN number ready to call |
+| **First login rate** | …that then logged into the app (`ursa_first_login`) |
+| **First-call rate** | …that then made their first outbound call (`ursa_first_outbound_call`) |
+| **Keep calling** | …that made a **second** outbound call (`ursa_second_outbound_call`) — i.e. stuck around |
+
+*Example:* "First-call rate 42% (95)" means 95 people made a first call, and that's 42% of the people
+who had logged in. A **low %** at any stage = that's where consumers are dropping off.
+
+**The small bars under each card** = that metric's **last 12 months** (by month the number was
+created). The brightest bar is the current month. Hover a bar to see its value.
+
+**The Sankey (flow diagram)** shows the same funnel left→right: the colored band is people who
+**progressed**, the grey **"Dropped (n)"** branches are people who stopped at that stage.
+
+**The Type / Numbers pills** re-slice the *entire* funnel, Sankey and tables live:
+- **Type** — Personal (B2C consumers) vs Organisations.
+- **Numbers** — Direct (New) = brand-new number, Ported in = brought from another carrier.
+
+**The detail table** lists every number behind the funnel (name, email, number, status, the stage
+they reached, registered/created/deleted dates, delete reason, and the three URSA call milestones),
+with its own filters and a CSV export.
+
+**The bottom "UTM attribution" section** takes the same live VRS numbers and shows how many have
+marketing attribution (UTM tags) vs none — useful for "where did these sign-ups come from?".
+""")
+
 w1, w2 = st.columns([2.4, 1])
 _win = _seg(w1, "Rolling window", [7, 14, 28, 30, 56, 60, 84, 90], "cep_win",
             default=28, format_func=lambda d: f"{d}d")
