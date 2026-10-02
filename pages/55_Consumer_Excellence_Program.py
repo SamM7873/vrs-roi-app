@@ -476,90 +476,57 @@ if _ac:
 
     st.markdown("<div style='color:#C9D1D9;font-weight:700;margin-top:4px;'>Where do consumers drop "
                 "off on the way to calling?</div>", unsafe_allow_html=True)
-    st.markdown(
-        f"""<div style="display:flex;gap:20px;font-size:.8rem;color:#8B949E;margin:4px 0 6px;font-weight:600;">
-        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:{_BLUE};
-          margin-right:6px;"></span>Progressing</span>
-        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:{_GREEN};
-          margin-right:6px;"></span>Keep calling</span>
-        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#2B3444;
-          margin-right:6px;"></span>Dropped off</span></div>""", unsafe_allow_html=True)
+    _pop = _ff if _frows else (_ac.get("rows") or [])
+    # stage index → (title, row-filter over "Stage reached") for the click-popup
+    _NODE_FILTERS = {
+        0: ("Sign-ups", None),
+        1: ("Live consumers", {"Live", "First login", "First call", "Keep calling"}),
+        2: ("First login", {"First login", "First call", "Keep calling"}),
+        3: ("First call", {"First call", "Keep calling"}),
+        4: ("Keep calling", {"Keep calling"}),
+    }
+
+    @st.dialog("Numbers", width="large")
+    def _stage_popup(ni):
+        title, stages = _NODE_FILTERS.get(ni, ("Numbers", None))
+        rows = _pop if stages is None else [r for r in _pop if r.get("Stage reached") in stages]
+        st.markdown(f"### {title} — {len(rows):,} numbers")
+        if rows:
+            _d = pd.DataFrame(rows)
+            st.dataframe(_d, use_container_width=True, hide_index=True, height=440)
+            st.download_button("📥 Export CSV", _d.to_csv(index=False),
+                               f"{title.lower().replace(' ', '_')}.csv", "text/csv", key="pop_dl")
+        else:
+            st.caption("No numbers in this group.")
+
     try:
         import plotly.graph_objects as go
-        # blank node labels — all text drawn as annotations (column headers + drop labels)
-        node_labels = [""] * 9
-        node_colors = [_BLUE, "#4C9AE0", "#43A98C", _TEAL, _GREEN,
-                       "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
-        # progressing flow pinned along the TOP; drops peel downward
-        node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
-        # progressing on top; ALL drops pinned to the very bottom
-        node_y = [0.18, 0.18, 0.18, 0.18, 0.18, 0.99, 0.99, 0.99, 0.99]
-        src = [0, 0, 1, 1, 2, 2, 3, 3]
-        tgt = [1, 5, 2, 6, 3, 7, 4, 8]
-        val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
-        link_colors = ["rgba(91,141,239,0.55)", "rgba(43,52,68,0.70)",
-                       "rgba(70,150,215,0.55)", "rgba(43,52,68,0.70)",
-                       "rgba(63,176,122,0.55)", "rgba(43,52,68,0.70)",
-                       "rgba(63,185,80,0.60)", "rgba(43,52,68,0.70)"]
-        fig = go.Figure(go.Sankey(arrangement="fixed",
-            node=dict(label=node_labels, color=node_colors, pad=18, thickness=14,
-                      x=node_x, y=node_y, line=dict(color="#0D1117", width=0.5)),
-            link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
-
-        def _hdr(nm, ct):
-            return f"<b>{nm}</b><br><span style='font-size:11px;color:#8B949E'>{ct:,}</span>"
-
-        anns = []
-        # top column headers (stage name + count)
-        _cols = [("Sign-ups", sg, 0.02, "left"), ("Live consumers", lv, 0.265, "center"),
-                 ("First login", lg, 0.51, "center"), ("First call", cl, 0.755, "center"),
-                 ("Keep calling", kp, 0.995, "right")]
-        for nm, ct, hx, ha in _cols:
-            anns.append(dict(x=hx, y=1.07, xref="paper", yref="paper", xanchor=ha,
-                             yanchor="bottom", showarrow=False, align=ha,
-                             text=_hdr(nm, ct), font=dict(color="#E6EDF3", size=13)))
-        # drop-off labels (name + count), placed near each drop node
-        _dl = [("Not live", sg - lv, 0.24, 0.05), ("Not logged in", lv - lg, 0.49, 0.05),
-               ("No first call", lg - cl, 0.74, 0.05), ("No second call yet", cl - kp, 0.90, 0.05)]
-        for nm, ct, dx, dy in _dl:
-            anns.append(dict(x=dx, y=dy, xref="paper", yref="paper", xanchor="left",
-                             yanchor="middle", showarrow=False, align="left",
-                             text=f"{nm}<br><span style='font-size:11px;color:#8B949E'>{ct:,}</span>",
-                             font=dict(color="#C9D1D9", size=12)))
-        fig.update_layout(height=470, margin=dict(l=10, r=10, t=60, b=10),
+        stages = ["Sign-ups", "Live consumers", "First login", "First call", "Keep calling"]
+        vals = [sg, lv, lg, cl, kp]
+        bar_cols = [_BLUE, "#4C9AE0", "#43A98C", _TEAL, _GREEN]
+        fig = go.Figure(go.Funnel(
+            y=stages, x=vals, orientation="h",
+            textposition="inside", textinfo="value+percent initial",
+            textfont=dict(color="#0D1117", size=14),
+            marker=dict(color=bar_cols, line=dict(color="#0D1117", width=1)),
+            connector=dict(line=dict(color="#2B3444", width=1))))
+        fig.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=10),
                           paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
-                          annotations=anns, font=dict(size=13, color="#E6EDF3"))
-        st.caption("💡 Click a node in the Sankey to open its numbers in a pop-up.")
-        _pop = _ff if _frows else (_ac.get("rows") or [])
-        # node index → (title, row-filter over "Stage reached")
-        _NODE_FILTERS = {
-            0: ("Sign-ups", None),
-            1: ("Live consumers", {"Live", "First login", "First call", "Keep calling"}),
-            2: ("First login", {"First login", "First call", "Keep calling"}),
-            3: ("First call", {"First call", "Keep calling"}),
-            4: ("Keep calling", {"Keep calling"}),
-            5: ("Not live", {"Sign-up (not live)"}),
-            6: ("Not logged in", {"Live"}),
-            7: ("No first call", {"First login"}),
-            8: ("No second call yet", {"First call"}),
-        }
-
-        @st.dialog("Numbers", width="large")
-        def _stage_popup(ni):
-            title, stages = _NODE_FILTERS.get(ni, ("Numbers", None))
-            rows = _pop if stages is None else [r for r in _pop if r.get("Stage reached") in stages]
-            st.markdown(f"### {title} — {len(rows):,} numbers")
-            if rows:
-                _d = pd.DataFrame(rows)
-                st.dataframe(_d, use_container_width=True, hide_index=True, height=440)
-                st.download_button("📥 Export CSV", _d.to_csv(index=False),
-                                   f"{title.lower().replace(' ', '_')}.csv", "text/csv",
-                                   key="pop_dl")
-            else:
-                st.caption("No numbers in this group.")
-
-        _ev = st.plotly_chart(fig, use_container_width=True, key="acq_sankey",
+                          font=dict(size=13, color="#E6EDF3"),
+                          yaxis=dict(autorange="reversed", tickfont=dict(color="#E6EDF3", size=13)))
+        st.caption("💡 Click a bar to open its numbers in a pop-up. "
+                   "Each bar shows the count and its % of sign-ups.")
+        _ev = st.plotly_chart(fig, use_container_width=True, key="acq_funnel",
                               on_select="rerun", config={"displayModeBar": False})
+        # drop-off summary under the funnel
+        st.markdown(
+            f"""<div style="display:flex;flex-wrap:wrap;gap:10px 18px;margin:6px 2px 0;font-size:.8rem;color:#8B949E;">
+            <span>⤵ Dropped off:</span>
+            <span><b style="color:#C9D1D9;">Not live</b> {sg-lv:,}</span>
+            <span><b style="color:#C9D1D9;">Not logged in</b> {lv-lg:,}</span>
+            <span><b style="color:#C9D1D9;">No first call</b> {lg-cl:,}</span>
+            <span><b style="color:#C9D1D9;">No second call yet</b> {cl-kp:,}</span></div>""",
+            unsafe_allow_html=True)
         try:
             _pts = (_ev.get("selection", {}) or {}).get("points", []) if _ev else []
             if _pts:
