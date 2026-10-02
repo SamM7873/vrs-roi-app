@@ -230,32 +230,36 @@ def _acq_render(sg, lv, lg, cl, kp, note, of_signups=False):
     def _rate(a, b):
         return f"{a/b*100:.0f}% ({a:,})" if b else "—"
 
+    # dark, rounded cards to match the reference acquisition-funnel look
     def _acard(col, t, v, s, c):
-        col.markdown(f"""<div style="border:1px solid #E6E9F0;border-left:4px solid {c};border-radius:12px;
-            padding:14px 16px 12px;background:rgba(127,127,127,0.03);height:100%;">
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;color:#667085;">{t}</div>
-            <div style="font-size:1.7rem;font-weight:800;color:{c};line-height:1.1;margin:4px 0 2px;">{v}</div>
-            <div style="font-size:.7rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
+        col.markdown(f"""<div style="border:1px solid #232A36;border-radius:16px;padding:18px 20px 16px;
+            background:#121722;height:100%;">
+            <div style="font-size:.74rem;font-weight:700;color:#C9D1D9;text-align:center;">{t}</div>
+            <div style="font-size:2rem;font-weight:800;color:{c};line-height:1.1;margin:8px 0 6px;text-align:center;">{v}</div>
+            <div style="font-size:.7rem;color:#8B949E;text-align:center;">{s}</div></div>""",
+            unsafe_allow_html=True)
 
     _dl = "sign-ups" if of_signups else None
+    _WHITE, _BLUE, _CYAN, _TEAL, _GREEN = "#E6EDF3", "#5B8DEF", "#4C9AE0", "#3FB07A", "#3FB950"
     _ac = st.columns(5)
-    _acard(_ac[0], "Sign-ups", f"{sg:,}", "new VRS/PSTN registrations", "#8792A2")
-    _acard(_ac[1], "Live consumers", _rate(lv, sg), "PSTN ready / sign-ups", "#4C8DFF")
+    _acard(_ac[0], "Sign-ups", f"{sg:,}", "new VRS/PSTN registrations", _WHITE)
+    _acard(_ac[1], "Live consumers", _rate(lv, sg), "PSTN ready / sign-ups", _BLUE)
     _acard(_ac[2], "First login rate", _rate(lg, sg if of_signups else lv),
-           f"logged in / {_dl or 'live consumers'}", "#0EA5E9")
+           f"logged in / {_dl or 'live consumers'}", _CYAN)
     _acard(_ac[3], "First-call rate", _rate(cl, sg if of_signups else lg),
-           f"first outbound / {_dl or 'logged in'}", "#14B8A6")
+           f"first outbound / {_dl or 'logged in'}", _TEAL)
     _acard(_ac[4], "Keep calling", _rate(kp, sg if of_signups else cl),
-           f"second outbound / {_dl or 'first-call'}", "#22C55E")
+           f"second outbound / {_dl or 'first-call'}", _GREEN)
     st.markdown("")
-    st.markdown("**Where do consumers drop off on the way to calling?**")
+    st.markdown("<div style='color:#C9D1D9;font-weight:700;'>Where do consumers drop off on the way "
+                "to calling?</div>", unsafe_allow_html=True)
     st.markdown(
-        """<div style="display:flex;gap:20px;font-size:.8rem;color:#475467;margin:2px 0 6px;font-weight:600;">
-        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#0EA5E9;
+        f"""<div style="display:flex;gap:20px;font-size:.8rem;color:#8B949E;margin:4px 0 6px;font-weight:600;">
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:{_BLUE};
           margin-right:6px;"></span>Progressing</span>
-        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#22C55E;
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:{_GREEN};
           margin-right:6px;"></span>Keep calling</span>
-        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#94A3B8;
+        <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#2B3444;
           margin-right:6px;"></span>Dropped off</span></div>""", unsafe_allow_html=True)
     try:
         import plotly.graph_objects as go
@@ -263,22 +267,22 @@ def _acq_render(sg, lv, lg, cl, kp, note, of_signups=False):
                   f"First call  {cl:,}", f"Keep calling  {kp:,}",
                   f"Not live  {sg-lv:,}", f"Not logged in  {lv-lg:,}",
                   f"No first call  {lg-cl:,}", f"No second call yet  {cl-kp:,}"]
-        node_colors = ["#6366F1", "#4C8DFF", "#0EA5E9", "#14B8A6", "#22C55E",
-                       "#94A3B8", "#94A3B8", "#94A3B8", "#94A3B8"]
+        node_colors = ["#6366F1", _BLUE, _CYAN, _TEAL, _GREEN,
+                       "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg-lv, lg, lv-lg, cl, lg-cl, kp, cl-kp]
-        link_colors = ["rgba(76,141,255,0.5)", "rgba(148,163,184,0.3)",
-                       "rgba(14,165,233,0.5)", "rgba(148,163,184,0.3)",
-                       "rgba(20,184,166,0.5)", "rgba(148,163,184,0.3)",
-                       "rgba(34,197,94,0.55)", "rgba(148,163,184,0.3)"]
+        link_colors = ["rgba(91,141,239,0.55)", "rgba(43,52,68,0.65)",
+                       "rgba(76,154,224,0.55)", "rgba(43,52,68,0.65)",
+                       "rgba(63,176,122,0.55)", "rgba(43,52,68,0.65)",
+                       "rgba(63,185,80,0.6)", "rgba(43,52,68,0.65)"]
         fig = go.Figure(go.Sankey(arrangement="snap",
-            node=dict(label=labels, color=node_colors, pad=30, thickness=20,
-                      line=dict(color="white", width=1)),
+            node=dict(label=labels, color=node_colors, pad=30, thickness=18,
+                      line=dict(color="#0D1117", width=1)),
             link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
         fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10),
-                          paper_bgcolor="white", plot_bgcolor="white",
-                          font=dict(size=13, color="#1B2430"))
+                          paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
+                          font=dict(size=13, color="#E6EDF3"))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     except Exception as _e:
         st.caption(f"(Sankey unavailable: {_e})")
