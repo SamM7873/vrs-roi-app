@@ -490,10 +490,9 @@ if _ac:
         node_labels = [""] * 9
         node_colors = [_BLUE, "#4C9AE0", "#43A98C", _TEAL, _GREEN,
                        "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
-        # progressing must stay near the TOP (Sign-ups is the tallest node and must fit);
-        # all drops sit along the bottom
+        # progressing band along the TOP; drops form a staircase (lowest on the left)
         node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
-        node_y = [0.08, 0.08, 0.08, 0.08, 0.08, 0.96, 0.88, 0.78, 0.68]
+        node_y = [0.10, 0.10, 0.10, 0.10, 0.10, 0.90, 0.68, 0.56, 0.48]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
@@ -519,8 +518,8 @@ if _ac:
                              yanchor="bottom", showarrow=False, align=ha,
                              text=_hdr(nm, ct), font=dict(color="#E6EDF3", size=13)))
         # drop-off labels (name + count), placed near each drop node
-        _dl = [("Not live", sg - lv, 0.24, 0.04), ("Not logged in", lv - lg, 0.49, 0.12),
-               ("No first call", lg - cl, 0.74, 0.22), ("No second call yet", cl - kp, 0.90, 0.32)]
+        _dl = [("Not live", sg - lv, 0.24, 0.08), ("Not logged in", lv - lg, 0.49, 0.30),
+               ("No first call", lg - cl, 0.74, 0.42), ("No second call yet", cl - kp, 0.90, 0.50)]
         for nm, ct, dx, dy in _dl:
             anns.append(dict(x=dx, y=dy, xref="paper", yref="paper", xanchor="left",
                              yanchor="middle", showarrow=False, align="left",
