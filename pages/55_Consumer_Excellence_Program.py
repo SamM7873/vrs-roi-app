@@ -19,7 +19,7 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v8_detailtbl"
+_key = "consumer_excellence_v9_delcols"
 
 UTM_PROPS = ["utm_campaign", "utm_source", "utm_medium", "utm_content",
              "referral_source", "referral_source_b2b"]
@@ -96,7 +96,7 @@ run = st.button("▶ Run", type="primary")
 if run:
     nprops = ["number", "number_created_at", "number_status", "email", "first_name", "last_name",
               "state", "service_type", "usage_type", "registration_type", "referrer", "portin_status",
-              "language_preference",
+              "language_preference", "number_deleted_at", "deleted_reason",
               "ursa_first_login", "ursa_first_outbound_call", "ursa_second_outbound_call"]
     with dash_spinner("Reading new Number objects…"):
         allnums = _seek(NUM_OBJECT, nprops, [
@@ -155,6 +155,9 @@ if run:
             "Number": p.get("number") or "—",
             "Status": p.get("number_status") or "—",
             "Stage reached": _stage_of(p),
+            "Number created at": _fmtd(p.get("number_created_at")) or "—",
+            "Number deleted at": _fmtd(p.get("number_deleted_at")) or "—",
+            "Delete reason": p.get("deleted_reason") or "—",
             "ursa_first_login": _fmtd(p.get("ursa_first_login")) or "—",
             "ursa_first_outbound_call": _fmtd(p.get("ursa_first_outbound_call")) or "—",
             "ursa_second_outbound_call": _fmtd(p.get("ursa_second_outbound_call")) or "—",
