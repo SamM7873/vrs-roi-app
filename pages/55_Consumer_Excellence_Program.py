@@ -413,14 +413,19 @@ if _ac:
         _adf = pd.DataFrame(_arows)
         with st.expander(f"📋 Funnel detail — {len(_adf):,} numbers (name · email · number · URSA milestones)",
                          expanded=True):
-            _sf1, _sf2 = st.columns([1.3, 2])
+            _sf1, _sf2, _sf3 = st.columns([1.3, 1.3, 2])
             _stg = _sf1.multiselect("Stage reached",
                                     ["Sign-up (not live)", "Live", "First login", "First call", "Keep calling"],
                                     default=[])
-            _aq = _sf2.text_input("Search name / email / number", key="acq_tbl_q").strip().lower()
+            _stat = _sf2.multiselect("Number status",
+                                     sorted(x for x in _adf["Status"].unique() if x and x != "—"),
+                                     default=[])
+            _aq = _sf3.text_input("Search name / email / number", key="acq_tbl_q").strip().lower()
             _av = _adf.copy()
             if _stg:
                 _av = _av[_av["Stage reached"].isin(_stg)]
+            if _stat:
+                _av = _av[_av["Status"].isin(_stat)]
             if _aq:
                 _av = _av[_av.apply(lambda r: _aq in " ".join(str(x).lower() for x in r.values), axis=1)]
             st.caption(f"{len(_av):,} of {len(_adf):,}")
