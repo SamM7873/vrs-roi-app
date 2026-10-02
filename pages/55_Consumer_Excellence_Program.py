@@ -490,9 +490,24 @@ if _ac:
         node_labels = [""] * 9
         node_colors = [_BLUE, "#4C9AE0", "#43A98C", _TEAL, _GREEN,
                        "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
-        # big left nodes (Sign-ups/Live/First login) centered so they fit; drops to the bottom
+        # Positions computed from the DATA so every filter stacks correctly:
+        # each column is top-aligned (progressing on top, its drop directly below).
+        _tot = float(sg) if sg else 1.0
+        _pad = 0.012  # small visual gap between a stage and its drop
+
+        def _cy(h):
+            return min(max(h / 2.0, 0.02), 0.98)          # center of a top-aligned node
+
+        def _dy(above, h):
+            return min(max(above + _pad + h / 2.0, 0.02), 0.98)  # drop sits below its stage
+
+        h_lv, h_nl = lv / _tot, (sg - lv) / _tot
+        h_lg, h_no = lg / _tot, (lv - lg) / _tot
+        h_cl, h_nf = cl / _tot, (lg - cl) / _tot
+        h_kp, h_ns = kp / _tot, (cl - kp) / _tot
         node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
-        node_y = [0.50, 0.44, 0.40, 0.20, 0.14, 0.94, 0.86, 0.52, 0.46]
+        node_y = [0.50, _cy(h_lv), _cy(h_lg), _cy(h_cl), _cy(h_kp),
+                  _dy(h_lv, h_nl), _dy(h_lg, h_no), _dy(h_cl, h_nf), _dy(h_kp, h_ns)]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
@@ -517,9 +532,11 @@ if _ac:
             anns.append(dict(x=hx, y=1.07, xref="paper", yref="paper", xanchor=ha,
                              yanchor="bottom", showarrow=False, align=ha,
                              text=_hdr(nm, ct), font=dict(color="#E6EDF3", size=13)))
-        # drop-off labels (name + count), placed near each drop node
-        _dl = [("Not live", sg - lv, 0.24, 0.05), ("Not logged in", lv - lg, 0.49, 0.13),
-               ("No first call", lg - cl, 0.74, 0.46), ("No second call yet", cl - kp, 0.90, 0.52)]
+        # drop-off labels (name + count), placed at each drop node (paper y = 1 - node y)
+        _dl = [("Not live", sg - lv, 0.24, 1 - node_y[5]),
+               ("Not logged in", lv - lg, 0.49, 1 - node_y[6]),
+               ("No first call", lg - cl, 0.74, 1 - node_y[7]),
+               ("No second call yet", cl - kp, 0.90, 1 - node_y[8])]
         for nm, ct, dx, dy in _dl:
             anns.append(dict(x=dx, y=dy, xref="paper", yref="paper", xanchor="left",
                              yanchor="middle", showarrow=False, align="left",
