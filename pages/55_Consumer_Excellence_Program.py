@@ -490,9 +490,9 @@ if _ac:
         node_labels = [""] * 9
         node_colors = [_BLUE, "#4C9AE0", "#43A98C", _TEAL, _GREEN,
                        "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
-        # progressing band thick on top; drops cascade compactly in the lower-middle (match ref)
+        # big left nodes (Sign-ups/Live/First login) centered so they fit; drops to the bottom
         node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
-        node_y = [0.12, 0.12, 0.12, 0.12, 0.12, 0.80, 0.62, 0.52, 0.46]
+        node_y = [0.50, 0.44, 0.40, 0.20, 0.14, 0.94, 0.86, 0.52, 0.46]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
@@ -518,7 +518,7 @@ if _ac:
                              yanchor="bottom", showarrow=False, align=ha,
                              text=_hdr(nm, ct), font=dict(color="#E6EDF3", size=13)))
         # drop-off labels (name + count), placed near each drop node
-        _dl = [("Not live", sg - lv, 0.24, 0.18), ("Not logged in", lv - lg, 0.49, 0.36),
+        _dl = [("Not live", sg - lv, 0.24, 0.05), ("Not logged in", lv - lg, 0.49, 0.13),
                ("No first call", lg - cl, 0.74, 0.46), ("No second call yet", cl - kp, 0.90, 0.52)]
         for nm, ct, dx, dy in _dl:
             anns.append(dict(x=dx, y=dy, xref="paper", yref="paper", xanchor="left",
