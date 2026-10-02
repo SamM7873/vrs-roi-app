@@ -484,6 +484,34 @@ if _ac:
           margin-right:6px;"></span>Keep calling</span>
         <span><span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#2B3444;
           margin-right:6px;"></span>Dropped off</span></div>""", unsafe_allow_html=True)
+
+    # ── click/pick → pop-up table (defined OUTSIDE the chart's try so it always works) ──
+    _pop = _ff if _frows else (_ac.get("rows") or [])
+    _NODE_FILTERS = {
+        0: ("Sign-ups", None),
+        1: ("Live consumers", {"Live", "First login", "First call", "Keep calling"}),
+        2: ("First login", {"First login", "First call", "Keep calling"}),
+        3: ("First call", {"First call", "Keep calling"}),
+        4: ("Keep calling", {"Keep calling"}),
+        5: ("Not live", {"Sign-up (not live)"}),
+        6: ("Not logged in", {"Live"}),
+        7: ("No first call", {"First login"}),
+        8: ("No second call yet", {"First call"}),
+    }
+
+    @st.dialog("Numbers")
+    def _stage_popup(ni):
+        title, stages = _NODE_FILTERS.get(ni, ("Numbers", None))
+        rows = _pop if stages is None else [r for r in _pop if r.get("Stage reached") in stages]
+        st.markdown(f"### {title} — {len(rows):,} numbers")
+        if rows:
+            _d = pd.DataFrame(rows)
+            st.dataframe(_d, use_container_width=True, hide_index=True, height=440)
+            st.download_button("📥 Export CSV", _d.to_csv(index=False),
+                               f"{title.lower().replace(' ', '_')}.csv", "text/csv", key="pop_dl")
+        else:
+            st.caption("No numbers in this group.")
+
     try:
         import plotly.graph_objects as go
         # blank node labels — all text drawn as annotations (column headers + drop labels)
@@ -545,35 +573,7 @@ if _ac:
         fig.update_layout(height=430, margin=dict(l=10, r=10, t=60, b=10),
                           paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
                           annotations=anns, font=dict(size=13, color="#E6EDF3"))
-        st.caption("💡 Click a node in the Sankey to open its numbers in a pop-up.")
-        _pop = _ff if _frows else (_ac.get("rows") or [])
-        # node index → (title, row-filter over "Stage reached")
-        _NODE_FILTERS = {
-            0: ("Sign-ups", None),
-            1: ("Live consumers", {"Live", "First login", "First call", "Keep calling"}),
-            2: ("First login", {"First login", "First call", "Keep calling"}),
-            3: ("First call", {"First call", "Keep calling"}),
-            4: ("Keep calling", {"Keep calling"}),
-            5: ("Not live", {"Sign-up (not live)"}),
-            6: ("Not logged in", {"Live"}),
-            7: ("No first call", {"First login"}),
-            8: ("No second call yet", {"First call"}),
-        }
-
-        @st.dialog("Numbers", width="large")
-        def _stage_popup(ni):
-            title, stages = _NODE_FILTERS.get(ni, ("Numbers", None))
-            rows = _pop if stages is None else [r for r in _pop if r.get("Stage reached") in stages]
-            st.markdown(f"### {title} — {len(rows):,} numbers")
-            if rows:
-                _d = pd.DataFrame(rows)
-                st.dataframe(_d, use_container_width=True, hide_index=True, height=440)
-                st.download_button("📥 Export CSV", _d.to_csv(index=False),
-                                   f"{title.lower().replace(' ', '_')}.csv", "text/csv",
-                                   key="pop_dl")
-            else:
-                st.caption("No numbers in this group.")
-
+        st.caption("💡 Click a node in the Sankey (or use the picker below) to open its numbers.")
         _ev = st.plotly_chart(fig, use_container_width=True, key="acq_sankey",
                               on_select="rerun", config={"displayModeBar": False})
         try:
@@ -586,15 +586,15 @@ if _ac:
                     _stage_popup(int(_ni))
         except Exception:
             pass
-        # reliable fallback: pick a group to open the same pop-up
-        _label_to_idx = {v[0]: k for k, v in _NODE_FILTERS.items()}
-        _pick = st.selectbox("…or open a group's numbers", ["—"] + list(_label_to_idx),
-                             key="acq_pick")
-        if _pick != "—" and st.session_state.get("_acq_pick_last") != _pick:
-            st.session_state["_acq_pick_last"] = _pick
-            _stage_popup(_label_to_idx[_pick])
-    except Exception:
-        pass
+    except Exception as _e:
+        st.caption(f"(chart unavailable: {_e})")
+
+    # reliable fallback picker (always rendered, outside the chart try/except)
+    _label_to_idx = {v[0]: k for k, v in _NODE_FILTERS.items()}
+    _pick = st.selectbox("Open a group's numbers", ["—"] + list(_label_to_idx), key="acq_pick")
+    if _pick != "—" and st.session_state.get("_acq_pick_last") != _pick:
+        st.session_state["_acq_pick_last"] = _pick
+        _stage_popup(_label_to_idx[_pick])
 
     # ── per-number detail table ───────────────────────────────────────────────────────
     _arows = _ff if _frows else (_ac.get("rows") or [])
