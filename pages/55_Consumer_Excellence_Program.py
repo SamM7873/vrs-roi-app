@@ -486,28 +486,24 @@ if _ac:
           margin-right:6px;"></span>Dropped off</span></div>""", unsafe_allow_html=True)
     try:
         import plotly.graph_objects as go
-        labels = [f"Sign-ups  {sg:,}", f"Live consumers  {lv:,}", f"First login  {lg:,}",
-                  f"First call  {cl:,}", f"Keep calling  {kp:,}",
-                  f"Not live  {sg-lv:,}", f"Not logged in  {lv-lg:,}",
-                  f"No first call  {lg-cl:,}", f"No second call yet  {cl-kp:,}"]
-        node_colors = [_BLUE, _CYAN, "#43A98C", _TEAL, _GREEN,
+        labels = [f"Sign-ups ({sg:,})", f"Live ({lv:,})", f"First login ({lg:,})",
+                  f"First call ({cl:,})", f"Keep calling ({kp:,})",
+                  f"Not live ({sg-lv:,})", f"Not logged in ({lv-lg:,})",
+                  f"No first call ({lg-cl:,})", f"No second call yet ({cl-kp:,})"]
+        node_colors = [_WHITE, _BLUE, _CYAN, _TEAL, _GREEN,
                        "#2B3444", "#2B3444", "#2B3444", "#2B3444"]
-        # pinned positions: progressing flow stays along the TOP, drops peel off below
-        node_x = [0.001, 0.25, 0.50, 0.75, 0.999, 0.25, 0.50, 0.75, 0.999]
-        node_y = [0.12, 0.12, 0.12, 0.12, 0.12, 0.90, 0.72, 0.80, 0.55]
         src = [0, 0, 1, 1, 2, 2, 3, 3]
         tgt = [1, 5, 2, 6, 3, 7, 4, 8]
         val = [lv, sg - lv, lg, lv - lg, cl, lg - cl, kp, cl - kp]
-        # progressing links fade blue → green across the funnel; drops are dark
-        link_colors = ["rgba(91,141,239,0.60)", "rgba(43,52,68,0.70)",
-                       "rgba(70,150,200,0.60)", "rgba(43,52,68,0.70)",
-                       "rgba(63,176,122,0.60)", "rgba(43,52,68,0.70)",
-                       "rgba(63,185,80,0.65)", "rgba(43,52,68,0.70)"]
-        fig = go.Figure(go.Sankey(arrangement="fixed",
-            node=dict(label=labels, color=node_colors, pad=24, thickness=16,
-                      x=node_x, y=node_y, line=dict(color="#0D1117", width=1)),
+        link_colors = ["rgba(91,141,239,0.40)", "rgba(43,52,68,0.65)",
+                       "rgba(91,141,239,0.40)", "rgba(43,52,68,0.65)",
+                       "rgba(91,141,239,0.40)", "rgba(43,52,68,0.65)",
+                       "rgba(63,185,80,0.55)", "rgba(43,52,68,0.65)"]
+        fig = go.Figure(go.Sankey(
+            node=dict(label=labels, color=node_colors, pad=18, thickness=16,
+                      line=dict(color="#0D1117", width=0.5)),
             link=dict(source=src, target=tgt, value=[max(0, v) for v in val], color=link_colors)))
-        fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10),
+        fig.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10),
                           paper_bgcolor="#0D1117", plot_bgcolor="#0D1117",
                           font=dict(size=13, color="#E6EDF3"))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
