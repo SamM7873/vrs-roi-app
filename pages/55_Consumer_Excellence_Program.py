@@ -122,7 +122,8 @@ who had logged in. A **low %** at any stage = that's where consumers are droppin
 created). The brightest bar is the current month. Hover a bar to see its value.
 
 **The Sankey (flow diagram)** shows the same funnel left→right: the colored band is people who
-**progressed**, the grey **"Dropped (n)"** branches are people who stopped at that stage.
+**progressed**, the grey branches (**Not live / Not logged in / No first call / No second call
+yet**) are people who stopped at that stage.
 
 **The Type / Numbers pills** re-slice the *entire* funnel, Sankey and tables live:
 - **Type** — Personal (B2C consumers) vs Organisations.
