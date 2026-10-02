@@ -19,7 +19,7 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v3_acqfunnel"
+_key = "consumer_excellence_v4_vrsacq"
 
 UTM_PROPS = ["utm_campaign", "utm_source", "utm_medium", "utm_content",
              "referral_source", "referral_source_b2b"]
@@ -103,6 +103,8 @@ if run:
     seen_ph, acq = set(), []
     for o in allnums:
         p = o.get("properties", {})
+        if "vrs" not in _norm(p.get("service_type")):   # VRS sign-ups only
+            continue
         ph = str(p.get("number") or "").strip() or ("id:" + str(o.get("id")))
         if ph in seen_ph:
             continue
@@ -216,8 +218,8 @@ if _ac:
         return f"{n/sg*100:.0f}% of sign-ups" if sg else "—"
 
     st.markdown("##### 🚀 Acquisition funnel")
-    st.caption("New number registrations → activation milestones (deduped by number). "
-               "Sign-ups = all new numbers in the window; stages are nested (each is a subset of the prior).")
+    st.caption("New VRS number registrations → activation milestones (deduped by number). "
+               "Sign-ups = new VRS numbers in the window; stages are nested (each is a subset of the prior).")
     a = st.columns(5)
     _acard(a[0], "Sign-ups", f"{sg:,}", "new registrations", _WHITE)
     _acard(a[1], "Live", f"{lv:,}", _pct(lv), _BLUE)
