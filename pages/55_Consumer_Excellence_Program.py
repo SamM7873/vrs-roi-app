@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from collections import defaultdict
 import requests
 from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
@@ -19,7 +19,7 @@ report_header("Consumer Excellence Program",
 
 NUM_OBJECT = "2-40974683"   # Number object
 SUB_OBJECT = "2-49942763"   # submission form records
-_key = "consumer_excellence_v1"
+_key = "consumer_excellence_v2_toolbar"
 
 UTM_PROPS = ["utm_campaign", "utm_source", "utm_medium", "utm_content",
              "referral_source", "referral_source_b2b"]
@@ -75,14 +75,20 @@ st.markdown("New **live Number objects** created on/after the cutoff, joined by 
 st.caption("Note: the Snowflake registration-tracking join (promo_code / rt_utm_*) isn't available "
            "through the HubSpot API, so those columns are omitted.")
 
-c1, c2 = st.columns([1, 1])
-since = c1.date_input("Numbers created on/after", value=date(2026, 9, 1))
-run = c2.button("▶ Run", type="primary")
-c2.markdown("<div style='height:.3rem'></div>", unsafe_allow_html=True)
+w1, w2 = st.columns([2.4, 1])
+_win = w1.radio("Rolling window", [7, 14, 28, 30, 56, 60, 84, 90], index=2, horizontal=True,
+                format_func=lambda d: f"{d}d", key="cep_win")
+_custom = w2.checkbox("Custom start date", value=False, key="cep_custom")
+if _custom:
+    since = w2.date_input("Numbers created on/after", value=date(2026, 9, 1), key="cep_since")
+else:
+    since = date.today() - timedelta(days=int(_win))
+    w1.caption(f"Numbers created on/after **{since}** (past {_win} days)")
+run = st.button("▶ Run", type="primary")
 
 if run:
     nprops = ["number", "number_created_at", "number_status", "email", "first_name", "last_name",
-              "state", "service_type", "usage_type", "registration_type", "referrer"]
+              "state", "service_type", "usage_type", "registration_type", "referrer", "portin_status"]
     with dash_spinner("Reading new Number objects…"):
         nums = _seek(NUM_OBJECT, nprops, [
             {"propertyName": "number_created_at", "operator": "GTE", "value": _ms(since)}])
@@ -127,11 +133,17 @@ if run:
         em = _norm(p.get("email"))
         u = utm_by_email.get(em, {})
         has_utm = any(u.get(k) for k in ("utm_campaign", "utm_source", "utm_medium", "utm_content"))
+        _ut = _norm(p.get("usage_type"))
+        _useg = ("Personal" if "person" in _ut else
+                 "Organisations" if any(x in _ut for x in ("organ", "business", "company")) else "—")
+        _ported = _norm(p.get("portin_status")) not in ("", "none", "n/a", "not ported", "direct")
         rows.append({
             "Number created": _fmtd(p.get("number_created_at")),
             "Phone": p.get("number") or "—",
             "Name": f"{(p.get('first_name') or '').strip()} {(p.get('last_name') or '').strip()}".strip() or "—",
             "Email": em or "—",
+            "Type": _useg,
+            "Number type": "Ported in" if _ported else "Direct (New)",
             "Service type": p.get("service_type") or "—",
             "Usage type": p.get("usage_type") or "—",
             "Registration type": p.get("registration_type") or "—",
@@ -169,10 +181,20 @@ def _card(col, t, v, s, c):
         <div style="font-size:.72rem;color:#8792A2;">{s}</div></div>""", unsafe_allow_html=True)
 
 
-N = len(df)
-hu = int((df["Has UTM"] == "Yes").sum())
+# ── toolbar: type · numbers (drive cards + table) ────────────────────────────────────
+t1, t2 = st.columns(2)
+typ = t1.radio("Type", ["All", "Personal", "Organisations"], horizontal=True, key="cep_type")
+numt = t2.radio("Numbers", ["All", "Direct (New)", "Ported in"], horizontal=True, key="cep_numt")
+base = df.copy()
+if typ != "All" and "Type" in base.columns:
+    base = base[base["Type"] == typ]
+if numt != "All" and "Number type" in base.columns:
+    base = base[base["Number type"] == numt]
+
+N = len(base)
+hu = int((base["Has UTM"] == "Yes").sum())
 k = st.columns(3)
-_card(k[0], "📞 New live numbers", f"{N:,}", f"since {saved.get('since','')}", "#4C8DFF")
+_card(k[0], "📞 New live numbers", f"{N:,}", f"since {saved.get('since','')} · {typ}/{numt}", "#4C8DFF")
 _card(k[1], "🎯 With UTM", f"{hu:,}", f"{hu/N*100:.0f}% attributed" if N else "—", "#2DB84B")
 _card(k[2], "❓ No UTM", f"{N-hu:,}", f"{(N-hu)/N*100:.0f}% unattributed" if N else "—", "#E5484D")
 st.markdown("")
@@ -180,9 +202,9 @@ st.markdown("")
 st.markdown("##### New live numbers")
 f1, f2, f3 = st.columns([1, 1.4, 2])
 hup = f1.radio("Has UTM", ["All", "Yes", "No"], horizontal=True, key="cep_hasutm")
-svc = f2.multiselect("Service type", sorted(x for x in df["Service type"].unique() if x != "—"), default=[])
+svc = f2.multiselect("Service type", sorted(x for x in base["Service type"].unique() if x != "—"), default=[])
 q = f3.text_input("Search name / email / number / campaign").strip().lower()
-view = df.copy()
+view = base.copy()
 if hup != "All":
     view = view[view["Has UTM"] == hup]
 if svc:
