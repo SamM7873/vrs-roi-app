@@ -1,120 +1,241 @@
 # Convo Now Reminder Balance — Billing Issue Explainer
 
-*For: leadership / billing review · Prepared from the Convo Now Reminder Balance QA page*
-
----
+*For leadership / billing review · Prepared from the Convo Now Reminder Balance QA page*
 
 ## The issue in one sentence
 
-The **usage minutes recorded on the Monthly Values records are not correct**, so the
-reported **Remainder Balance** for Convo Now: Access Complimentary consumers is **wrong as
-a number** — this is a **data accuracy / reporting problem**, not consumers getting extra
-free minutes (the plan allowance itself is enforced correctly). **Root cause sits on the
-data-engineering side**, in how the usage minutes are calculated and written to the Monthly
-Values records.
+The **Convo Now Remainder Balance is inaccurate when a consumer's billing cycle crosses a calendar-month boundary because Monthly Value records are calculated by calendar month instead of following the consumer's actual billing cycle.**
+
+The remaining minutes from the previous calendar month should carry forward into the next month when both months are part of the same billing cycle.
 
 ---
-
-## Background: how the credit is supposed to work
-
-- The **Convo Now: Access Complimentary** plan grants **20 free minutes per billing
-  cycle** (for example a 30-day cycle running **Sept 21 → Oct 21**).
-- There should be **one** 20-minute bucket for that whole cycle.
 
 ## How HubSpot calculates it today
 
-`Remainder Balance` on the **Monthly Value** object is a **calculated property** (custom
-equation):
+The Monthly Value `Remainder Balance` is a calculated property:
 
-```
-Remainder Balance = string_to_number(Credit Minimum) − Convo Now Minutes Used
-```
+**Remainder Balance = Credit Minimum − Convo Now Minutes Used**
 
-i.e. **`Remainder Balance = 20 − Convo Now Minutes Used`**, computed **per Monthly Value
-(per calendar month)**. The `Credit Minimum` (20) is a **flat value reset every month**, and
-the only input is `Convo Now Minutes Used`.
+For **Convo Now: Access Complimentary**, the Credit Minimum is:
+
+**20 minutes**
+
+Therefore:
+
+**Remainder Balance = 20 − Convo Now Minutes Used**
+
+The calculation is currently performed at the **Monthly Value / calendar-month level**.
+
+The issue is that the consumer's allowance needs to be evaluated against the **billing cycle**, not reset when the calendar month changes.
+
+---
 
 ## Why the problem happens
 
-**Primary cause — incorrect usage minutes (data engineering).**
-The `Convo Now Minutes Used` value written to the **Monthly Values** records is not being
-calculated correctly by the data pipeline. Since the formula is `20 − Convo Now Minutes
-Used`, wrong usage minutes produce a wrong remainder balance directly.
+The consumer's billing cycle and the calendar month do not always start and end on the same dates.
 
-**Compounding factor — per-month tracking across cycle boundaries.**
-Usage is stored in Monthly Values **one per calendar month**, each resetting to a fresh 20.
-When one billing cycle spans **two calendar months** (e.g. Sept *and* Oct), there are
-**two** records, each starting at 20, treated as **two separate 20-minute buckets** instead
-of one shared bucket for the cycle. Combined with the incorrect usage minutes, the cycle's
-allowance effectively becomes **40 minutes (20 + 20)** instead of 20.
+For example, a consumer may have a billing cycle of:
 
----
+**September 21, 2026 → October 21, 2026**
 
-## Real example — number 41599276 (Lori Wenzel)
+This is one 30-day billing cycle.
 
-- Plan: **Convo Now: Access Complimentary**, Status: **Live**
-- Billing cycle: **30 days, Sept 21, 2026 → Oct 21, 2026**
+However, the Monthly Value records are separated by calendar month:
 
-| Monthly Value | Minutes used | `remainder_balance` |
-|---|---:|---:|
-| September 2026 | 8 | **12** |
-| October 2026 | 0 | **20** |
+* September 2026 Monthly Value
+* October 2026 Monthly Value
 
-- **Correct** remaining for the cycle: `20 − 8 used = ` **12 minutes**.
-- But the **October** record displays **20 minutes remaining** — it reset to a fresh 20 and
-  ignored the 8 already used earlier in the same cycle.
-- So the balance shown for this consumer is **misinformation**: it reports **20** remaining
-  when the true figure is **12**.
+When the consumer uses minutes during September, the September Monthly Value correctly calculates the remaining balance.
 
----
+But when October begins, the October Monthly Value starts a new calculation based only on October usage.
 
-## How we detect it (QA page logic)
+It does not carry forward the remaining balance from September, even though the consumer is still within the same billing cycle.
 
-For every **Convo Now + Live + Convo Now: Access Complimentary** number, the page:
+### Example
 
-1. Pulls the associated **Subscription** billing cycle (start / end date; calculates the
-   end from the billing cycle type if it's missing).
-2. Sums the **actual minutes used** (`convo_now_minutes_used`) across every Monthly Value
-   that overlaps the billing cycle.
-3. Computes the **correct remainder = 20 − minutes used** — one allowance per cycle.
-4. **🚩 Red-flags** any number whose cycle crosses a calendar month and therefore receives
-   a double 20-minute allowance, showing:
-   - `cycle_months` — how many Monthly Values the cycle touches
-   - `hubspot_allowance` — what HubSpot grants (months × 20)
-   - `over_grant` — the excess minutes (e.g. +20)
-   - `remainder` — the correct balance
-5. Verifies **no Guest credit-type records** are counted in any calculation.
+The consumer has a **20-minute allowance** for the billing cycle.
 
-> Note: the Monthly Values `remainder_balance` is correct **per month**, but must **not be
-> summed** across months — summing is what produces the inflated 32 / 40 figures.
+During September 21–30:
+
+* Minutes used: **8**
+* Remaining: **12**
+
+When October begins:
+
+* Additional minutes used: **0**
+* The consumer is still in the September 21 → October 21 billing cycle.
+* The remaining balance should therefore still be **12 minutes**.
+
+Instead, the October Monthly Value calculates:
+
+**20 − 0 = 20 minutes**
+
+This makes it look like the balance **reset to 20 minutes on October 1**, even though the billing cycle did not reset.
 
 ---
 
-## Impact — misinformation about remaining minutes
+## Real example — Number 41599276 (Lori Wenzel)
 
-- The **Remainder Balance shows the wrong number of remaining minutes**. In the example
-  above, October reads **20 minutes remaining** when the cycle truly has **12** left — that
-  is **misinformation** being surfaced.
-- Anyone relying on this figure — consumers checking their balance, support, or internal
-  reporting — is seeing an **inaccurate remaining-minutes value**, which erodes trust in the
-  data and can drive wrong decisions.
-- This is a **data accuracy / reporting** problem, **not** a billing or revenue issue — the
-  plan's actual minute allowance is enforced correctly; only the **displayed balance** is
-  wrong. The QA page's **Red flags** count shows how many Live complimentary numbers are
-  currently displaying a misleading balance.
+* **Plan:** Convo Now: Access Complimentary
+* **Status:** Live
+* **Billing cycle:** September 21, 2026 → October 21, 2026
+* **Billing cycle length:** 30 days
+* **Allowance:** 20 minutes for the billing cycle
+
+| Period          | Minutes Used | Expected Remainder | Current Monthly Value |
+| --------------- | -----------: | -----------------: | --------------------: |
+| September 21–30 |            8 |                 12 |                    12 |
+| October 1–21    |            0 |                 12 |                    20 |
+
+### What should happen
+
+The consumer used **8 minutes** during September.
+
+Therefore: **20 − 8 = 12 minutes remaining**
+
+When October begins, the consumer is still within the same billing cycle. Because there was **0 additional usage in October**, the balance should remain **12 minutes**.
+
+### What currently happens
+
+The October Monthly Value sees **0 minutes used** and calculates **20 − 0 = 20 minutes**.
+
+The result is an inaccurate remainder because the October record does not account for the **8 minutes already used during the same billing cycle**.
+
+### Key point
+
+**The calendar month changed, but the billing cycle did not.**
+
+The remaining **12 minutes should carry forward from September into October** until the billing cycle ends on October 21.
 
 ---
 
-## Recommendation
+## What the calculation should look like
 
-**Owner: Data Engineering.** The fix belongs at the source — in the pipeline that computes
-and writes usage minutes to the Monthly Values records:
+Instead of calculating the remainder independently for each calendar month:
 
-1. **Correct the usage-minutes calculation** so `convo_now_minutes_used` on each Monthly
-   Value reflects true usage.
-2. **Aggregate the allowance per billing cycle, not per calendar month** — one 20-minute
-   bucket that **carries over** when the cycle crosses a month boundary, instead of
-   resetting to 20 each calendar month.
+* **September:** 20 − 8 = **12**
+* **October:** 20 − 0 = **20**
 
-Until the pipeline is corrected, the QA page gives the **correct per-cycle remainder** and
-the **list of numbers displaying an incorrect balance** for manual review or correction.
+The system should calculate the remainder based on the **entire billing cycle**:
+
+* **Billing cycle:** September 21 → October 21
+* **Total usage during billing cycle:** 8 minutes
+* **Correct remainder:** 20 − 8 = **12 minutes**
+
+If there is no additional usage during October, **12 minutes remains 12 minutes** until additional usage occurs or the billing cycle ends.
+
+---
+
+## How we detect the issue — QA page logic
+
+For every **Convo Now + Live + Convo Now: Access Complimentary** number, the QA page:
+
+1. Pulls the associated Subscription billing cycle.
+2. Identifies the billing-cycle start date.
+3. Identifies the billing-cycle end date.
+4. Calculates the end date from the billing-cycle type when the end date is missing.
+5. Identifies all Monthly Value records that overlap the billing cycle.
+6. Calculates the total Convo Now minutes used across the applicable portion of the billing cycle.
+7. Calculates the correct billing-cycle remainder: **20 − total Convo Now minutes used during the billing cycle**.
+8. Identifies billing cycles that cross calendar-month boundaries.
+9. Flags cases where the Monthly Value records show an inaccurate remainder because the balance was effectively restarted at the calendar-month boundary.
+10. Verifies that Guest credit-type records are not included in the calculation.
+
+---
+
+## Why calendar-month tracking causes the inaccurate balance
+
+**Current Monthly Value approach** — calendar month, calculated independently:
+
+* September: 20 − September usage
+* October: 20 − October usage
+
+**Required billing-cycle approach** — one allowance maintained across the entire cycle:
+
+* September 21 → October 21: 20 − all usage during the billing cycle
+
+The second approach correctly reflects the consumer's remaining balance.
+
+---
+
+## Impact — inaccurate remainder balance
+
+The impact is a **data accuracy and reporting issue**.
+
+When a billing cycle crosses a calendar-month boundary, the Remainder Balance shown on the new Monthly Value can be **higher than the actual remaining balance** for the billing cycle.
+
+In the example:
+
+* **Correct remainder:** 12 minutes
+* **October Monthly Value:** 20 minutes
+
+The October value is inaccurate because it does not account for the usage that occurred during September within the same billing cycle.
+
+This can affect:
+
+* Consumer-facing balance information
+* Support investigations
+* Internal reporting
+* QA and billing reviews
+* Any workflow or process that relies on the Monthly Value Remainder Balance
+
+---
+
+## Important: Do not treat each Monthly Value as a separate billing-cycle allowance
+
+The Monthly Value records are **calendar-month records**. They should not be interpreted as separate billing cycles simply because there is a new record when the calendar month changes.
+
+For a billing cycle such as **September 21 → October 21**, the September and October Monthly Values can both belong to the **same billing cycle**. The remainder therefore needs to carry forward between those records.
+
+* September: 8 minutes used → 12 minutes remaining
+* October: 0 additional minutes used → 12 minutes remaining
+
+The October balance should **not restart at 20 minutes** simply because October is a new calendar month.
+
+---
+
+## Recommendation — Owner: Data Engineering
+
+The correction should be made in the source data pipeline and Monthly Value calculation.
+
+**1. Calculate usage based on the billing cycle.** The Convo Now Minutes Used calculation should account for the consumer's actual billing-cycle start and end dates.
+
+**2. Carry the remainder across calendar-month boundaries.** When a billing cycle crosses into a new calendar month, the remaining balance from the previous month should carry forward. For **September 21 → October 21**, if 8 minutes were used in September (20 − 8 = 12), that **12-minute remainder should carry into October**.
+
+**3. Do not reset the remainder when the calendar month changes.** October should not independently start with "20 − October usage" when October is still part of the same billing cycle; it should continue from the existing billing-cycle balance.
+
+**4. Calculate one remainder for the billing cycle:** **20 − total Convo Now minutes used during the current billing cycle**. This ensures the Remainder Balance represents the consumer's actual remaining balance for that billing cycle.
+
+---
+
+## Until the pipeline is corrected
+
+Until the underlying Monthly Value calculation is corrected, the QA page can be used to:
+
+* Identify billing cycles that cross calendar-month boundaries.
+* Compare Monthly Value usage against the actual billing cycle.
+* Calculate the correct billing-cycle remainder.
+* Identify Monthly Values displaying an inaccurate remainder.
+* Provide the affected numbers for manual review or correction.
+
+The QA calculation should be treated as the **billing-cycle-level reference** while the Monthly Value data remains calendar-month based.
+
+---
+
+## Bottom line
+
+The issue is that **Convo Now Monthly Values follow calendar months, while the consumer's allowance follows the billing cycle.**
+
+When a billing cycle crosses from one calendar month into another, the remaining balance should **carry forward**. For a **September 21 → October 21** billing cycle:
+
+* 20-minute allowance
+* 8 minutes used in September
+* 12 minutes remaining
+* 0 additional minutes used in October
+* **October should still show 12 minutes remaining**
+
+Instead, the current October Monthly Value calculates **20 minutes remaining**, making it appear that the balance reset when October began.
+
+**The calendar month changed; the billing cycle did not.**
+
+The required fix is to have the usage and remainder calculation follow the **billing cycle**, so the remaining balance carries across calendar-month boundaries until the billing cycle ends.

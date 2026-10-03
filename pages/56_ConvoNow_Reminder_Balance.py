@@ -29,7 +29,7 @@ REQUIRED_CREDIT_PLAN = "convo now: access complimentary"   # 20-min complimentar
 EXCLUDED_CREDIT_TYPE = "guest"
 DEFAULT_CREDIT_MINIMUM = 20
 
-_key = "convonow_reminder_balance_v6_overgrant"
+_key = "convonow_reminder_balance_v7_carryforward"
 
 
 def _norm(v):
@@ -177,9 +177,10 @@ def _overlap(month_start, billing_start, billing_end):
 st.markdown("Reviews every **Convo Now + Live** number on the **Convo Now: Access Complimentary** "
             "plan: pulls its **Subscription** billing cycle and **Monthly Values**, excludes "
             "**Guest** credit type, keeps only months overlapping the billing cycle, and recomputes "
-            "the remainder as **20 − billing-cycle minutes** (clamped at 0) — **one 20-min allowance "
-            "per cycle**, not 20 per calendar month. The Monthly Values `remainder_balance` is shown "
-            "for reference only, with a 🚩 flag where it double-counts (e.g. 40 across two months).")
+            "the correct remainder as **20 − total billing-cycle minutes** (clamped at 0). "
+            "A number is 🚩 flagged when its **displayed balance is overstated** — the cycle crosses a "
+            "calendar month and the later Monthly Value **doesn't carry forward** the earlier month's "
+            "usage, so it shows more remaining minutes than the cycle actually has left.")
 st.caption(f"Credit allowance is fixed at **{DEFAULT_CREDIT_MINIMUM} minutes** per billing cycle.")
 _allow = DEFAULT_CREDIT_MINIMUM
 run = st.button("▶ Run QA", type="primary")
@@ -259,6 +260,7 @@ if run:
 
         minutes_total, applicable, src_rem_sum = 0.0, 0, 0.0
         guest_excluded, guest_leaked = 0, 0
+        month_rows = []
         for mid in nid_mvs.get(nid, []):
             mv = mv_of.get(str(mid), {})
             credit_type = mv.get("credit_type")
@@ -293,6 +295,7 @@ if run:
             minutes_total += minutes; applicable += 1
             if src_rem_v is not None:
                 src_rem_sum += src_rem_v
+            month_rows.append((month_date, minutes, src_rem_v))
             d.update({"minutes_used": minutes, "month_remainder": src_rem_v, "included": True,
                       "overlap_start": ov["overlap_start"], "overlap_end": ov["overlap_end"],
                       "overlap_days": ov["overlap_days"]})
@@ -300,17 +303,26 @@ if run:
 
         # Correct billing-cycle remainder = 20 − total minutes used across the cycle's months.
         remainder = max(_allow - minutes_total, 0)
-        # HubSpot grants a fresh 20 for EACH monthly value the cycle touches → over-grant.
         cycle_months = applicable
-        hubspot_allowance = cycle_months * _allow
-        over_grant = max(hubspot_allowance - _allow, 0)
+        # The balance a consumer actually sees = the LATEST calendar month's Monthly Value
+        # remainder. Because it does NOT carry forward earlier-month usage, it is overstated
+        # by the usage that happened in the cycle's earlier months.
+        displayed_remainder, overstated = None, 0.0
+        if month_rows:
+            _latest = max(month_rows, key=lambda r: r[0])
+            latest_minutes = _latest[1]
+            displayed_remainder = (_latest[2] if _latest[2] is not None
+                                   else max(_allow - latest_minutes, 0))
+            overstated = round(max(displayed_remainder - remainder, 0), 1)
+        earlier_usage = round(minutes_total - (max(month_rows, key=lambda r: r[0])[1] if month_rows else 0), 1)
         mismatch = ""
-        if applicable and abs((src_rem_sum) - remainder) > 0.01:
-            mismatch = f"HubSpot offers {src_rem_sum:.0f} free min, should be {remainder:.0f} (over by {src_rem_sum - remainder:+.0f})"
+        if overstated > 0:
+            mismatch = (f"shows {displayed_remainder:.0f} min, should be {remainder:.0f} "
+                        f"(overstated by {overstated:.0f} — {earlier_usage:.0f} earlier-month min not carried forward)")
         # red flags
         flags = []
-        if over_grant > 0:
-            flags.append(f"🚩 Cross-month cycle — grants {hubspot_allowance:.0f} min, should be {_allow} (+{over_grant:.0f})")
+        if overstated > 0:
+            flags.append(f"🚩 Balance not carried forward — shows {displayed_remainder:.0f}, should be {remainder:.0f} (overstated +{overstated:.0f})")
         if guest_leaked:
             flags.append(f"🚩 Guest leaked ({guest_leaked})")
         red_flag = " · ".join(flags)
@@ -322,7 +334,10 @@ if run:
                               "cycle_months": cycle_months, "monthly_values": applicable,
                               "guest_excluded": guest_excluded,
                               "minutes_used": round(minutes_total, 1), "credit_allowance": _allow,
-                              "hubspot_allowance": hubspot_allowance, "over_grant": over_grant,
+                              "displayed_remainder": (round(displayed_remainder, 1)
+                                                      if displayed_remainder is not None else None),
+                              "correct_remainder": round(remainder, 1),
+                              "overstated_by": overstated,
                               "remainder": round(remainder, 1),
                               "source_remainder_sum": round(src_rem_sum, 1) if applicable else None,
                               "mismatch": mismatch, "red_flag": red_flag, "status": billing["status"]})
@@ -374,7 +389,7 @@ _card(k[0], "📞 Eligible (Convo Now · Live · Complimentary)", f"{saved.get('
       f"of {saved.get('n_numbers', 0):,} Convo Now scanned", "#4C8DFF")
 _card(k[1], "✅ Billing calculated", f"{len(calc_df):,}", "valid billing cycle", "#2DB84B")
 _card(k[2], "🚩 Red flags", f"{len(flag_df):,}",
-      "cross-month double allowance", "#E5484D")
+      "balance not carried forward", "#E5484D")
 _card(k[3], "⚠️ Issues", f"{len(issues_df):,}", "missing / invalid billing", "#E5A23D")
 st.markdown("")
 
@@ -393,17 +408,17 @@ tab0, tab1, tab2, tab3, tab4 = st.tabs(
      f"Monthly detail ({len(detail_df):,})"])
 
 with tab0:
-    st.caption("Numbers whose billing cycle **crosses a calendar month**, so HubSpot creates a "
-               "second Monthly Value that resets `remainder_balance` to 20 — granting **more than "
-               "20 minutes** for a single 20-min cycle (e.g. Sept + Oct = 40). The correct remainder "
-               "is **20 − total `convo_now_minutes_used`** across the cycle.")
+    st.caption("Numbers whose **displayed balance is overstated** — the billing cycle crosses a "
+               "calendar month, and the later month's Monthly Value **doesn't carry forward** the "
+               "earlier month's usage, so it shows **more remaining minutes than the cycle actually "
+               "has left**. Correct remainder = **20 − total `convo_now_minutes_used`** across the cycle.")
     if flag_df.empty:
-        st.success("No red flags — no cross-month double allowances found.")
+        st.success("No red flags — every displayed balance matches the correct cycle remainder.")
     else:
         _cols = [c for c in ["number", "red_flag", "billing_start", "billing_end", "cycle_months",
-                             "minutes_used", "credit_allowance", "hubspot_allowance", "over_grant",
-                             "remainder", "source_remainder_sum", "mismatch",
-                             "guest_excluded", "status"] if c in flag_df.columns]
+                             "minutes_used", "displayed_remainder", "correct_remainder",
+                             "overstated_by", "mismatch", "guest_excluded", "status"]
+                 if c in flag_df.columns]
         st.dataframe(flag_df[_cols].sort_values("number"),
                      use_container_width=True, hide_index=True, height=500)
         st.download_button("📥 Export red flags", flag_df.to_csv(index=False),
