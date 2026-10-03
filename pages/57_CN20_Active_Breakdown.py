@@ -20,7 +20,7 @@ report_header("CN20 Active Users — Breakdown",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-_key = "cn20_active_breakdown_v3_live"
+_key = "cn20_active_breakdown_v4_strict"
 
 US_STATES = {"al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia","ks",
              "ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny",
@@ -69,7 +69,7 @@ c1, c2, c3 = st.columns([1.4, 1.4, 1.2])
 _today = date.today()
 _mon = c1.selectbox("Active month", [(_today.year, _today.month), (_today.year, _today.month - 1 if _today.month > 1 else 12)],
                     format_func=lambda ym: date(ym[0], ym[1] if ym[1] >= 1 else 12, 1).strftime("%B %Y"))
-cn20_match = c2.text_input("CN20 plan contains", value="complimentary").strip().lower()
+cn20_match = c2.text_input("CN20 plan contains", value="access complimentary").strip().lower()
 us_only = c3.checkbox("US only (by state)", value=False)
 run = st.button("▶ Run report", type="primary")
 
@@ -118,16 +118,16 @@ if run:
             continue
         if us_only and _norm(p.get("state")) not in US_STATES:
             continue
-        plan = (p.get("credit_plan_name") or "").strip() or "—"
+        plan = (p.get("credit_plan_name") or "").strip()   # blank = no plan set
         num = _norm(p.get("number"))
         u = users[em]
         u["numbers"] += 1
-        u["plans"].add(plan)
+        u["plans"].add(plan or "(no plan)")
         if not u["state"]:
             u["state"] = p.get("state") or ""
         if _is_cn20(plan):
             u["cn20"] = True
-        else:
+        elif plan:                     # a REAL non-blank, non-CN20 plan — ignore blanks ("—")
             u["other_cn"] = True
         if num in active_numbers or em in active_emails_mv:
             u["active"] = True
