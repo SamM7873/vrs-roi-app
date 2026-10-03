@@ -29,7 +29,7 @@ REQUIRED_CREDIT_PLAN = "convo now: access complimentary"   # 20-min complimentar
 EXCLUDED_CREDIT_TYPE = "guest"
 DEFAULT_CREDIT_MINIMUM = 20
 
-_key = "convonow_reminder_balance_v7_carryforward"
+_key = "convonow_reminder_balance_v8_live"
 
 
 def _norm(v):
@@ -192,8 +192,9 @@ if run:
                       "credit_type", "credit_plan_name"],
                      [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}])
 
-    def _is_live(pp):   # Live status lives in account_status OR number_status
-        return _norm(pp.get("account_status") or pp.get("number_status")) == REQUIRED_ACCOUNT_STATUS
+    def _is_live(pp):   # live if EITHER account_status OR number_status is Live
+        return (_norm(pp.get("account_status")) == REQUIRED_ACCOUNT_STATUS
+                or _norm(pp.get("number_status")) == REQUIRED_ACCOUNT_STATUS)
 
     def _is_plan(pp):   # 20-min complimentary plan only
         return _norm(pp.get("credit_plan_name")) == REQUIRED_CREDIT_PLAN

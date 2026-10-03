@@ -20,7 +20,7 @@ report_header("CN20 Active Users — Breakdown",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-_key = "cn20_active_breakdown_v2_tree"
+_key = "cn20_active_breakdown_v3_live"
 
 US_STATES = {"al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia","ks",
              "ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny",
@@ -87,8 +87,8 @@ if run:
         vrs = _seek(NUM_OBJECT, ["email", "number_status", "account_status", "service_type"],
                     [{"propertyName": "service_type", "operator": "EQ", "value": "VRS"}])
 
-    def _is_live(p):
-        return _norm(p.get("account_status") or p.get("number_status")) == "live"
+    def _is_live(p):   # live if EITHER account_status OR number_status is Live
+        return _norm(p.get("account_status")) == "live" or _norm(p.get("number_status")) == "live"
 
     vrs_emails = {_norm(o.get("properties", {}).get("email")) for o in vrs if _is_live(o.get("properties", {}))}
     vrs_emails.discard("")
