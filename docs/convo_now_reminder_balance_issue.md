@@ -222,6 +222,31 @@ The QA calculation should be treated as the **billing-cycle-level reference** wh
 
 ---
 
+## Findings from the current data snapshot
+
+An export of all cross-month Convo Now: Access Complimentary cycles (30-day cycles that
+span two calendar months) returned **8,333 numbers**. Splitting them clarifies the real
+scope:
+
+| Group | Count | Meaning |
+| --- | ---: | --- |
+| Cross-month cycles (all) | 8,333 | 30-day cycle spanning two calendar months |
+| **Had 0 minutes used** | **6,712 (80.5%)** | **Not inaccurate** — the later month correctly shows 20; nothing to carry forward |
+| **Had usage > 0** | **1,621 (19.5%)** | The only cases where the displayed balance can be overstated |
+
+**Takeaway:** only about **1 in 5** cross-month cycles actually displays an overstated
+balance. A number is only mis-reporting when there was **usage in an earlier month of the
+cycle** that the later month failed to carry forward. (The QA page now flags only this
+subset.)
+
+**Secondary data-quality signal:** among the 1,621 with usage, the median is ~15 minutes,
+but some records show **far more than the 20-minute allowance** (up to **277 minutes**),
+which drives the stored `remainder_balance` **negative** (e.g. −237). Usage values well
+beyond the plan's allowance reinforce that the **usage minutes themselves** need review on
+the data-engineering side, independent of the carry-forward logic.
+
+---
+
 ## Bottom line
 
 The issue is that **Convo Now Monthly Values follow calendar months, while the consumer's allowance follows the billing cycle.**
