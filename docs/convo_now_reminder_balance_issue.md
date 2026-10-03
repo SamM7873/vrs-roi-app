@@ -7,11 +7,11 @@
 ## The issue in one sentence
 
 The **usage minutes recorded on the Monthly Values records are not correct**, so the
-resulting **reminder / remainder balance** for Convo Now: Access Complimentary consumers
-is wrong — and because the data is tracked per calendar month, a billing cycle that
-crosses a month ends up showing a **double 20-minute allowance** (up to **40 min** for a
-single 20-min cycle). **Root cause sits on the data-engineering side** — in how the usage
-minutes are calculated and written to the Monthly Values records.
+reported **Remainder Balance** for Convo Now: Access Complimentary consumers is **wrong as
+a number** — this is a **data accuracy / reporting problem**, not consumers getting extra
+free minutes (the plan allowance itself is enforced correctly). **Root cause sits on the
+data-engineering side**, in how the usage minutes are calculated and written to the Monthly
+Values records.
 
 ---
 
@@ -61,9 +61,10 @@ allowance effectively becomes **40 minutes (20 + 20)** instead of 20.
 | October 2026 | 0 | **20** |
 
 - **Correct** remaining for the cycle: `20 − 8 used = ` **12 minutes**.
-- What HubSpot's two records imply: `12 + 20 = ` **32 minutes** still available, from a
-  full **40-minute** allowance for the one cycle.
-- This consumer is **over-credited by 20 minutes**.
+- But the **October** record displays **20 minutes remaining** — it reset to a fresh 20 and
+  ignored the 8 already used earlier in the same cycle.
+- So the balance shown for this consumer is **misinformation**: it reports **20** remaining
+  when the true figure is **12**.
 
 ---
 
@@ -89,13 +90,18 @@ For every **Convo Now + Live + Convo Now: Access Complimentary** number, the pag
 
 ---
 
-## Impact
+## Impact — misinformation about remaining minutes
 
-- Affected consumers can use **more free minutes than the plan allows** (up to 2× for a
-  cycle that spans two months; more if a cycle spans more months).
-- This is a **revenue leakage / cost** issue on the complimentary plan, scaled by how many
-  Live complimentary numbers have month-crossing cycles (see the QA page's **Red flags**
-  count).
+- The **Remainder Balance shows the wrong number of remaining minutes**. In the example
+  above, October reads **20 minutes remaining** when the cycle truly has **12** left — that
+  is **misinformation** being surfaced.
+- Anyone relying on this figure — consumers checking their balance, support, or internal
+  reporting — is seeing an **inaccurate remaining-minutes value**, which erodes trust in the
+  data and can drive wrong decisions.
+- This is a **data accuracy / reporting** problem, **not** a billing or revenue issue — the
+  plan's actual minute allowance is enforced correctly; only the **displayed balance** is
+  wrong. The QA page's **Red flags** count shows how many Live complimentary numbers are
+  currently displaying a misleading balance.
 
 ---
 
@@ -111,4 +117,4 @@ and writes usage minutes to the Monthly Values records:
    resetting to 20 each calendar month.
 
 Until the pipeline is corrected, the QA page gives the **correct per-cycle remainder** and
-the **list of over-credited numbers** for manual review or correction.
+the **list of numbers displaying an incorrect balance** for manual review or correction.
