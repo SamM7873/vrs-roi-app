@@ -20,7 +20,7 @@ report_header("CN20 Active Users — Breakdown",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-_key = "cn20_active_breakdown_v7_plans"
+_key = "cn20_active_breakdown_v8_noplan"
 
 
 def _norm(v):
@@ -73,7 +73,7 @@ if run:
     mend = date(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1)
 
     nprops = ["number", "email", "account_status", "number_status", "credit_plan_name",
-              "service_type"]
+              "credit_type", "service_type", "number_created_at"]
     with dash_spinner("Reading Convo Now numbers…"):
         cn = _seek(NUM_OBJECT, nprops,
                    [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}])
@@ -115,6 +115,16 @@ if run:
     plan_numbers = defaultdict(int)       # credit_plan_name → count of live Convo Now numbers
     plan_users = defaultdict(set)         # credit_plan_name → set of emails
     plan_active_users = defaultdict(set)  # credit_plan_name → active emails
+    noplan_credit_type = defaultdict(int)     # credit_type of "(no plan)" numbers
+    email_has_plan = defaultdict(bool)        # email → has any plan'd Convo Now number
+    email_noplan_nums = defaultdict(int)      # email → count of no-plan Convo Now numbers
+    for o in cn:
+        _pp = o.get("properties", {})
+        if _is_live(_pp):
+            _em = _norm(_pp.get("email"))
+            _pl = (_pp.get("credit_plan_name") or "").strip()
+            if _em and _pl:
+                email_has_plan[_em] = True
     for o in cn:
         p = o.get("properties", {})
         if not _is_live(p):
@@ -129,6 +139,9 @@ if run:
         plan_users[_pd].add(em)
         if num in active_numbers or em in active_emails_mv:
             plan_active_users[_pd].add(em)
+        if not plan:
+            noplan_credit_type[(p.get("credit_type") or "(blank)").strip() or "(blank)"] += 1
+            email_noplan_nums[em] += 1
         u = users[em]
         u["numbers"] += 1
         u["plans"].add(_pd)
@@ -166,8 +179,17 @@ if run:
                   "Users": len(plan_users[pl]), "Active users": len(plan_active_users.get(pl, set()))}
                  for pl in plan_numbers]
     plan_df = pd.DataFrame(plan_rows).sort_values("Convo Now numbers", ascending=False)
-    save_report(_key, {"df": df, "plan_df": plan_df, "month": date(y, m, 1).strftime("%B %Y"),
-                       "cn20_match": cn20_match,
+    # "(no plan)" diagnostic
+    _np_emails = set(email_noplan_nums)
+    noplan_info = {
+        "numbers": plan_numbers.get("(no plan)", 0),
+        "emails": len(_np_emails),
+        "shared_with_plan": sum(1 for e in _np_emails if email_has_plan.get(e)),  # user also has a plan'd CN number
+        "only_noplan": sum(1 for e in _np_emails if not email_has_plan.get(e)),    # user's CN numbers are all no-plan
+        "credit_type": dict(noplan_credit_type),
+    }
+    save_report(_key, {"df": df, "plan_df": plan_df, "noplan": noplan_info,
+                       "month": date(y, m, 1).strftime("%B %Y"), "cn20_match": cn20_match,
                        "n_cn_numbers": len(cn), "n_active_numbers": len(active_numbers)})
 
 saved = load_report(_key)
@@ -276,6 +298,24 @@ with tab3:
                            "cn20_credit_plans.csv", "text/csv", key="plan_dl")
     else:
         st.caption("Re-run the report to see the credit-plan breakdown.")
+
+    npi = saved.get("noplan")
+    if npi:
+        with st.expander(f"🔎 What are the “(no plan)” numbers? ({npi['numbers']:,} numbers)",
+                         expanded=True):
+            st.markdown(
+                f"- **{npi['numbers']:,}** live Convo Now numbers have a **blank `credit_plan_name`**, "
+                f"across **{npi['emails']:,}** users.\n"
+                f"- **{npi['shared_with_plan']:,}** of those users **also have a plan'd Convo Now number** "
+                f"→ the no-plan one is a **secondary number on an account that already has a plan**.\n"
+                f"- **{npi['only_noplan']:,}** users have **only** no-plan Convo Now numbers "
+                f"→ an account with no credit plan assigned at all.")
+            ct = npi.get("credit_type") or {}
+            if ct:
+                st.markdown("**Credit type on the no-plan numbers:**")
+                st.dataframe(pd.DataFrame(sorted(ct.items(), key=lambda x: -x[1]),
+                                          columns=["Credit type", "Numbers"]),
+                             use_container_width=True, hide_index=True)
 
 with tab4:
     _s3 = "Usage minutes (month)" if "Usage minutes (month)" in df else "Active"
