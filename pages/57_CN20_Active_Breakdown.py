@@ -20,7 +20,7 @@ report_header("CN20 Active Users — Breakdown",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-_key = "cn20_active_breakdown_v6_nostate"
+_key = "cn20_active_breakdown_v7_plans"
 
 
 def _norm(v):
@@ -112,6 +112,9 @@ if run:
 
     users = defaultdict(lambda: {"cn20": False, "other_cn": False, "active": False,
                                  "plans": set(), "numbers": 0})
+    plan_numbers = defaultdict(int)       # credit_plan_name → count of live Convo Now numbers
+    plan_users = defaultdict(set)         # credit_plan_name → set of emails
+    plan_active_users = defaultdict(set)  # credit_plan_name → active emails
     for o in cn:
         p = o.get("properties", {})
         if not _is_live(p):
@@ -121,9 +124,14 @@ if run:
             continue
         plan = (p.get("credit_plan_name") or "").strip()   # blank = no plan set
         num = _norm(p.get("number"))
+        _pd = plan or "(no plan)"
+        plan_numbers[_pd] += 1
+        plan_users[_pd].add(em)
+        if num in active_numbers or em in active_emails_mv:
+            plan_active_users[_pd].add(em)
         u = users[em]
         u["numbers"] += 1
-        u["plans"].add(plan or "(no plan)")
+        u["plans"].add(_pd)
         if _is_cn20(plan):
             u["cn20"] = True
         elif plan:                     # a REAL non-blank, non-CN20 plan — ignore blanks ("—")
@@ -154,7 +162,11 @@ if run:
                      "Classification": cls, "Convo Now plans": ", ".join(sorted(u["plans"])),
                      "Convo Now numbers": u["numbers"]})
     df = pd.DataFrame(rows)
-    save_report(_key, {"df": df, "month": date(y, m, 1).strftime("%B %Y"),
+    plan_rows = [{"Credit plan name": pl, "Convo Now numbers": plan_numbers[pl],
+                  "Users": len(plan_users[pl]), "Active users": len(plan_active_users.get(pl, set()))}
+                 for pl in plan_numbers]
+    plan_df = pd.DataFrame(plan_rows).sort_values("Convo Now numbers", ascending=False)
+    save_report(_key, {"df": df, "plan_df": plan_df, "month": date(y, m, 1).strftime("%B %Y"),
                        "cn20_match": cn20_match,
                        "n_cn_numbers": len(cn), "n_active_numbers": len(active_numbers)})
 
@@ -218,7 +230,8 @@ st.markdown(
     </div></div>""", unsafe_allow_html=True)
 st.markdown("")
 
-tab1, tab2, tab3 = st.tabs(["CN20 active users", "Classification summary", "All users"])
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["CN20 active users", "Classification summary", "All credit plans", "All users"])
 
 with tab1:
     q = st.text_input("Search email", key="cn20_q").strip().lower()
@@ -252,6 +265,19 @@ with tab2:
     st.dataframe(pc, use_container_width=True, hide_index=True, height=360)
 
 with tab3:
+    st.markdown("**Every `credit_plan_name` on live Convo Now numbers** — counts of numbers and "
+                "users for each plan. **(no plan)** = a live Convo Now number with `credit_plan_name` "
+                "blank / not set.")
+    pdf = saved.get("plan_df")
+    if pdf is not None and not pdf.empty:
+        st.caption(f"{len(pdf):,} distinct credit plans")
+        st.dataframe(pdf, use_container_width=True, hide_index=True, height=460)
+        st.download_button("📥 Export plans CSV", pdf.to_csv(index=False),
+                           "cn20_credit_plans.csv", "text/csv", key="plan_dl")
+    else:
+        st.caption("Re-run the report to see the credit-plan breakdown.")
+
+with tab4:
     _s3 = "Usage minutes (month)" if "Usage minutes (month)" in df else "Active"
     st.dataframe(df.sort_values(_s3, ascending=False),
                  use_container_width=True, hide_index=True, height=480)
