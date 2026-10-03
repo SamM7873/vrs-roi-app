@@ -20,12 +20,7 @@ report_header("CN20 Active Users — Breakdown",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-_key = "cn20_active_breakdown_v5_usage"
-
-US_STATES = {"al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia","ks",
-             "ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny",
-             "nc","nd","oh","ok","or","pa","ri","sc","sd","tn","tx","ut","vt","va","wa","wv",
-             "wi","wy","dc","district of columbia"}
+_key = "cn20_active_breakdown_v6_nostate"
 
 
 def _norm(v):
@@ -65,12 +60,11 @@ st.markdown("Groups **Convo Now** numbers by **user (email)**. **CN20** = credit
             "the selected month (from Monthly Values). Each CN20 user is classed as **exclusively CN20** "
             "or **CN20 + another account** (another Convo Now plan, or a VRS number on the same email).")
 
-c1, c2, c3 = st.columns([1.4, 1.4, 1.2])
+c1, c2 = st.columns(2)
 _today = date.today()
 _mon = c1.selectbox("Active month", [(_today.year, _today.month), (_today.year, _today.month - 1 if _today.month > 1 else 12)],
                     format_func=lambda ym: date(ym[0], ym[1] if ym[1] >= 1 else 12, 1).strftime("%B %Y"))
 cn20_match = c2.text_input("CN20 plan contains", value="access complimentary").strip().lower()
-us_only = c3.checkbox("US only (by state)", value=False)
 run = st.button("▶ Run report", type="primary")
 
 if run:
@@ -79,7 +73,7 @@ if run:
     mend = date(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1)
 
     nprops = ["number", "email", "account_status", "number_status", "credit_plan_name",
-              "service_type", "state"]
+              "service_type"]
     with dash_spinner("Reading Convo Now numbers…"):
         cn = _seek(NUM_OBJECT, nprops,
                    [{"propertyName": "service_type", "operator": "EQ", "value": "Convo Now"}])
@@ -117,7 +111,7 @@ if run:
         return bool(cn20_match) and cn20_match in _norm(plan)
 
     users = defaultdict(lambda: {"cn20": False, "other_cn": False, "active": False,
-                                 "state": "", "plans": set(), "numbers": 0})
+                                 "plans": set(), "numbers": 0})
     for o in cn:
         p = o.get("properties", {})
         if not _is_live(p):
@@ -125,15 +119,11 @@ if run:
         em = _norm(p.get("email"))
         if not em:
             continue
-        if us_only and _norm(p.get("state")) not in US_STATES:
-            continue
         plan = (p.get("credit_plan_name") or "").strip()   # blank = no plan set
         num = _norm(p.get("number"))
         u = users[em]
         u["numbers"] += 1
         u["plans"].add(plan or "(no plan)")
-        if not u["state"]:
-            u["state"] = p.get("state") or ""
         if _is_cn20(plan):
             u["cn20"] = True
         elif plan:                     # a REAL non-blank, non-CN20 plan — ignore blanks ("—")
@@ -162,10 +152,10 @@ if run:
                      "Has VRS": "Yes" if has_vrs else "No",
                      "Other Convo Now plan": "Yes" if u["other_cn"] else "No",
                      "Classification": cls, "Convo Now plans": ", ".join(sorted(u["plans"])),
-                     "Convo Now numbers": u["numbers"], "State": u["state"] or "—"})
+                     "Convo Now numbers": u["numbers"]})
     df = pd.DataFrame(rows)
     save_report(_key, {"df": df, "month": date(y, m, 1).strftime("%B %Y"),
-                       "cn20_match": cn20_match, "us_only": us_only,
+                       "cn20_match": cn20_match,
                        "n_cn_numbers": len(cn), "n_active_numbers": len(active_numbers)})
 
 saved = load_report(_key)
@@ -176,7 +166,7 @@ df = saved["df"]
 if saved.get("saved_at"):
     st.caption(f"📌 Saved {saved_at_label(saved)} · active month {saved.get('month','')} · "
                f"CN20 = plan contains “{saved.get('cn20_match','')}”"
-               + ("  ·  US only" if saved.get("us_only") else ""))
+               )
 if df.empty:
     st.warning("No Convo Now users found."); report_header_close(); st.stop()
 
@@ -216,7 +206,7 @@ st.markdown("")
 st.markdown(
     f"""<div style="border:1px solid #E6E9F0;border-radius:12px;padding:14px 18px;background:rgba(127,127,127,0.03);">
     <div style="font-size:.8rem;font-weight:700;color:#1A2234;margin-bottom:6px;">
-    Breakdown — monthly-active Convo Now users{' (US)' if saved.get('us_only') else ''}, {saved.get('month','')}</div>
+    Breakdown — monthly-active Convo Now users, {saved.get('month','')}</div>
     <div style="font-size:.86rem;color:#344054;line-height:1.7;">
     <b>{N:,}</b> total monthly-active Convo Now users<br>
     &nbsp;&nbsp;├─ <b>{NC:,}</b> have CN20
