@@ -241,9 +241,16 @@ subset.)
 
 **Secondary data-quality signal:** among the 1,621 with usage, the median is ~15 minutes,
 but some records show **far more than the 20-minute allowance** (up to **277 minutes**),
-which drives the stored `remainder_balance` **negative** (e.g. −237). Usage values well
-beyond the plan's allowance reinforce that the **usage minutes themselves** need review on
-the data-engineering side, independent of the carry-forward logic.
+which drives the stored `remainder_balance` **negative** (e.g. −237). This follows directly
+from the formula: `Remainder Balance = 20 − Convo Now Minutes Used`, so any usage **above
+20** produces a negative balance (e.g. `20 − 277 = −257`). Two questions for data
+engineering fall out of this:
+
+1. **Are these high usage values correct?** Usage well beyond the plan's allowance suggests
+   the **usage minutes themselves** need review — independent of the carry-forward logic.
+2. **Should a complimentary balance ever go negative,** or should it **floor at 0** (with
+   anything beyond the 20-minute allowance treated as paid/overage)? A negative "remaining
+   minutes" is itself misinformation.
 
 ---
 
