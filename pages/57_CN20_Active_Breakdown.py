@@ -20,7 +20,7 @@ report_header("CN20 Active Users — Breakdown",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-_key = "cn20_active_breakdown_v4_strict"
+_key = "cn20_active_breakdown_v5_usage"
 
 US_STATES = {"al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia","ks",
              "ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny",
@@ -102,6 +102,15 @@ if run:
     active_numbers = {_norm(o.get("properties", {}).get("number")) for o in mv}
     active_emails_mv = {_norm(o.get("properties", {}).get("email")) for o in mv}
     active_numbers.discard(""); active_emails_mv.discard("")
+    # total Convo Now usage minutes this month, by email
+    usage_by_email = defaultdict(float)
+    for o in mv:
+        pp = o.get("properties", {})
+        em = _norm(pp.get("email"))
+        try:
+            usage_by_email[em] += float(pp.get("convo_now_minutes_used") or 0)
+        except Exception:
+            pass
 
     # per Convo Now number → plan / active / email / state (live only)
     def _is_cn20(plan):
@@ -148,6 +157,7 @@ if run:
         else:
             cls = "Convo Now (non-CN20)"
         rows.append({"Email": em, "Active": "Yes" if u["active"] else "No",
+                     "Usage minutes (month)": round(usage_by_email.get(em, 0.0), 1),
                      "CN20": "Yes" if u["cn20"] else "No",
                      "Has VRS": "Yes" if has_vrs else "No",
                      "Other Convo Now plan": "Yes" if u["other_cn"] else "No",
@@ -223,8 +233,12 @@ tab1, tab2, tab3 = st.tabs(["CN20 active users", "Classification summary", "All 
 with tab1:
     q = st.text_input("Search email", key="cn20_q").strip().lower()
     v = cn20_active if not q else cn20_active[cn20_active["Email"].str.contains(q, na=False)]
-    st.caption(f"{len(v):,} CN20 active users")
-    st.dataframe(v.sort_values("Classification"), use_container_width=True, hide_index=True, height=480)
+    _um = cn20_active["Usage minutes (month)"] if "Usage minutes (month)" in cn20_active else None
+    if _um is not None and len(cn20_active):
+        st.caption(f"{len(v):,} CN20 active users · total **{_um.sum():,.0f}** min this month · "
+                   f"avg **{_um.mean():.1f}** min/user")
+    _sortcol = "Usage minutes (month)" if "Usage minutes (month)" in v else "Classification"
+    st.dataframe(v.sort_values(_sortcol, ascending=False), use_container_width=True, hide_index=True, height=480)
     st.download_button("📥 Export CN20 active CSV", cn20_active.to_csv(index=False),
                        "cn20_active_users.csv", "text/csv")
 
