@@ -20,7 +20,7 @@ report_header("CN20 Active Users — Breakdown",
 
 NUM_OBJECT = "2-40974683"
 MV_OBJECT = "2-46246179"
-_key = "cn20_active_breakdown_v1"
+_key = "cn20_active_breakdown_v2_tree"
 
 US_STATES = {"al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia","ks",
              "ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny",
@@ -195,10 +195,27 @@ _card(k[2], "🟣 Exclusively CN20", f"{len(excl):,}", f"{len(excl)/NC*100:.0f}%
 _card(k[3], "🔗 CN20 + another account", f"{len(plus):,}", f"{len(plus)/NC*100:.0f}% of CN20" if NC else "—", "#E8952A")
 st.markdown("")
 
+other_active = active[active["CN20"] == "No"]
 k2 = st.columns(3)
-_card(k2[0], "CN20 + VRS", f"{len(plus_vrs):,}", "also have a live VRS number", "#4C9AE0")
-_card(k2[1], "CN20 + another Convo Now plan", f"{len(plus_other):,}", "also have a non-CN20 CN plan", "#3FB07A")
-_card(k2[2], "CN20 total (incl. inactive)", f"{int((df['CN20']=='Yes').sum()):,}", "all CN20 users on file", "#8792A2")
+_card(k2[0], "📵 Other Convo Now (non-CN20)", f"{len(other_active):,}",
+      f"{len(other_active)/N*100:.0f}% of active · no CN20 plan" if N else "—", "#8792A2")
+_card(k2[1], "CN20 + VRS", f"{len(plus_vrs):,}", "also have a live VRS number", "#4C9AE0")
+_card(k2[2], "CN20 + another Convo Now plan", f"{len(plus_other):,}", "also have a non-CN20 CN plan", "#3FB07A")
+st.markdown("")
+
+st.markdown(
+    f"""<div style="border:1px solid #E6E9F0;border-radius:12px;padding:14px 18px;background:rgba(127,127,127,0.03);">
+    <div style="font-size:.8rem;font-weight:700;color:#1A2234;margin-bottom:6px;">
+    Breakdown — monthly-active Convo Now users{' (US)' if saved.get('us_only') else ''}, {saved.get('month','')}</div>
+    <div style="font-size:.86rem;color:#344054;line-height:1.7;">
+    <b>{N:,}</b> total monthly-active Convo Now users<br>
+    &nbsp;&nbsp;├─ <b>{NC:,}</b> have CN20
+    ({NC/N*100:.0f}%)<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├─ <b>{len(excl):,}</b> exclusively CN20<br>
+    &nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└─ <b>{len(plus):,}</b> CN20 + another account
+    (VRS: {len(plus_vrs):,} · other CN plan: {len(plus_other):,})<br>
+    &nbsp;&nbsp;└─ <b>{len(other_active):,}</b> use other Convo Now account types (non-CN20)
+    </div></div>""", unsafe_allow_html=True)
 st.markdown("")
 
 tab1, tab2, tab3 = st.tabs(["CN20 active users", "Classification summary", "All users"])
