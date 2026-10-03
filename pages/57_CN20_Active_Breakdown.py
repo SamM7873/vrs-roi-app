@@ -243,8 +243,18 @@ with tab1:
                        "cn20_active_users.csv", "text/csv")
 
 with tab2:
-    summ = (cn20_active["Classification"].value_counts().rename_axis("Classification")
-            .reset_index(name="Users"))
+    st.markdown("**CN20 active users — count & usage minutes by classification**")
+    if "Usage minutes (month)" in cn20_active:
+        summ = (cn20_active.groupby("Classification")
+                .agg(Users=("Email", "count"),
+                     **{"Total minutes": ("Usage minutes (month)", "sum"),
+                        "Avg min/user": ("Usage minutes (month)", "mean")})
+                .reset_index().sort_values("Users", ascending=False))
+        summ["Total minutes"] = summ["Total minutes"].round(0)
+        summ["Avg min/user"] = summ["Avg min/user"].round(1)
+    else:
+        summ = (cn20_active["Classification"].value_counts().rename_axis("Classification")
+                .reset_index(name="Users"))
     st.dataframe(summ, use_container_width=True, hide_index=True)
     st.markdown("**Convo Now plans among active users**")
     pc = (active["Convo Now plans"].value_counts().rename_axis("Plan(s) on account")
@@ -252,7 +262,8 @@ with tab2:
     st.dataframe(pc, use_container_width=True, hide_index=True, height=360)
 
 with tab3:
-    st.dataframe(df.sort_values(["Active", "CN20"], ascending=False),
+    _s3 = "Usage minutes (month)" if "Usage minutes (month)" in df else "Active"
+    st.dataframe(df.sort_values(_s3, ascending=False),
                  use_container_width=True, hide_index=True, height=480)
     st.download_button("📥 Export all users CSV", df.to_csv(index=False),
                        "cn20_all_users.csv", "text/csv", key="all_dl")
