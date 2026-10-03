@@ -21,12 +21,25 @@ minutes are calculated and written to the Monthly Values records.
   cycle** (for example a 30-day cycle running **Sept 21 → Oct 21**).
 - There should be **one** 20-minute bucket for that whole cycle.
 
+## How HubSpot calculates it today
+
+`Remainder Balance` on the **Monthly Value** object is a **calculated property** (custom
+equation):
+
+```
+Remainder Balance = string_to_number(Credit Minimum) − Convo Now Minutes Used
+```
+
+i.e. **`Remainder Balance = 20 − Convo Now Minutes Used`**, computed **per Monthly Value
+(per calendar month)**. The `Credit Minimum` (20) is a **flat value reset every month**, and
+the only input is `Convo Now Minutes Used`.
+
 ## Why the problem happens
 
 **Primary cause — incorrect usage minutes (data engineering).**
-The `convo_now_minutes_used` value written to the **Monthly Values** records is not being
-calculated correctly by the data pipeline. Since the remainder is derived from usage
-(`remainder = 20 − minutes used`), wrong usage minutes produce a wrong remainder balance.
+The `Convo Now Minutes Used` value written to the **Monthly Values** records is not being
+calculated correctly by the data pipeline. Since the formula is `20 − Convo Now Minutes
+Used`, wrong usage minutes produce a wrong remainder balance directly.
 
 **Compounding factor — per-month tracking across cycle boundaries.**
 Usage is stored in Monthly Values **one per calendar month**, each resetting to a fresh 20.
