@@ -29,7 +29,7 @@ REQUIRED_CREDIT_PLAN = "convo now: access complimentary"   # 20-min complimentar
 EXCLUDED_CREDIT_TYPE = "guest"
 DEFAULT_CREDIT_MINIMUM = 20
 
-_key = "convonow_reminder_balance_v8_live"
+_key = "convonow_reminder_balance_v9_months"
 
 
 def _norm(v):
@@ -327,12 +327,25 @@ if run:
         if guest_leaked:
             flags.append(f"🚩 Guest leaked ({guest_leaked})")
         red_flag = " · ".join(flags)
+
+        def _mlabel(md):
+            try:
+                return md.strftime("%b %Y")
+            except Exception:
+                return str(md)
+        months_str = " · ".join(
+            f"{_mlabel(md)} (bal {('' if rem is None else round(rem, 1))})"
+            for md, mins, rem in sorted(month_rows, key=lambda r: r[0]))
+        months_only = ", ".join(_mlabel(md) for md, mins, rem in sorted(month_rows, key=lambda r: r[0]))
+
         consumer_rows.append({**base, "subscription_id": sub_ids[0],
                               "billing_start": bs, "billing_end": be,
                               "billing_days": billing["billing_days"],
                               "billing_type": sp.get("billing_cycle_type"),
                               "billing_source": billing["source"],
                               "cycle_months": cycle_months, "monthly_values": applicable,
+                              "Monthly Values (months)": months_only,
+                              "Monthly Values (month · balance)": months_str,
                               "guest_excluded": guest_excluded,
                               "minutes_used": round(minutes_total, 1), "credit_allowance": _allow,
                               "displayed_remainder": (round(displayed_remainder, 1)
@@ -417,7 +430,8 @@ with tab0:
         st.success("No red flags — every displayed balance matches the correct cycle remainder.")
     else:
         _cols = [c for c in ["number", "red_flag", "billing_start", "billing_end", "cycle_months",
-                             "minutes_used", "displayed_remainder", "correct_remainder",
+                             "Monthly Values (month · balance)", "minutes_used",
+                             "displayed_remainder", "correct_remainder",
                              "overstated_by", "mismatch", "guest_excluded", "status"]
                  if c in flag_df.columns]
         st.dataframe(flag_df[_cols].sort_values("number"),
