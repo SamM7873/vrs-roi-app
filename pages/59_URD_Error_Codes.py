@@ -15,7 +15,12 @@ report_header("URD Error Codes",
 
 REG_OBJECT = "2-58833629"
 HS_RECORD_URL = "https://app.hubspot.com/contacts/46779160/record/2-58833629/{id}"
-_key = "urd_error_codes_v1"
+_key = "urd_error_codes_v2"
+NUM_OBJECT = "2-40974683"
+NUM_RECORD_URL = "https://app.hubspot.com/contacts/46779160/record/2-40974683/{id}"
+NUM_PROPS = ["number", "bandwidth_order_type", "number_status", "urd_status", "urd_id",
+             "urd_filling_error_message", "bandwidth_order_foc_date",
+             "urd_registration_created_at", "urd_registration_updated_at", "hs_createdate"]
 
 # Code fields on the registration object (comma-separated code lists, e.g. "4,21").
 CODE_FIELDS = {
@@ -116,6 +121,82 @@ def _rows(recs, codes, fields):
             "Registered": pd.to_datetime(p.get("registered_at"), utc=True, errors="coerce"),
             "URD Last Updated": pd.to_datetime(p.get("urd_registration_updated_at"), utc=True, errors="coerce"),
             "HubSpot": HS_RECORD_URL.format(id=r.get("id")),
+            "_num": str(p.get("number") or "").strip(),
+        })
+    return pd.DataFrame(rows)
+
+
+def _hours(a, b):
+    """Hours from timestamp a to b (None if either is missing)."""
+    a = pd.to_datetime(a, utc=True, errors="coerce")
+    b = pd.to_datetime(b, utc=True, errors="coerce")
+    return None if pd.isna(a) or pd.isna(b) else (b - a).total_seconds() / 3600
+
+
+def _fetch_numbers(nums):
+    """Number objects for the given numbers. When a number has several objects,
+    prefer the port-in order, then the most recently created one."""
+    best = {}
+    for i in range(0, len(nums), 100):
+        for r in fetch_all(NUM_OBJECT, NUM_PROPS, filter_groups=[{"filters": [
+                {"propertyName": "number", "operator": "IN", "values": nums[i:i + 100]}]}]):
+            p = r.get("properties", {})
+            num = str(p.get("number") or "").strip()
+            rank = (p.get("bandwidth_order_type") == "portins", p.get("hs_createdate") or "")
+            if num not in best or rank > best[num][0]:
+                best[num] = (rank, r)
+    return {k: v[1] for k, v in best.items()}
+
+
+def _baseline():
+    """FOC → URD approval hours for every completed port-in number object (the norm to compare against).
+    Approval = URD Registration Updated At on a URD-Completed number (HubSpot's own
+    'Time to Complete URD Registration' is measured to the same timestamp)."""
+    recs = fetch_all(NUM_OBJECT, ["bandwidth_order_foc_date", "urd_registration_updated_at"], filter_groups=[{"filters": [
+        {"propertyName": "bandwidth_order_type", "operator": "EQ", "value": "portins"},
+        {"propertyName": "urd_status", "operator": "EQ", "value": "Completed"},
+        {"propertyName": "bandwidth_order_foc_date", "operator": "HAS_PROPERTY"},
+        {"propertyName": "urd_registration_updated_at", "operator": "HAS_PROPERTY"}]}])
+    rows = []
+    for r in recs:
+        p = r.get("properties", {})
+        h = _hours(p.get("bandwidth_order_foc_date"), p.get("urd_registration_updated_at"))
+        if h is not None and h >= 0:
+            rows.append({"FOC Year": str(pd.to_datetime(p["bandwidth_order_foc_date"]).year), "Hours": h})
+    return pd.DataFrame(rows, columns=["FOC Year", "Hours"])
+
+
+_CODE_RE = re.compile(r"Error Code:\s*(\S+)", re.I)
+
+
+def _crosscheck(reg_df, num_by_number):
+    """One row per port-in registration: registration vs number object, FOC → URD timing."""
+    now = pd.Timestamp.now(tz="UTC")
+    rows = []
+    for _, r in reg_df.iterrows():
+        rec = num_by_number.get(r["_num"])
+        p = (rec or {}).get("properties", {})
+        num_urd = (p.get("urd_status") or "—").title() if rec else "—"
+        foc = p.get("bandwidth_order_foc_date")
+        approved = num_urd == "Completed"
+        to_approved = _hours(foc, p.get("urd_registration_updated_at")) if approved else None
+        foc_ts = pd.to_datetime(foc, utc=True, errors="coerce")
+        rows.append({
+            "Name": r["Name"], "Number": r["Number"], "Registered": r["Registered"],
+            "Reg URD Status": r["URD Status"], "Reg URD Codes": r["URD Filling Codes"],
+            "Number Object": "Yes" if rec else "MISSING",
+            "Num Order Type": p.get("bandwidth_order_type") or "—",
+            "Num Status": (p.get("number_status") or "—").title(),
+            "Num URD Status": num_urd,
+            "Status Match": ("Yes" if num_urd == r["URD Status"] else "NO") if rec else "—",
+            "Num URD Codes": ", ".join(dict.fromkeys(_CODE_RE.findall(p.get("urd_filling_error_message") or ""))),
+            "URD ID": p.get("urd_id") or "",
+            "FOC Date": foc_ts,
+            "FOC → URD Created (hrs)": _hours(foc, p.get("urd_registration_created_at")),
+            "FOC → URD Approved (hrs)": to_approved,
+            "Days Since FOC (not approved)": (now - foc_ts).days if rec and not approved and not pd.isna(foc_ts) else None,
+            "Number HubSpot": NUM_RECORD_URL.format(id=rec["id"]) if rec else None,
+            "Registration HubSpot": r["HubSpot"],
         })
     return pd.DataFrame(rows)
 
@@ -144,8 +225,13 @@ if run:
         st.stop()
     with dash_spinner(f"Searching registrations for code {', '.join(codes)}..."):
         recs, capped = _search(codes, fields)
-    save_report(_key, {"df": _rows(recs, codes, fields), "codes_in": codes_in,
-                       "field_labels": field_labels, "capped": capped})
+        reg_df = _rows(recs, codes, fields)
+    port_nums = sorted({n for n in reg_df.loc[reg_df["Type"] == "Port-In", "_num"] if n}) if not reg_df.empty else []
+    with dash_spinner(f"Cross-checking {len(port_nums):,} ported numbers against number objects..."):
+        num_by_number = _fetch_numbers(port_nums) if port_nums else {}
+        baseline = _baseline()
+    save_report(_key, {"df": reg_df, "num_by_number": num_by_number, "baseline": baseline,
+                       "codes_in": codes_in, "field_labels": field_labels, "capped": capped})
     saved = load_report(_key)
 
 if saved is None:
@@ -282,5 +368,84 @@ with t_done:
     _table(df[~stuck], "registrations completed in URD", "completed")
 with t_all:
     _table(df, "registrations", "all")
+
+# ── port-in cross-check: registration vs number object, FOC → URD approval ───
+
+st.markdown("---")
+st.markdown("### Ported numbers — Registration vs Number object")
+st.caption("Each port-in registration above is matched to its number object by phone number. "
+           "**FOC** = Bandwidth Order FOC Date (number object). **URD approved** = URD Registration "
+           "Updated At on a number whose URD Status is Completed — HubSpot has no separate "
+           "'approved at' field. Filters above apply here too.")
+
+xc = _crosscheck(df[df["Type"] == "Port-In"], saved.get("num_by_number", {}))
+base = saved.get("baseline", pd.DataFrame(columns=["FOC Year", "Hours"]))
+
+if xc.empty:
+    st.info("No port-in registrations in this selection.")
+else:
+    has_obj = xc["Number Object"] == "Yes"
+    appr = xc["FOC → URD Approved (hrs)"].dropna()
+
+    def _fmt_h(h):
+        if h is None or pd.isna(h):
+            return "—"
+        return f"{h / 24:.1f} days" if h >= 48 else f"{h:.1f} hrs"
+
+    def _tile_txt(label, val, color="#1F2937", border="#E5E7EB", sub=""):
+        sub_html = f'<div style="font-size:0.72rem;color:#6B7280;margin-top:0.15rem;">{sub}</div>' if sub else ""
+        return (f'<div style="background:#fff;border:1px solid {border};border-radius:10px;padding:1rem 1.25rem;">'
+                f'<div style="font-size:0.62rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;'
+                f'color:#6B7280;margin-bottom:0.25rem;">{label}</div>'
+                f'<div style="font-size:1.4rem;font-weight:800;color:{color};">{val}</div>{sub_html}</div>')
+
+    st.markdown(
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.85rem;margin:0.75rem 0 1rem;">'
+        + _tile_txt("Ported Numbers", f"{len(xc):,}")
+        + _tile_txt("No Number Object", f"{int((~has_obj).sum()):,}", "#EF4444", "#FEE2E2")
+        + _tile_txt("URD Status Mismatch", f"{int((xc['Status Match'] == 'NO').sum()):,}", "#F59E0B",
+                    sub="registration ≠ number object")
+        + _tile_txt("Ported Out Since", f"{int((xc['Num Order Type'] == 'portouts').sum()):,}", "#8B5CF6")
+        + _tile_txt("FOC → URD Approved", _fmt_h(appr.mean() if len(appr) else None), "#00A651",
+                    sub=f"average of {len(appr)} approved with an FOC date")
+        + _tile_txt("All Port-Ins (norm)", _fmt_h(base["Hours"].mean() if len(base) else None), "#3B82F6",
+                    sub=f"avg · median {_fmt_h(base['Hours'].median() if len(base) else None)} · {len(base):,} completed")
+        + "</div>", unsafe_allow_html=True)
+
+    if len(base):
+        with st.expander("Norm: FOC → URD approval for all completed port-ins, by FOC year"):
+            by_year = base.groupby("FOC Year")["Hours"].agg(
+                Count="count", Average="mean", Median="median",
+                Within_24h=lambda h: f"{(h <= 24).mean():.0%}").reset_index().sort_values("FOC Year", ascending=False)
+            by_year["Average"] = by_year["Average"].map(_fmt_h)
+            by_year["Median"] = by_year["Median"].map(_fmt_h)
+            st.dataframe(by_year.rename(columns={"Within_24h": "Within 24 hrs"}),
+                         use_container_width=True, hide_index=True)
+            st.caption("The average is pulled up by a few very slow records; the median is the typical case.")
+
+    xc_cfg = {
+        "Registered": st.column_config.DatetimeColumn("Registered", format="MMM DD, YYYY"),
+        "FOC Date": st.column_config.DatetimeColumn("FOC Date", format="MMM DD, YYYY"),
+        "FOC → URD Created (hrs)": st.column_config.NumberColumn(format="%.1f"),
+        "FOC → URD Approved (hrs)": st.column_config.NumberColumn(format="%.1f"),
+        "Number HubSpot": st.column_config.LinkColumn("Number HubSpot", display_text="Open"),
+        "Registration HubSpot": st.column_config.LinkColumn("Registration HubSpot", display_text="Open"),
+    }
+    xc = xc.sort_values(["Number Object", "FOC Date"], ascending=[False, False], na_position="last").reset_index(drop=True)
+    x_all, x_obj, x_miss, x_mm = st.tabs(["All ported", "Has number object", "Missing number object", "Status mismatch"])
+    for tab, sub, label in ((x_all, xc, "ported numbers"),
+                            (x_obj, xc[has_obj], "with a number object"),
+                            (x_miss, xc[~has_obj], "with NO number object"),
+                            (x_mm, xc[xc["Status Match"] == "NO"], "where registration and number URD status differ")):
+        with tab:
+            st.markdown(f"**{len(sub):,} {label}**")
+            st.dataframe(sub, use_container_width=True, hide_index=True, column_config=xc_cfg)
+
+    out = xc.copy()
+    for c in ("Registered", "FOC Date"):
+        out[c] = out[c].dt.strftime("%Y-%m-%d").fillna("")
+    st.download_button("Download cross-check CSV", out.to_csv(index=False),
+                       f"urd_error_{saved['codes_in'].replace(',', '_')}_portin_crosscheck_{datetime.now().strftime('%Y%m%d')}.csv",
+                       "text/csv", key="dl_crosscheck")
 
 report_header_close()
