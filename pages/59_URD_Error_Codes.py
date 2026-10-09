@@ -1,10 +1,13 @@
 import re
+import time
+import requests
 import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime
 from utils import (require_auth, COMMON_CSS, report_header, report_header_close,
-                   fetch_all, dash_spinner, save_report, load_report, saved_at_label)
+                   fetch_all, dash_spinner, save_report, load_report, saved_at_label,
+                   headers as _H, BASE_URL as _B)
 
 st.markdown(COMMON_CSS, unsafe_allow_html=True)
 require_auth()
@@ -15,7 +18,8 @@ report_header("URD Error Codes",
 
 REG_OBJECT = "2-58833629"
 HS_RECORD_URL = "https://app.hubspot.com/contacts/46779160/record/2-58833629/{id}"
-_key = "urd_error_codes_v3"
+_key = "urd_error_codes_v4"
+TICKET_URL = "https://app.hubspot.com/contacts/46779160/record/0-5/{id}"
 NUM_OBJECT = "2-40974683"
 NUM_RECORD_URL = "https://app.hubspot.com/contacts/46779160/record/2-40974683/{id}"
 NUM_PROPS = ["number", "bandwidth_order_type", "number_status", "urd_status", "urd_id",
@@ -125,6 +129,7 @@ def _rows(recs, codes, fields):
                               if (p.get("urd_status") or "").lower() == "completed" else pd.NaT),
             "HubSpot": HS_RECORD_URL.format(id=r.get("id")),
             "_num": str(p.get("number") or "").strip(),
+            "_registered_raw": p.get("registered_at"),
         })
     return pd.DataFrame(rows)
 
@@ -222,8 +227,76 @@ def _crosscheck(reg_df, num_by_number):
             "Days Since FOC (not completed)": (now - foc_ts).days if not approved and not pd.isna(foc_ts) else None,
             "Number HubSpot": NUM_RECORD_URL.format(id=rec["id"]) if rec else None,
             "Registration HubSpot": r["HubSpot"],
+            "_num": r["_num"], "_registered_raw": r["_registered_raw"],
         })
     return pd.DataFrame(rows)
+
+
+def _post(path, body):
+    """POST to HubSpot with a couple of 429 retries; returns parsed JSON or {}."""
+    for attempt in range(4):
+        try:
+            r = requests.post(f"{_B}{path}", headers=_H, json=body, timeout=60)
+        except requests.exceptions.RequestException:
+            time.sleep(1.5 * (attempt + 1)); continue
+        if r.status_code == 429:
+            time.sleep(1.5 * (attempt + 1)); continue
+        return r.json() if r.status_code in (200, 207) else {}
+    return {}
+
+
+_PHONE_RE = re.compile(r"(?<!\d)1?(\d{10})(?!\d)")
+
+
+def _port_outs(port_rows):
+    """For each ported number: find the customer's contact (registration email), read the
+    contact's tickets and take the first 'Port out order' ticket after the port-in started.
+    A ticket that lists other phone numbers but not this one is ignored (customer may have
+    ported out a different number); one that lists no number at all only counts within a year
+    of the port-in. Returns {number: (port_out_ts, ticket_id, how matched)}."""
+    emails = sorted({e.lower() for e in port_rows["Email"] if e and e != "—"})
+    contact_by_email = {}
+    for i in range(0, len(emails), 100):
+        for c in fetch_all("contacts", ["email"], filter_groups=[{"filters": [
+                {"propertyName": "email", "operator": "IN", "values": emails[i:i + 100]}]}]):
+            contact_by_email[(c.get("properties", {}).get("email") or "").lower()] = c["id"]
+    cids = sorted(set(contact_by_email.values()))
+    tickets_by_contact = {}
+    for i in range(0, len(cids), 100):
+        res = _post("/crm/v4/associations/contacts/tickets/batch/read",
+                    {"inputs": [{"id": c} for c in cids[i:i + 100]]})
+        for row in res.get("results", []):
+            tickets_by_contact[str(row["from"]["id"])] = [str(t["toObjectId"]) for t in row.get("to", [])]
+    tids = sorted({t for ts in tickets_by_contact.values() for t in ts})
+    tickets = {}
+    for i in range(0, len(tids), 100):
+        res = _post("/crm/v3/objects/tickets/batch/read",
+                    {"properties": ["subject", "content", "createdate"], "inputs": [{"id": t} for t in tids[i:i + 100]]})
+        for t in res.get("results", []):
+            tickets[str(t["id"])] = t.get("properties", {})
+    out = {}
+    for _, r in port_rows.iterrows():
+        cid = contact_by_email.get(str(r["Email"]).lower())
+        start = pd.to_datetime(r["_registered_raw"], utc=True, errors="coerce")
+        best = None
+        for tid in tickets_by_contact.get(str(cid), []) if cid else []:
+            t = tickets.get(tid, {})
+            if not (t.get("subject") or "").strip().lower().startswith("port out order"):
+                continue
+            listed = set(_PHONE_RE.findall(f"{t.get('subject') or ''} {t.get('content') or ''}"))
+            if listed and r["_num"] not in listed:
+                continue
+            ts = pd.to_datetime(t.get("createdate"), utc=True, errors="coerce")
+            if pd.isna(ts) or (not pd.isna(start) and ts < start):
+                continue
+            if not listed and (pd.isna(start) or (ts - start).days > 365):
+                continue
+            how = "Number on ticket" if listed else "Contact's ticket (no number listed)"
+            if best is None or ts < best[0]:
+                best = (ts, tid, how)
+        if best:
+            out[r["_num"]] = best
+    return out
 
 
 # ── query ─────────────────────────────────────────────────────────────────────
@@ -255,7 +328,9 @@ if run:
     with dash_spinner(f"Cross-checking {len(port_nums):,} ported numbers against number objects..."):
         num_by_number = _fetch_numbers(port_nums) if port_nums else {}
         baseline = _baseline()
-    save_report(_key, {"df": reg_df, "num_by_number": num_by_number, "baseline": baseline,
+    with dash_spinner("Checking contacts' tickets for numbers that were ported back out..."):
+        port_outs = _port_outs(reg_df[reg_df["Type"] == "Port-In"]) if port_nums else {}
+    save_report(_key, {"df": reg_df, "num_by_number": num_by_number, "baseline": baseline, "port_outs": port_outs,
                        "codes_in": codes_in, "field_labels": field_labels, "capped": capped})
     saved = load_report(_key)
 
@@ -480,6 +555,7 @@ else:
         "Registration HubSpot": st.column_config.LinkColumn("Registration HubSpot", display_text="Open"),
     }
     xc = xc.sort_values(["Number Object", "FOC Date"], ascending=[False, False], na_position="last").reset_index(drop=True)
+    xc_cols = [c for c in xc.columns if not c.startswith("_")]
     x_all, x_obj, x_miss, x_mm = st.tabs(["All ported", "Has number object", "Missing number object", "Status mismatch"])
     for tab, sub, label in ((x_all, xc, "ported numbers"),
                             (x_obj, xc[has_obj], "with a number object"),
@@ -487,13 +563,56 @@ else:
                             (x_mm, xc[xc["Status Match"] == "NO"], "where registration and number URD status differ")):
         with tab:
             st.markdown(f"**{len(sub):,} {label}**")
-            st.dataframe(sub, use_container_width=True, hide_index=True, column_config=xc_cfg)
+            st.dataframe(sub[xc_cols], use_container_width=True, hide_index=True, column_config=xc_cfg)
 
-    out = xc.copy()
+    out = xc[xc_cols].copy()
     for c in ("Registered", "FOC Date", "URD Started", "URD Completed"):
         out[c] = pd.to_datetime(out[c], utc=True).dt.strftime("%Y-%m-%d").fillna("")
     st.download_button("Download cross-check CSV", out.to_csv(index=False),
                        f"urd_error_{saved['codes_in'].replace(',', '_')}_portin_crosscheck_{datetime.now().strftime('%Y%m%d')}.csv",
                        "text/csv", key="dl_crosscheck")
+
+    # ── ported back out: port-in started → port-out ticket ──────────────────
+    st.markdown("#### Ported back out")
+    st.caption("Ported numbers whose customer has a **Port out order** ticket after the port-in started "
+               "(matched by registration email → contact → tickets). **Port-In Started** = registration "
+               "Registered At. Tickets that list a different phone number are ignored; tickets with no "
+               "number listed only count within a year of the port-in.")
+    pos = saved.get("port_outs", {})
+    pb = []
+    for _, r in xc.iterrows():
+        hit = pos.get(r["_num"])
+        if not hit:
+            continue
+        start = pd.to_datetime(r["_registered_raw"], utc=True, errors="coerce")
+        pb.append({"Name": r["Name"], "Ported Number": r["Number"], "Port-In Started": start,
+                   "Ported Back Out": hit[0],
+                   "Days": (hit[0] - start).days if not pd.isna(start) else None,
+                   "Reg URD Status": r["Reg URD Status"], "URD Codes": r["Reg URD Codes"],
+                   "Number Object": r["Number Object"], "Matched By": hit[2],
+                   "Port-Out Ticket": TICKET_URL.format(id=hit[1])})
+    if not pb:
+        st.caption("No port-out tickets found for these ported numbers.")
+    else:
+        pb = pd.DataFrame(pb).sort_values("Port-In Started", ascending=False).reset_index(drop=True)
+        days = pb["Days"].dropna()
+        st.markdown(
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.85rem;margin:0.5rem 0 1rem;">'
+            + _tile_txt("Ported Back Out", f"{len(pb):,}", "#EF4444", "#FEE2E2", sub=f"of {len(xc):,} ported numbers")
+            + _tile_txt("Avg Days to Port Back", f"{days.mean():.1f}" if len(days) else "—", "#F59E0B",
+                        sub=f"median {days.median():.0f} · range {days.min():.0f}–{days.max():.0f}" if len(days) else "")
+            + "</div>", unsafe_allow_html=True)
+        st.dataframe(pb, use_container_width=True, hide_index=True, column_config={
+            "Port-In Started": st.column_config.DatetimeColumn("Port-In Started", format="MMM DD, YYYY"),
+            "Ported Back Out": st.column_config.DatetimeColumn("Ported Back Out", format="MMM DD, YYYY"),
+            "Days": st.column_config.NumberColumn("Days", format="%d"),
+            "Port-Out Ticket": st.column_config.LinkColumn("Port-Out Ticket", display_text="Open"),
+        })
+        pb_out = pb.copy()
+        for c in ("Port-In Started", "Ported Back Out"):
+            pb_out[c] = pb_out[c].dt.strftime("%Y-%m-%d")
+        st.download_button("Download ported-back-out CSV", pb_out.to_csv(index=False),
+                           f"urd_error_{saved['codes_in'].replace(',', '_')}_ported_back_out_{datetime.now().strftime('%Y%m%d')}.csv",
+                           "text/csv", key="dl_portback")
 
 report_header_close()
