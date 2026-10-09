@@ -250,7 +250,8 @@ def _crosscheck(reg_df, by_uuid, by_num):
             "Losing Carrier": p.get("losing_carrier") or "—",
             "Num Status": (p.get("number_status") or "—").title(),
             "Num URD Status": num_urd,
-            "Status Match": ("Yes" if num_urd == r["URD Status"] else "NO") if rec else "—",
+            "Status Match": ("—" if not rec else "— (different registration)" if linked != "Master Record ID"
+                             else "Yes" if num_urd == r["URD Status"] else "NO"),
             "Num URD Codes": ", ".join(dict.fromkeys(_CODE_RE.findall(p.get("urd_filling_error_message") or ""))),
             "URD ID": p.get("urd_id") or "",
             "FOC Date": foc_ts,
