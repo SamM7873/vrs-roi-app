@@ -15,7 +15,7 @@ report_header("Port-In LEX / URD Issues",
 
 NUM_OBJECT = "2-40974683"
 HS_RECORD_URL = "https://app.hubspot.com/contacts/46779160/record/2-40974683/{id}"
-_key = "port_in_lex_urd_v1"
+_key = "port_in_lex_urd_v2"
 
 PROPS = ["number", "first_name", "last_name", "email", "state",
          "number_status", "usage_type", "bandwidth_order_type",
@@ -29,7 +29,8 @@ LEX_OK = ("Automatic Success", "Manual Success")
 st.markdown(
     "Pulls every number object with **Bandwidth Order Type = portins** and shows the "
     "**LEX Verification Status**, **LEX Error Message** and **URD Identified Message** "
-    "(`URD Identity Error Message`, e.g. *\"identified as a user already registered in the URD\"*). "
+    "(`URD Identity Error Message`, e.g. *\"identified as a user already registered in the URD\"*), "
+    "plus the **URD Filling Error Message** (e.g. code 21 *Registering Numbering Directory TDN Failure*). "
     "Messages are de-duplicated and split into individual error codes so issues can be grouped."
 )
 
@@ -103,12 +104,14 @@ def _load():
             "URD Status": urd or "—",
             "URD Identified Codes": _codes(urd_id_errs),
             "URD Identified Message": _fmt_errors(urd_id_errs),
+            "URD Filling Codes": _codes(urd_fill_errs),
             "URD Filling Error": _fmt_errors(urd_fill_errs),
             "Port-In Message": " ".join(str(p.get("portin_message") or "").split()),
             "Created": created,
             "HubSpot": HS_RECORD_URL.format(id=r.get("id")),
             "_lex_pairs": lex_errs,
             "_urd_pairs": urd_id_errs,
+            "_fill_pairs": urd_fill_errs,
             "_lex_ok": lex in LEX_OK,
             "_urd_done": urd.lower() == "completed",
         })
@@ -157,7 +160,7 @@ def _range(preset):
     return None, None
 
 
-f1, f2, f3, f4 = st.columns([1.3, 1.3, 1.3, 1.6])
+f1, f2, f3, f4, f5 = st.columns([1.2, 1.2, 1.2, 1.3, 1.5])
 with f1:
     preset = st.selectbox("Number created", PRESETS, index=0)
     if preset == "Custom Range":
@@ -172,6 +175,12 @@ with f3:
     urd_opts = sorted(df_all["URD Status"].unique())
     urd_sel = st.multiselect("URD Status", urd_opts, default=[])
 with f4:
+    _all_codes = sorted(
+        {c for col in ("_lex_pairs", "_urd_pairs", "_fill_pairs") for pairs in df_all[col] for c, _ in pairs if c != "—"},
+        key=lambda c: (not c.isdigit(), int(c) if c.isdigit() else 0, c))
+    code_sel = st.multiselect("Error code (LEX / URD)", _all_codes, default=[],
+                              help="Matches the code in the LEX error, URD identified or URD filling message")
+with f5:
     search = st.text_input("Search number / name / email / message", "")
 
 df = df_all.copy()
@@ -183,14 +192,20 @@ if lex_sel:
     df = df[df["LEX Status"].isin(lex_sel)]
 if urd_sel:
     df = df[df["URD Status"].isin(urd_sel)]
+if code_sel:
+    _want = set(code_sel)
+    df = df[df.apply(lambda r: any(c in _want for col in ("_lex_pairs", "_urd_pairs", "_fill_pairs")
+                                   for c, _ in r[col]), axis=1)]
 if search.strip():
     s = search.strip().lower()
     hay = (df["Number"] + " " + df["Name"] + " " + df["Email"] + " "
-           + df["LEX Error Message"] + " " + df["URD Identified Message"]).str.lower()
+           + df["LEX Error Message"] + " " + df["URD Identified Message"] + " "
+           + df["URD Filling Error"]).str.lower()
     df = df[hay.str.contains(s, regex=False)]
 
 has_lex_err = df["LEX Error Message"] != ""
 has_urd_msg = df["URD Identified Message"] != ""
+has_fill_err = df["URD Filling Error"] != ""
 lex_not_ok = ~df["_lex_ok"]
 urd_not_done = ~df["_urd_done"]
 
@@ -210,6 +225,7 @@ st.markdown(
     + _tile("LEX Not Verified", int(lex_not_ok.sum()), "#EF4444", "#FEE2E2")
     + _tile("Has LEX Error Msg", int(has_lex_err.sum()), "#F59E0B")
     + _tile("Has URD Identified Msg", int(has_urd_msg.sum()), "#8B5CF6")
+    + _tile("Has URD Filling Error", int(has_fill_err.sum()), "#DC2626")
     + _tile("URD Not Completed", int(urd_not_done.sum()), "#3B82F6")
     + "</div>", unsafe_allow_html=True)
 
@@ -260,6 +276,13 @@ if urd_cc.empty:
 else:
     st.altair_chart(_bar(urd_cc, "Error", "#8B5CF6"), use_container_width=True)
 
+st.markdown("#### URD Filling Errors (by error code)")
+fill_cc = _code_counts("_fill_pairs")
+if fill_cc.empty:
+    st.caption("No URD filling errors in this selection.")
+else:
+    st.altair_chart(_bar(fill_cc, "Error", "#DC2626"), use_container_width=True)
+
 # ── LEX status × URD status cross-tab ─────────────────────────────────────────
 
 st.markdown("#### LEX Status × URD Status")
@@ -270,7 +293,8 @@ st.dataframe(xt, use_container_width=True)
 
 display_cols = ["Number", "Name", "Email", "State", "Port-In Status", "Number Status",
                 "LEX Status", "LEX Error Codes", "LEX Error Message",
-                "URD Status", "URD Identified Codes", "URD Identified Message", "URD Filling Error",
+                "URD Status", "URD Identified Codes", "URD Identified Message",
+                "URD Filling Codes", "URD Filling Error",
                 "Port-In Message", "Created", "HubSpot"]
 col_cfg = {
     "HubSpot": st.column_config.LinkColumn("HubSpot", display_text="Open"),
@@ -291,12 +315,15 @@ def _table(sub, label, key):
                        "text/csv", key=f"dl_{key}")
 
 
-t_issue, t_urd, t_lex, t_lexnv, t_all = st.tabs([
-    "Any LEX / URD Issue", "URD Identified Message", "LEX Error Message", "LEX Not Verified", "All Port-Ins"])
+t_issue, t_urd, t_fill, t_lex, t_lexnv, t_all = st.tabs([
+    "Any LEX / URD Issue", "URD Identified Message", "URD Filling Error", "LEX Error Message",
+    "LEX Not Verified", "All Port-Ins"])
 with t_issue:
-    _table(df[has_lex_err | has_urd_msg | lex_not_ok], "port-ins with a LEX or URD issue", "issues")
+    _table(df[has_lex_err | has_urd_msg | has_fill_err | lex_not_ok], "port-ins with a LEX or URD issue", "issues")
 with t_urd:
     _table(df[has_urd_msg], "port-ins with a URD identified message", "urd")
+with t_fill:
+    _table(df[has_fill_err], "port-ins with a URD filling error", "fill")
 with t_lex:
     _table(df[has_lex_err], "port-ins with a LEX error message", "lex")
 with t_lexnv:
