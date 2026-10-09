@@ -137,6 +137,20 @@ def _rows(recs, codes, fields):
     return pd.DataFrame(rows)
 
 
+def _dur(h):
+    """Hours → readable duration: '45 min', '2 hrs 54 min', '1 day 1 hr', '371 days 7 hrs (~1.0 yrs)'."""
+    if h is None or pd.isna(h):
+        return "—"
+    m = int(round(float(h) * 60))
+    d, rem = divmod(m, 1440)
+    hh, mm = divmod(rem, 60)
+    pl = lambda n, w: f"{n} {w}" + ("" if n == 1 else "s")
+    if d:
+        txt = f"{pl(d, 'day')} {pl(hh, 'hr')}"
+        return txt + (f" (~{d / 365:.1f} yrs)" if d >= 365 else "")
+    return f"{pl(hh, 'hr')} {mm} min" if hh else f"{mm} min"
+
+
 def _hours(a, b):
     """Hours from timestamp a to b (None if either is missing or b is before a)."""
     a = pd.to_datetime(a, utc=True, errors="coerce")
@@ -522,10 +536,7 @@ else:
     def _avg(x):
         return x.mean() if len(x) else None
 
-    def _fmt_h(h):
-        if h is None or pd.isna(h):
-            return "—"
-        return f"{h / 24:.1f} days" if h >= 48 else f"{h:.1f} hrs"
+    _fmt_h = _dur
 
     def _tile_txt(label, val, color="#1F2937", border="#E5E7EB", sub=""):
         sub_html = f'<div style="font-size:0.72rem;color:#6B7280;margin-top:0.15rem;">{sub}</div>' if sub else ""
@@ -580,15 +591,17 @@ else:
         "FOC Date": st.column_config.DatetimeColumn("FOC Date", format="MMM DD, YYYY"),
         "URD Started": st.column_config.DatetimeColumn("URD Started", format="MMM DD, YYYY"),
         "URD Completed": st.column_config.DatetimeColumn("URD Completed", format="MMM DD, YYYY"),
-        "FOC → URD Started (hrs)": st.column_config.NumberColumn(format="%.1f"),
-        "URD Started → Completed (hrs)": st.column_config.NumberColumn(format="%.1f"),
-        "FOC → URD Completed (hrs)": st.column_config.NumberColumn(format="%.1f"),
-        "FOC → URD Updated (hrs)": st.column_config.NumberColumn(format="%.1f"),
         "Number HubSpot": st.column_config.LinkColumn("Number HubSpot", display_text="Open"),
         "Registration HubSpot": st.column_config.LinkColumn("Registration HubSpot", display_text="Open"),
     }
     xc = xc.sort_values(["Number Object", "FOC Date"], ascending=[False, False], na_position="last").reset_index(drop=True)
-    xc_cols = [c for c in xc.columns if not c.startswith("_")]
+    # Show durations as '2 hrs 54 min' / '91 days 20 hrs'; the numeric hours stay in the CSV for sorting.
+    base_cols = [c for c in xc.columns if not c.startswith("_")]
+    hrs_cols = [c for c in base_cols if c.endswith(" (hrs)")]
+    for c in hrs_cols:
+        xc[c[:-6]] = xc[c].map(_dur)
+    xc_cols = [c[:-6] if c in hrs_cols else c for c in base_cols]                       # on screen
+    csv_cols = [x for c in base_cols for x in ((c[:-6], c) if c in hrs_cols else (c,))]  # CSV keeps hours too
     x_all, x_obj, x_miss, x_mm = st.tabs(["All ported", "Has number object", "Missing number object", "Status mismatch"])
     for tab, sub, label in ((x_all, xc, "ported numbers"),
                             (x_obj, xc[has_obj], "with a number object"),
@@ -598,7 +611,7 @@ else:
             st.markdown(f"**{len(sub):,} {label}**")
             st.dataframe(sub[xc_cols], use_container_width=True, hide_index=True, column_config=xc_cfg)
 
-    out = xc[xc_cols].copy()
+    out = xc[csv_cols].copy()
     for c in ("Registered", "FOC Date", "URD Started", "URD Completed"):
         out[c] = pd.to_datetime(out[c], utc=True).dt.strftime("%Y-%m-%d").fillna("")
     st.download_button("Download cross-check CSV", out.to_csv(index=False),
@@ -621,6 +634,7 @@ else:
         pb.append({"Name": r["Name"], "Ported Number": r["Number"], "Port-In Started": start,
                    "Ported Back Out": hit[0],
                    "Days": (hit[0] - start).days if not pd.isna(start) else None,
+                   "Port-In → Port-Out": _dur(_hours(start, hit[0])),
                    "Reg URD Status": r["Reg URD Status"], "URD Codes": r["Reg URD Codes"],
                    "Number Object": r["Number Object"], "Matched By": hit[2],
                    "Port-Out Ticket": TICKET_URL.format(id=hit[1])})
