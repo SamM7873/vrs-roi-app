@@ -18,11 +18,12 @@ report_header("URD Error Codes",
 
 REG_OBJECT = "2-58833629"
 HS_RECORD_URL = "https://app.hubspot.com/contacts/46779160/record/2-58833629/{id}"
-_key = "urd_error_codes_v4"
+_key = "urd_error_codes_v5"
 TICKET_URL = "https://app.hubspot.com/contacts/46779160/record/0-5/{id}"
 NUM_OBJECT = "2-40974683"
 NUM_RECORD_URL = "https://app.hubspot.com/contacts/46779160/record/2-40974683/{id}"
-NUM_PROPS = ["number", "bandwidth_order_type", "number_status", "urd_status", "urd_id",
+NUM_PROPS = ["number", "master_record_id", "bandwidth_order_type", "bandwidth_callback_status",
+             "losing_carrier", "number_status", "urd_status", "urd_id",
              "urd_filling_error_message", "bandwidth_order_foc_date",
              "urd_registration_created_at", "urd_registration_updated_at", "hs_createdate"]
 
@@ -47,7 +48,8 @@ PROPS = ["number", "first_name", "last_name", "email", "state",
          "lex_verification_status", "lex_errors", "lex_error_message",
          "urd_status", "urd_filling_errors", "urd_identity_errors",
          "registered_at", "submitted_at",
-         "urd_registration_created_at", "urd_registration_updated_at"]
+         "urd_registration_created_at", "urd_registration_updated_at",
+         "registration_uuid"]
 
 st.markdown(
     "Searches the **registration object** for an error code in **URD Filling Errors**, "
@@ -129,6 +131,7 @@ def _rows(recs, codes, fields):
                               if (p.get("urd_status") or "").lower() == "completed" else pd.NaT),
             "HubSpot": HS_RECORD_URL.format(id=r.get("id")),
             "_num": str(p.get("number") or "").strip(),
+            "_uuid": str(p.get("registration_uuid") or "").strip(),
             "_registered_raw": p.get("registered_at"),
         })
     return pd.DataFrame(rows)
@@ -143,19 +146,30 @@ def _hours(a, b):
     return (b - a).total_seconds() / 3600
 
 
-def _fetch_numbers(nums):
-    """Number objects for the given numbers. When a number has several objects,
-    prefer the port-in order, then the most recently created one."""
+def _fetch_numbers_by(prop, values):
+    """Number objects whose `prop` is in `values`, keyed by that value. When several objects
+    share a value, prefer the port-in order, then the most recently created one."""
     best = {}
-    for i in range(0, len(nums), 100):
+    for i in range(0, len(values), 100):
         for r in fetch_all(NUM_OBJECT, NUM_PROPS, filter_groups=[{"filters": [
-                {"propertyName": "number", "operator": "IN", "values": nums[i:i + 100]}]}]):
+                {"propertyName": prop, "operator": "IN", "values": values[i:i + 100]}]}]):
             p = r.get("properties", {})
-            num = str(p.get("number") or "").strip()
+            k = str(p.get(prop) or "").strip()
             rank = (p.get("bandwidth_order_type") == "portins", p.get("hs_createdate") or "")
-            if num not in best or rank > best[num][0]:
-                best[num] = (rank, r)
+            if k not in best or rank > best[k][0]:
+                best[k] = (rank, r)
     return {k: v[1] for k, v in best.items()}
+
+
+def _fetch_numbers(port_rows):
+    """Link registrations to number objects. Primary key: the number object's Master Record ID
+    equals the registration's Registration UUID. Registrations with no ID match fall back to
+    the phone number."""
+    uuids = sorted({u for u in port_rows["_uuid"] if u})
+    by_uuid = _fetch_numbers_by("master_record_id", uuids) if uuids else {}
+    left = sorted({r["_num"] for _, r in port_rows.iterrows() if r["_num"] and r["_uuid"] not in by_uuid})
+    by_num = _fetch_numbers_by("number", left) if left else {}
+    return by_uuid, by_num
 
 
 BASE_COLS = ["FOC Year", "FOC → Started", "Started → Completed", "FOC → Completed"]
@@ -184,12 +198,16 @@ def _baseline():
 _CODE_RE = re.compile(r"Error Code:\s*(\S+)", re.I)
 
 
-def _crosscheck(reg_df, num_by_number):
+def _crosscheck(reg_df, by_uuid, by_num):
     """One row per port-in registration: registration vs number object, FOC → URD timing."""
     now = pd.Timestamp.now(tz="UTC")
     rows = []
     for _, r in reg_df.iterrows():
-        rec = num_by_number.get(r["_num"])
+        rec, linked = by_uuid.get(r["_uuid"]), "Master Record ID"
+        if rec is None:
+            rec, linked = by_num.get(r["_num"]), "Phone number (no ID match)"
+        if rec is None:
+            linked = "—"
         p = (rec or {}).get("properties", {})
         num_urd = (p.get("urd_status") or "—").title() if rec else "—"
         foc = p.get("bandwidth_order_foc_date")
@@ -211,7 +229,10 @@ def _crosscheck(reg_df, num_by_number):
             "Name": r["Name"], "Number": r["Number"], "Registered": r["Registered"],
             "Reg URD Status": r["URD Status"], "Reg URD Codes": r["URD Filling Codes"],
             "Number Object": "Yes" if rec else "MISSING",
+            "Linked By": linked,
             "Num Order Type": p.get("bandwidth_order_type") or "—",
+            "Bandwidth Order Status": p.get("bandwidth_callback_status") or "—",
+            "Losing Carrier": p.get("losing_carrier") or "—",
             "Num Status": (p.get("number_status") or "—").title(),
             "Num URD Status": num_urd,
             "Status Match": ("Yes" if num_urd == r["URD Status"] else "NO") if rec else "—",
@@ -326,11 +347,12 @@ if run:
         reg_df = _rows(recs, codes, fields)
     port_nums = sorted({n for n in reg_df.loc[reg_df["Type"] == "Port-In", "_num"] if n}) if not reg_df.empty else []
     with dash_spinner(f"Cross-checking {len(port_nums):,} ported numbers against number objects..."):
-        num_by_number = _fetch_numbers(port_nums) if port_nums else {}
+        by_uuid, by_num = (_fetch_numbers(reg_df[reg_df["Type"] == "Port-In"]) if port_nums else ({}, {}))
         baseline = _baseline()
     with dash_spinner("Checking contacts' tickets for numbers that were ported back out..."):
         port_outs = _port_outs(reg_df[reg_df["Type"] == "Port-In"]) if port_nums else {}
-    save_report(_key, {"df": reg_df, "num_by_number": num_by_number, "baseline": baseline, "port_outs": port_outs,
+    save_report(_key, {"df": reg_df, "num_by_uuid": by_uuid, "num_by_number": by_num, "baseline": baseline,
+                       "port_outs": port_outs,
                        "codes_in": codes_in, "field_labels": field_labels, "capped": capped})
     saved = load_report(_key)
 
@@ -476,13 +498,14 @@ with t_all:
 
 st.markdown("---")
 st.markdown("### Ported numbers — Registration vs Number object")
-st.caption("Each port-in registration above is matched to its number object by phone number. "
+st.caption("Each port-in registration above is linked to its number object by **Registration UUID = "
+           "Master Record ID** (phone number is used only when there is no ID match — see **Linked By**). "
            "**FOC** = Bandwidth Order FOC Date (number object only). **URD Started** = URD Registration "
            "Created At. **URD Completed** = URD Registration Updated At on a record whose URD Status is "
            "Completed (HubSpot has no separate 'completed at' field). URD dates come from the number "
            "object, or from the registration when there is no number object. Filters above apply here too.")
 
-xc = _crosscheck(df[df["Type"] == "Port-In"], saved.get("num_by_number", {}))
+xc = _crosscheck(df[df["Type"] == "Port-In"], saved.get("num_by_uuid", {}), saved.get("num_by_number", {}))
 base = saved.get("baseline", pd.DataFrame(columns=BASE_COLS))
 
 if xc.empty:
