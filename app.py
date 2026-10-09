@@ -92,6 +92,7 @@ churn_page    = st.Page("pages/5_Churn_Risk.py",          title="Churn Risk Repo
 funnel_page   = st.Page("pages/6_Registration_Funnel.py", title="Registration Funnel",   icon="📋")
 portin_page   = st.Page("pages/7_Port_In_Report.py",      title="Port-In Report",        icon="📲")
 portin_lex_page = st.Page("pages/58_Port_In_LEX_URD.py",  title="Port-In LEX / URD",     icon="🪪")
+urd_codes_page  = st.Page("pages/59_URD_Error_Codes.py",  title="URD Error Codes",       icon="⚠️")
 journey_page  = st.Page("pages/8_Signup_Journey.py",      title="Sign-Up Journey",        icon="🗺️")
 numfunnel_page = st.Page("pages/9_Number_Funnel.py",      title="Number Funnel",          icon="🔢")
 winback_page    = st.Page("pages/10_Port_Out_Winback.py",          title="Port-Out Winback",         icon="🔄")
@@ -142,7 +143,7 @@ cn20_active_page = st.Page("pages/57_CN20_Active_Breakdown.py",             titl
 # app admins (APP_ADMINS secret). Non-admins never see the Admin pages.
 _nav = {
     "Home": [overview_page, this_month_page, weekly_page, daily_page, lookup_page],
-    "Numbers": [numbers_page, numfunnel_page, funnel_page, registrations_page, portin_page, portin_lex_page, winback_page, yoy_page, utm_page, pixel11_page, cn20_conv_page, cep_page],
+    "Numbers": [numbers_page, numfunnel_page, funnel_page, registrations_page, portin_page, portin_lex_page, urd_codes_page, winback_page, yoy_page, utm_page, pixel11_page, cn20_conv_page, cep_page],
     "Customers": [ursa_page, journey_page, churn_page, vrs_zero_page, vrs_react_page, retention_page, org_ret_page, school_page, cn_only_page, cn20_recon_page, react_track_page, cn_subs_page, cn20_active_page],
     "Support": [cs_tickets_page, ticket_rpt_page, jira_rpt_page, survey_page, ivt_page, ticket_pipe_page, convo_greet_page, t2_support_page, journey_funnel_page, rb_page],
     "Tools": [pendo_page, dq_page, convo360_page, data_health_page, persona_page],
