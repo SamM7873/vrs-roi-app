@@ -215,12 +215,13 @@ def _crosscheck(reg_df, by_uuid, by_num):
         # URD dates: number object first, registration as fallback (e.g. no number object).
         if rec and p.get("urd_registration_created_at"):
             src = "Number"
+            updated = pd.to_datetime(p.get("urd_registration_updated_at"), utc=True, errors="coerce")
             started = pd.to_datetime(p.get("urd_registration_created_at"), utc=True, errors="coerce")
             completed = (pd.to_datetime(p.get("urd_registration_updated_at"), utc=True, errors="coerce")
                          if num_urd == "Completed" else pd.NaT)
         else:
             src = "Registration" if not pd.isna(r["URD Started"]) else "—"
-            started, completed = r["URD Started"], r["URD Completed"]
+            started, completed, updated = r["URD Started"], r["URD Completed"], pd.NaT
         approved = (num_urd if rec else r["URD Status"]) == "Completed"
         # FOC lives on the number object, so only time it against that same object's URD dates —
         # a registration can be from an older port of the same number.
@@ -245,6 +246,7 @@ def _crosscheck(reg_df, by_uuid, by_num):
             "FOC → URD Started (hrs)": _hours(foc_for_timing, started),
             "URD Started → Completed (hrs)": _hours(started, completed),
             "FOC → URD Completed (hrs)": _hours(foc_for_timing, completed),
+            "FOC → URD Updated (hrs)": _hours(foc_for_timing, updated),
             "Days Since FOC (not completed)": (now - foc_ts).days if not approved and not pd.isna(foc_ts) else None,
             "Number HubSpot": NUM_RECORD_URL.format(id=rec["id"]) if rec else None,
             "Registration HubSpot": r["HubSpot"],
@@ -515,6 +517,7 @@ else:
     f2s = xc["FOC → URD Started (hrs)"].dropna()
     s2c = xc["URD Started → Completed (hrs)"].dropna()
     f2c = xc["FOC → URD Completed (hrs)"].dropna()
+    f2u = xc["FOC → URD Updated (hrs)"].dropna()
 
     def _avg(x):
         return x.mean() if len(x) else None
@@ -544,14 +547,20 @@ else:
     bf2s, bs2c, bf2c = (base[c].dropna() for c in BASE_COLS[1:])
     st.markdown(
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.85rem;margin:0.5rem 0 1rem;">'
+        + _tile_txt("FOC → URD Approved (Avg)", _fmt_h(_avg(f2c)), "#00A651", "#BBF7D0",
+                    sub=f"avg of {len(f2c)} approved (URD Completed) · norm {_fmt_h(_avg(bf2c))} "
+                        f"(median {_fmt_h(bf2c.median() if len(bf2c) else None)})")
+        + _tile_txt("FOC → URD Updated (Avg)", _fmt_h(_avg(f2u)), "#F59E0B",
+                    sub=f"avg of {len(f2u)} incl. not approved · median {_fmt_h(f2u.median() if len(f2u) else None)}")
         + _tile_txt("FOC → URD Started", _fmt_h(_avg(f2s)), "#3B82F6",
                     sub=f"avg of {len(f2s)} · norm {_fmt_h(_avg(bf2s))} (median {_fmt_h(bf2s.median() if len(bf2s) else None)})")
         + _tile_txt("URD Started → Completed", _fmt_h(_avg(s2c)), "#8B5CF6",
                     sub=f"avg of {len(s2c)} · norm {_fmt_h(_avg(bs2c))} (median {_fmt_h(bs2c.median() if len(bs2c) else None)})")
-        + _tile_txt("FOC → URD Completed", _fmt_h(_avg(f2c)), "#00A651",
-                    sub=f"avg of {len(f2c)} · norm {_fmt_h(_avg(bf2c))} (median {_fmt_h(bf2c.median() if len(bf2c) else None)})")
         + "</div>", unsafe_allow_html=True)
-    st.caption(f"Norm = {len(base):,} completed port-in number objects with an FOC date. "
+    st.caption(f"**Approved** = URD Status Completed; time is FOC → URD Registration Updated At. "
+               f"**URD Updated** counts every number with an FOC date, approved or not (for a Pending number "
+               f"it is the last URD attempt). FOC exists only on number objects. "
+               f"Norm = {len(base):,} completed port-in number objects with an FOC date. "
                "Averages are pulled up by a few very slow records; the median is the typical case.")
 
     if len(base):
@@ -574,6 +583,7 @@ else:
         "FOC → URD Started (hrs)": st.column_config.NumberColumn(format="%.1f"),
         "URD Started → Completed (hrs)": st.column_config.NumberColumn(format="%.1f"),
         "FOC → URD Completed (hrs)": st.column_config.NumberColumn(format="%.1f"),
+        "FOC → URD Updated (hrs)": st.column_config.NumberColumn(format="%.1f"),
         "Number HubSpot": st.column_config.LinkColumn("Number HubSpot", display_text="Open"),
         "Registration HubSpot": st.column_config.LinkColumn("Registration HubSpot", display_text="Open"),
     }
